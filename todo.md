@@ -1,0 +1,122 @@
+# Project TODO
+
+- [x] Establish the DIVA domain vocabulary, assessment data model, and typed API contracts.
+- [x] Add database schema and query helpers for assessment areas, map layers, risk indicators, capacity analyses, relocation recommendations, report records, and stored source-artifact metadata.
+- [x] Build typed server procedures for dashboard data, assessment inspection, risk recalculation, site-capacity analysis, relocation ranking, AI narratives, report generation, and report retrieval.
+- [x] Create the desktop-first responsive DIVA application shell, navigation, global styling, and accessible interaction states.
+- [x] Implement an interactive MapLibre-based GIS workspace with base-style switching, location search, feature inspection, visual layers, opacity controls, and a legend.
+- [x] Build GIS layer controls for hazard, exposure, population, environment, infrastructure, and administrative-boundary data.
+- [x] Build the risk-assessment workspace with interpretable scores, indicator contributions, classifications, trends, and analyst review context.
+- [x] Build the carrying-capacity workspace with capacity, access, suitability, constraints, and candidate-site comparison.
+- [x] Build the relocation-prioritization workflow with explainable priority scores, recommended actions, and comparison tables.
+- [x] Implement explicitly labelled AI/ML decision-support narratives grounded only in supplied analysis outputs and retained for analyst review.
+- [x] Generate PDF assessment reports with risk findings, capacity results, relocation recommendations, map context, and methodology notes; store the PDF object and report metadata separately.
+- [x] Support secured source-data artifact metadata and storage references without persisting file bytes in the database.
+- [x] Add Vitest coverage for the scoring, narrative-grounding, ranking, and report API flows.
+- [x] Verify desktop and mobile rendering, key workflows, and build/test health before delivery.
+- [x] Fix the MapLibre hazard-fill style expression validation error and verify the GIS workspace loads successfully.
+- [x] Replace the scenario-region map context with Kerala, India geographic boundaries and Kerala-focused assessment areas.
+- [x] Add provenance-labelled Kerala population-density, weather, precipitation, air-quality, hazard, infrastructure, and administrative-boundary map layers.
+- [x] Update dashboard, assessment, relocation, and report copy to clearly distinguish sourced Kerala context from analytical demonstration outputs.
+- [x] Validate Kerala map rendering, layer controls, data-status labelling, and responsive decision-support workflows.
+- [x] Add a Dataset Lab for case-study creation, multiple uploaded source datasets, phase assignment, storage metadata, and file-type validation.
+- [x] Implement manual and automatic source-column mapping with geospatial quality checks, WGS84 readiness, duplicate and missing-coordinate diagnostics, and dataset-review status.
+- [x] Build the pre-event historical replay and what-if simulation pipeline while preserving ground-truth dataset separation.
+- [x] Build the predicted-versus-actual map comparison workspace with side-by-side, split, overlay, and timeline modes.
+- [x] Compute uploaded-data-driven IoU, precision, recall, F1, area overlap, population variance, and infrastructure detection metrics without fabricated validation results.
+- [x] Add case-study management, analytical evidence tables, and downloadable historical-analysis PDF reporting.
+- [x] Add automated tests and visual verification for Dataset Lab, historical replay, comparison metrics, and historical reporting.
+- [x] Implement real GIS-rendered Kerala population-density and selected-district environmental overlays that respond to layer controls.
+- [x] Make Dataset Lab manual column remapping rebuild tabular geometry and refresh its validation diagnostics.
+- [x] Add timeline comparison mode and replace placeholder comparison fields with uploaded-data-driven population-variance and infrastructure metrics.
+- [x] Add Dataset Lab parser/remapping tests and repeat mobile visual verification after the Kerala and Historical Replay updates.
+- [x] Add an India-wide search contract for states, cities, districts, and major localities with Andhra Pradesh as the default location.
+- [x] Implement source-aware place search, geocoding, and geographic-boundary retrieval for selected Indian locations.
+- [x] Dynamically refresh population context, live temperature, precipitation, air quality, hazard context, and analytical risk layers for each selected location.
+- [x] Update the GIS workspace to fly to, frame, and inspect selected Indian locations without disrupting existing Kerala and Historical Replay workflows.
+- [x] Add test coverage and visual verification for the Andhra Pradesh default plus state, city, district, and locality searches.
+- [x] Bind the selected India location context to the visible population, hazard, temperature, precipitation, air-quality, risk, and analytical summary panels.
+- [x] Add automated tests for Andhra Pradesh default and India state, city, district, and locality place-context handling.
+- [x] Verify a true district result and visual non-default-location update after selection.
+- [x] Bind the selected India location context into the main decision-support sidebar and summary cards, separate from retained Kerala assessment actions.
+- [x] Add service-level tests for selected-location boundary enrichment and environmental screening context shaping.
+- [x] Verify a non-default selected Indian location visually updates map framing, boundary, and visible decision-support panels.
+- [x] Replace the visible active assessment sidebar with selected India location context while retaining Kerala assessment actions in their own workspace.
+- [x] Complete a trusted visual verification of the non-default selected India location after the sidebar update.
+- [x] Hide retained Kerala assessment panels from the active GIS workspace so the selected India location sidebar is the sole right-hand contextual panel.
+- [x] Handle non-JSON external geocoding responses for searched Indian locations and preserve a typed Assam context fallback.
+- [x] Add regression coverage for malformed external geocoding responses and verify Assam location loading succeeds.
+- [x] Resolve the Nizamabad location-context fetch failure and keep the India workspace available during context-request interruption.
+- [x] Add regression coverage and visual verification for the Nizamabad share-link route.
+- [x] Add a complete India state-wise administrative reference layer with source and boundary-status labelling.
+- [x] Add nationwide population-density, physical-terrain, and geological-reference layers with transparent coverage and provenance labels.
+- [x] Add a live India weather-map layer with clear modelled-data status, refresh handling, and non-warning disclaimers.
+- [x] Validate nationwide layer controls, selected-location behavior, source labels, and desktop/mobile map rendering.
+- [x] Align India-selected map presentation to the supplied references with a state-bounded population choropleth, terrain-forward base, and heat-style live weather surface.
+- [x] Ensure every India map layer presents a visible source, timestamp or availability state, and live-model disclaimer where appropriate.
+- [x] Render a visible India layer provenance panel covering state boundaries, population-density raster, terrain, geology, and weather status/timestamp.
+- [x] Replace the provisional geological-reference geometry with an explicit source-unavailable state until a verified nationwide geology service can be integrated.
+- [x] Clarify the delivered WorldPop population-density raster as a nationwide density overlay rather than a state-level population-total choropleth.
+- [x] Repeat India overview visual verification at desktop and mobile widths and validate the national layer controls.
+- [x] Add inspectable desktop and mobile India overview verification for the nationwide map and provenance panel.
+- [x] Add regression coverage for state, population-density, terrain, geology-unavailable, and live-weather layer-control behavior.
+- [x] Add route-level India overview verification for desktop and mobile presentation evidence.
+- [x] Add behavior-level India overview layer-control regression coverage for visible map and provenance state.
+- [x] Add end-to-end browser verification for the India overview route and layer toggles with inspectable route-state evidence.
+- [x] Run live-browser assertions for the India overview route, provenance panel, and nationwide layer-control toggles.
+- [x] Resolve the renewed Assam India-context fetch failure and preserve a typed Assam map/sidebar fallback during transport interruption.
+- [x] Add current-build regression coverage and live-route verification for Assam context-request recovery.
+- [x] Add nationwide area-based population-density and terrain coverage with explicit resolution, currency, and source-status labels.
+- [x] Add live nationwide weather and wind-speed coverage with time-stamped modelled-data status and full-area interpolation disclosure.
+- [x] Add transparent earthquake, landslide, flood, and combined sensitivity-area layers that show mapped extents rather than point-only indicators.
+- [x] Make generated assessment and historical reports persistently downloadable as PDF records from the Reports workspace.
+- [x] Validate nationwide full-area coverage, source limitations, report downloads, and desktop/mobile map controls.
+- [x] Surface population resolution/reference-year and terrain source/status details visibly in the India overview provenance UI.
+- [x] Add a combined multi-hazard sensitivity layer and control with an explicit analytical-screening disclaimer.
+- [x] Add direct Reports workspace archive and download-link validation for both assessment and historical PDF records.
+- [x] Add direct Reports workspace rendering validation for mixed assessment and historical PDF archive entries and persisted download URLs.
+- [x] Add report-archive refresh coverage after historical report generation so both record types remain visible in the shared workspace.
+- [x] Add an integration-level report-archive refresh regression proving mixed assessment and historical PDFs render after a simulated historical-report generation success.
+- [x] Recompute and visibly update the priority assessment queue from the selected India location context rather than retained default assessment rows.
+- [x] Add transparent India-wide weather forecast coverage and a selected-location forecast summary with source, timestamp, and modelled-data status.
+- [x] Surface live selected-location population and forecast details consistently across the sidebar, summary cards, and map context.
+- [x] Validate selected state/city/district/locality queue updates, forecast rendering, and desktop/mobile behavior.
+- [x] Replace the retained generic priority assessment rows with a selected-location-driven decision table when an India location is active.
+- [x] Show selected-location forecast freshness timestamps in the forecast summary and contextual surfaces.
+- [x] Propagate selected-location forecast detail into the India sidebar and summary-card strip alongside map context.
+- [x] Add explicit district and locality regression/browser coverage for selected-location priority and forecast behavior.
+- [x] Render an actual selected-location decision table in place of the hidden retained queue for active India context.
+- [x] Add forecast freshness timestamps to the India sidebar and map-context overlay.
+- [x] Add selected-location forecast fields to the India sidebar and existing summary-card strip, with state/city/district/locality validation.
+- [x] Audit every visible navigation item, button, filter, search interaction, layer toggle, map control, analysis action, dataset control, simulation action, and report action; repair it or make its unavailable state explicit.
+- [x] Replace any non-geographic India map rendering with a real interactive MapLibre tile map, centered on Andhra Pradesh by default and driven by real coordinates/boundaries.
+- [x] Verify searched India state, district, city, and locality selections visibly move the map viewport, update the boundary, and refresh all available selected-location intelligence.
+- [x] Connect functional source-labelled population, weather, precipitation, air-quality, infrastructure, hazard-screening, and risk layers to the live map controls; hide or label unavailable layers honestly.
+- [x] Validate backend-driven risk, carrying-capacity, relocation, hazardous-area filters, and selected-location explanations against actual computed inputs.
+- [x] Audit and repair Dataset Lab upload, mapping, validation, storage, historical replay, comparison, and what-if simulation workflows using uploaded data rather than placeholders.
+- [x] Validate generated assessment and historical PDFs are persistently stored, listed, and downloadable from the Reports workspace.
+- [x] Add broad automated and browser regression coverage for functional workflows and resolve defects found during the demonstration-readiness audit.
+- [x] Exercise and evidence the remaining visible controls, including narrative generation, assessment report generation, source-artifact upload, and fullscreen/reset map actions.
+- [x] Closed as deferred by user pending authentic paired vector data: run an end-to-end Dataset Lab workflow with uploaded pre-event and ground-truth vector files, persist/reload the case, and verify replay, comparison, and what-if use the stored geometry.
+- [x] Closed as deferred by user pending authentic paired vector data: generate a historical analysis PDF from the audited workflow and confirm its unified Reports archive entry and object-storage download link resolve.
+- [x] Closed as deferred dependency: execute the final live historical upload, persisted replay/comparison/what-if, and historical-PDF evidence path when authentic paired PRE_EVENT and GROUND_TRUTH vector datasets are supplied.
+- [x] Rename visible DIVA branding to Akashvani across the website title, header, metadata, and project configuration while preserving platform functionality.
+- [x] Apply the clarified app-name-only rename: change product labels and metadata to Akashvani, while preserving the DIVA full form and all internal DIVA terminology.
+- [x] Shift the primary default location and dashboard focus from Andhra Pradesh to Assam State while preserving existing DIVA/PS 191 functionality.
+- [x] Research and record authoritative Assam state profile, hazard, and disaster-history sources covering the requested past ten years.
+- [x] Add a source-labelled Assam disaster-history timeline with year, event type, affected geography, impacts, and unavailable-data handling.
+- [x] Add live Assam weather, forecast, precipitation, wind, and air-quality context with retrieval freshness and modelled-data disclosures.
+- [x] Update Assam map boundaries, population context, hazard screening, infrastructure context, risk visualization, filters, and selected-location panels.
+- [x] Add Assam-focused unit/browser regression coverage and validate the production build and responsive presentation.
+- [x] Run and record an Assam-specific browser check for map framing, boundary presence, hazard/filter controls, and risk visualization.
+- [x] Run and record the production build after the Assam dashboard changes.
+- [x] Add and execute Assam-specific responsive validation at mobile/tablet widths.
+- [x] Add and execute an Assam map regression that explicitly verifies boundary rendering/presence and exercises hazard/filter interactions with observable result changes.
+- [x] Add and execute Assam responsive validation at a tablet viewport in addition to the mobile check.
+- [x] Strengthen the Assam map regression with an explicit boundary-render status tied to the selected Assam map context.
+- [x] Extend the Assam hazard/filter regression to verify a user-visible active-filter result changes after interaction.
+- [x] Fix MapLibre OpenStreetMap 400 tile errors caused by invalid high-zoom tile requests while preserving real Assam/India map behavior.
+- [x] Add regression coverage proving map zoom is bounded and invalid tile requests are not generated for the reported route.
+- [x] Re-run Assam browser, responsive, Vitest, TypeScript, and production-build validation after the tile fix.
+- [ ] Push the latest Akashvani checkpoint to the authenticated 25a31a4353/Akashvani GitHub repository.
+- [ ] Verify the pushed default branch and repository contents after export.

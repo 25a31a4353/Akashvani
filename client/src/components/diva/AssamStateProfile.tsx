@@ -1,0 +1,29 @@
+import React from "react";
+import { ExternalLink, Map, ShieldCheck } from "lucide-react";
+
+const PROFILE_SOURCE = "https://des.assam.gov.in/information-services/state-profile-of-assam";
+const GLANCE_SOURCE = "https://assam.gov.in/about-us/393";
+const DISTRICTS_SOURCE = "https://assam.gov.in/about-us/396";
+
+type ProfileGroup = { title: string; rows: Array<[string, string, string]> };
+
+const groups: ProfileGroup[] = [
+  { title: "Geography and administration", rows: [["Area", "78,438 sq km", "Government of Assam profile"], ["Coordinates", "24–28° N · 90–96° E", "Government of Assam profile"], ["Administrative coverage", "35 districts listed by the Assam State Portal; 33 in the DES 2023 table", "Source-year difference retained"], ["Regional divisions", "Barak Valley · Central Assam · Lower Assam · North Assam · Upper Assam", "Assam State Portal"]] },
+  { title: "Population and society", rows: [["Census 2011 population", "31,205,576", "Census 2011"], ["Projected population", "35,713,000", "DES projection for 2023"], ["Population density", "398 persons / sq km", "Census 2011"], ["Literacy", "72.19%", "Census 2011"], ["Sex ratio", "958 females / 1,000 males", "Census 2011"]] },
+  { title: "Environment and hazards", rows: [["Climate", "Tropical monsoon rainforest climate", "Assam State Portal"], ["Average rainfall", "2,402.9 mm", "DES, 2022"], ["Major river systems", "Brahmaputra and Barak with tributaries", "Assam State Portal"], ["Flood-prone area", "39.58% of state area", "Assam Water Resources Department"], ["Long-run annual flood context", "Average affected area reported as 9.31 lakh hectares", "Assam Water Resources Department"]] },
+  { title: "Public services and infrastructure", rows: [["Health facilities", "25 civil hospitals · 14 sub-divisional hospitals · 850 PHCs · 201 CHCs", "DES profile, 2021–22"], ["Education", "35,856 lower-primary · 5,668 upper-primary · 4,300 high/higher-secondary institutions", "DES profile, 2020–21"], ["Road network", "59,203.93 km including national highways", "DES profile, 2021–22"], ["Railway route length", "2,519.79 km", "DES profile"], ["National parks / sanctuaries", "7 / 22", "DES profile"]] },
+  { title: "Livelihood and economy", rows: [["Agriculture", "About 69% of the workforce, according to the state portal", "Assam State Portal"], ["Tea", "Assam is a major tea-growing region; official profile describes the Guwahati Tea Auction Centre", "Assam State Portal"], ["Natural resources", "Petroleum · natural gas · coal · limestone · forests · water", "Assam State Portal"], ["Fisheries", "River fisheries and inland production documented in the DES profile", "DES profile, 2021–22"], ["Silk", "Muga, Pat, and Eri are identified as indigenous Assam silks", "Assam State Portal"]] },
+];
+
+export function AssamStateProfile() {
+  return (
+    <section data-testid="assam-state-profile" className="mt-4 min-w-0 max-w-full overflow-hidden rounded-2xl border border-[#dbe6e9] bg-white p-4 shadow-[0_12px_30px_rgba(28,55,70,0.04)] sm:p-5">
+      <div className="flex flex-col gap-3 border-b border-[#edf1f2] pb-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-start gap-3"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#eaf4f5] text-[#20778b]"><Map className="h-4 w-4" /></span><div><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#1d7084]">Assam State intelligence profile</p><h2 className="mt-1 text-lg font-bold tracking-tight text-[#284b60]">A–Z operational context</h2><p className="mt-1 max-w-2xl text-xs leading-relaxed text-[#71838c]">Reference context from Government of Assam publications, retained with source years. Live weather and selected-location conditions remain in the adjacent live context panels.</p></div></div>
+        <div className="flex min-w-0 flex-wrap gap-2"><a href={PROFILE_SOURCE} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-[#d7e5e8] px-2.5 py-2 text-[10px] font-semibold text-[#2b6578] hover:bg-[#f4fafb]">DES profile <ExternalLink className="h-3 w-3" /></a><a href={GLANCE_SOURCE} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-[#d7e5e8] px-2.5 py-2 text-[10px] font-semibold text-[#2b6578] hover:bg-[#f4fafb]">State portal <ExternalLink className="h-3 w-3" /></a><a href={DISTRICTS_SOURCE} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-[#d7e5e8] px-2.5 py-2 text-[10px] font-semibold text-[#2b6578] hover:bg-[#f4fafb]">Districts <ExternalLink className="h-3 w-3" /></a></div>
+      </div>
+      <div className="mt-4 grid min-w-0 gap-4 xl:grid-cols-2">{groups.map(group => <div key={group.title} className="min-w-0 rounded-xl border border-[#e7eef0] bg-[#fbfdfd] p-3"><div className="mb-2 flex items-center gap-2"><ShieldCheck className="h-3.5 w-3.5 text-[#247888]" /><p className="text-xs font-bold text-[#34596a]">{group.title}</p></div><div className="overflow-x-auto"><table className="w-full min-w-[510px] text-left"><tbody>{group.rows.map(([label, value, source]) => <tr key={label} className="border-t border-[#edf2f3] text-[11px]"><th className="w-[33%] px-2 py-2 font-semibold text-[#637983]">{label}</th><td className="px-2 py-2 font-semibold text-[#36596a]">{value}</td><td className="px-2 py-2 text-[10px] text-[#7a8d95]">{source}</td></tr>)}</tbody></table></div></div>)}</div>
+      <p className="mt-4 text-[10px] leading-relaxed text-[#7a8d95]">Data-status note: the profile mixes Census, projected, and department-specific reference years. These values provide orientation and should not be interpreted as current live counts. Current weather, air quality, precipitation, and forecast values are retrieved separately and labelled with provider status and timestamp.</p>
+    </section>
+  );
+}

@@ -1,0 +1,62 @@
+import { chromium } from "playwright-core";
+
+const browser = await chromium.launch({ executablePath: "/usr/bin/chromium", headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage"] });
+const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+const osmTileZooms = [];
+page.on("request", request => {
+  const match = request.url().match(/^https:\/\/tile\.openstreetmap\.org\/(\d+)\//);
+  if (match) osmTileZooms.push(Number(match[1]));
+});
+try {
+  await page.goto("http://127.0.0.1:3000/?location=assam", { waitUntil: "domcontentloaded", timeout: 45_000 });
+  await page.getByTestId("selected-location-priority-queue").waitFor({ state: "visible", timeout: 45_000 });
+  await page.getByTestId("selected-location-decision-table").waitFor({ state: "visible", timeout: 45_000 });
+  await page.getByTestId("selected-location-forecast-sidebar").waitFor({ state: "visible", timeout: 45_000 });
+  await page.getByTestId("selected-location-infrastructure").waitFor({ state: "visible", timeout: 45_000 });
+  await page.getByTestId("india-context-sidebar").waitFor({ state: "visible", timeout: 45_000 });
+  await page.getByTestId("india-location-summary-strip").waitFor({ state: "visible", timeout: 45_000 });
+  await page.getByTestId("map-location-decision-context").waitFor({ state: "visible", timeout: 45_000 });
+  await page.getByTestId("selected-location-forecast").waitFor({ state: "visible", timeout: 45_000 });
+  await page.waitForTimeout(350);
+  const assert = (condition, message) => { if (!condition) throw new Error(message); };
+  assert((await page.getByTestId("selected-location-priority-queue").textContent())?.includes("Assam"), "Selected priority queue did not update to Assam");
+  assert((await page.getByTestId("selected-location-decision-row").textContent())?.includes("Assam"), "Selected decision row did not update to Assam");
+  assert((await page.getByTestId("selected-location-forecast-sidebar").textContent())?.includes("Updated"), "Selected forecast sidebar timestamp missing");
+  assert((await page.getByTestId("selected-location-infrastructure").textContent())?.match(/OpenStreetMap|facility/i), "Selected infrastructure source/status panel missing");
+  assert((await page.getByTestId("india-context-sidebar").textContent())?.includes("Next day:"), "Active India sidebar forecast fields missing");
+  assert((await page.getByTestId("india-context-sidebar").textContent())?.includes("Updated"), "Active India sidebar forecast timestamp missing");
+  assert((await page.getByTestId("india-location-summary-strip").textContent())?.match(/CURRENT WEATHER|NEXT FORECAST|AQI/i), "India summary strip live weather context missing");
+  assert((await page.getByTestId("map-location-decision-context").textContent())?.includes("Modelled forecast updated"), "Map context forecast timestamp missing");
+  assert((await page.getByTestId("selected-location-forecast").textContent())?.includes("Assam"), "Selected forecast did not update to Assam");
+  assert((await page.getByTestId("selected-location-forecast").textContent())?.includes("Open-Meteo modelled context"), "Forecast source-status disclosure missing");
+  const retainedDemoStatus = page.getByText(/Data status: DEMO DATA · Source: DIVA scenario dataset/).first();
+  assert(!(await retainedDemoStatus.isVisible()), "Retained demo priority queue remained visible after Assam selection");
+  await page.goto("http://127.0.0.1:3000/?location=assam&workspace=map", { waitUntil: "domcontentloaded", timeout: 45_000 });
+  await page.getByTestId("india-gis-map").waitFor({ state: "visible", timeout: 45_000 });
+  await page.waitForTimeout(2_000);
+  const mapElement = page.getByTestId("india-gis-map");
+  assert(Number(await mapElement.getAttribute("data-map-max-zoom")) === 18, "Map does not expose the safe maximum zoom");
+  assert(osmTileZooms.every(tileZoom => tileZoom <= 18), `OpenStreetMap requested an unsupported zoom: ${osmTileZooms.join(",")}`);
+  const mapBody = await page.locator("body").textContent();
+  assert(mapBody?.match(/Assam|INDIA LOCATION CONTEXT/i), "Map route did not retain Assam framing");
+  assert(mapBody?.match(/State · State extent · Assam|Coordinates WGS84/), "Assam administrative boundary context is missing");
+  await page.getByTestId("map-boundary-status").waitFor({ state: "visible", timeout: 10_000 });
+  assert((await page.getByTestId("map-boundary-status").textContent())?.includes("Boundary rendered"), "Assam boundary render status is missing");
+  assert(await page.locator('[data-testid="india-gis-map"] canvas').count() > 0, "Real MapLibre canvas is missing");
+  assert(mapBody?.match(/Screening risk|Risk level|High|Medium|Low/i), "Assam map risk visualization is missing");
+  await page.getByRole("button", { name: "Layers" }).click();
+  const layerPanel = page.getByText("Map layers").first();
+  await layerPanel.waitFor({ state: "visible", timeout: 5_000 });
+  assert((await page.locator("body").textContent())?.match(/Population density|Live weather coverage|Combined multi-hazard screening/), "Assam map layer controls are missing");
+  await page.getByRole("button", { name: "Hazards" }).click();
+  const floodFilter = page.getByLabel("Flood");
+  const filterSummary = page.getByTestId("active-hazard-filter-summary");
+  const summaryBefore = await filterSummary.textContent();
+  const floodBefore = await floodFilter.isChecked();
+  await floodFilter.click();
+  assert((await floodFilter.isChecked()) !== floodBefore, "Assam hazard filter did not change state");
+  assert((await filterSummary.textContent()) !== summaryBefore, "Assam hazard filter did not change the visible active-filter result");
+  console.log("Selected Assam dashboard and real-map assertions passed");
+} finally {
+  await browser.close();
+}

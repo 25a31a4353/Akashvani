@@ -1,0 +1,1 @@
+ALTER TABLE `generated_reports` MODIFY COLUMN `assessmentId` varchar(255) NOT NULL;

@@ -1,0 +1,52 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "maplibre-gl/dist/maplibre-gl.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+}
+
+:root { --radius: 0.72rem; --background: oklch(0.973 0.004 205); --foreground: oklch(0.29 0.03 235); --card: oklch(1 0 0); --card-foreground: oklch(0.29 0.03 235); --popover: oklch(1 0 0); --popover-foreground: oklch(0.29 0.03 235); --primary: oklch(0.37 0.07 232); --primary-foreground: oklch(0.99 0 0); --secondary: oklch(0.95 0.009 210); --secondary-foreground: oklch(0.34 0.04 230); --muted: oklch(0.95 0.007 210); --muted-foreground: oklch(0.54 0.025 225); --accent: oklch(0.94 0.025 201); --accent-foreground: oklch(0.32 0.06 220); --destructive: oklch(0.55 0.19 25); --destructive-foreground: oklch(0.99 0 0); --border: oklch(0.9 0.01 205); --input: oklch(0.9 0.01 205); --ring: oklch(0.58 0.09 210); }
+
+@layer base { * { @apply border-border outline-ring/50; } body { @apply bg-background text-foreground; font-family: "Inter", ui-sans-serif, system-ui, sans-serif; } button:not(:disabled), [role="button"]:not([aria-disabled="true"]), [type="button"]:not(:disabled), [type="submit"]:not(:disabled), [type="reset"]:not(:disabled), a[href], select:not(:disabled), input[type="checkbox"]:not(:disabled), input[type="radio"]:not(:disabled) { @apply cursor-pointer; } }
+
+@media (prefers-reduced-motion: no-preference) { button, a { transition: transform 160ms cubic-bezier(0.23,1,0.32,1), background-color 160ms ease, color 160ms ease, border-color 160ms ease; } button:active { transform: scale(0.97); } }
+
+/* A searched place owns the active GIS sidebar; Kerala actions remain available in the dedicated risk workspace. */
+section[data-diva-workspace="map"] > aside:not([data-testid="india-context-sidebar"]) { display: none; }
+main:has(section[data-diva-workspace="risk"]) aside[class*="bcdde3"] { display: none; }
+
+
+.map-command-workspace .maplibregl-canvas { filter: saturate(0.94) contrast(1.04); }
+.map-command-workspace .maplibregl-ctrl-attrib { border: 1px solid rgba(72, 101, 110, 0.75); border-radius: 0.5rem; background: rgba(7, 23, 31, 0.84); color: #9ab2b8; font-size: 9px; }
+.map-command-workspace .maplibregl-ctrl-attrib a { color: #b6d4d1; }
+.map-command-workspace [data-testid="india-gis-map"] { cursor: grab; }
+.map-command-workspace [data-testid="india-gis-map"]:active { cursor: grabbing; }
+@media (max-width: 1023px) {
+  .map-command-workspace main { min-height: 640px; }
+  .map-command-workspace > div { min-height: 100dvh; }
+}
