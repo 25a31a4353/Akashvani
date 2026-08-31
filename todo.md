@@ -120,5 +120,5 @@
 - [x] Re-run Assam browser, responsive, Vitest, TypeScript, and production-build validation after the tile fix.
 - [x] Push the latest Akashvani checkpoint to the authenticated 25a31a4353/Akashvani GitHub repository.
 - [x] Verify the pushed default branch and repository contents after export.
-- [ ] Add a nationwide India-scope README explaining Akashvani’s capabilities, architecture, setup, data provenance, validation, and Assam test-case usage.
-- [ ] Push the README update to 25a31a4353/Akashvani and verify the remote documentation.
+- [x] Add a nationwide India-scope README explaining Akashvani’s capabilities, architecture, setup, data provenance, validation, and Assam test-case usage.
+- [x] Push the README update to 25a31a4353/Akashvani and verify the remote documentation.
