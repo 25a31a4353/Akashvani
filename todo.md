@@ -118,5 +118,5 @@
 - [x] Fix MapLibre OpenStreetMap 400 tile errors caused by invalid high-zoom tile requests while preserving real Assam/India map behavior.
 - [x] Add regression coverage proving map zoom is bounded and invalid tile requests are not generated for the reported route.
 - [x] Re-run Assam browser, responsive, Vitest, TypeScript, and production-build validation after the tile fix.
-- [ ] Push the latest Akashvani checkpoint to the authenticated 25a31a4353/Akashvani GitHub repository.
-- [ ] Verify the pushed default branch and repository contents after export.
+- [x] Push the latest Akashvani checkpoint to the authenticated 25a31a4353/Akashvani GitHub repository.
+- [x] Verify the pushed default branch and repository contents after export.
