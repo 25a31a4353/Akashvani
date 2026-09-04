@@ -97,9 +97,10 @@ jspm_packages/
 .out
 .storybook-out
 
-# Temporary folders
+# Temporary and upload folders
 tmp/
 temp/
+uploads/
 
 # Database
 *.db

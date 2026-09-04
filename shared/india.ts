@@ -1,3 +1,16 @@
+export * from "./multiState";
+export * from "./hazards";
+import type {
+  TerrainContext,
+  HydrologyContext,
+  CategorizedInfrastructure,
+  DataProvenance,
+  StateConfig,
+  DistrictInfo,
+} from "./multiState";
+import { STATE_CONFIGURATIONS } from "./multiState";
+import type { MultiHazardProfile, RedZoneAssessment } from "./hazards";
+
 export type IndiaBoundary = { type: "Feature"; properties: Record<string, unknown>; geometry: { type: string; coordinates: unknown } } | null;
 
 export type IndiaLocation = {
@@ -20,6 +33,14 @@ export type IndiaLocationContext = {
   environment: { temperatureC: number | null; precipitationMm: number | null; usAqi: number | null; pm25: number | null; observedAt: string | null; forecast: Array<{ date: string; temperatureMinC: number | null; temperatureMaxC: number | null; precipitationProbability: number | null; precipitationSumMm: number | null; windSpeedMaxKph: number | null; windGustMaxKph: number | null; weatherCode: number | null }>; source: string; status: string };
   infrastructure: { items: Array<{ id: string; name: string; type: string; latitude: number; longitude: number }>; source: string; status: "LIVE OSM FACILITY SAMPLE" | "UNAVAILABLE"; observedAt: string | null };
   screening: { riskScore: number | null; riskLevel: "Low" | "Moderate" | "High" | "Unavailable"; priority: "Immediate" | "High" | "Moderate" | "Low" | "Unavailable"; hazardContext: string; populationContext: string; status: string };
+  terrain?: TerrainContext;
+  hydrology?: HydrologyContext;
+  categorizedInfrastructure?: CategorizedInfrastructure;
+  provenance?: DataProvenance;
+  stateConfig?: StateConfig;
+  districtInfo?: DistrictInfo;
+  hazardProfile?: MultiHazardProfile;
+  redZone?: RedZoneAssessment;
 };
 
 export const andhraPradeshDefault: IndiaLocation = {
@@ -52,6 +73,23 @@ export const assamDefault: IndiaLocation = {
   source: "Assam State default context; Nominatim boundary retrieved on context load",
 };
 
+export function stateConfigToLocation(config: StateConfig): IndiaLocation {
+  return {
+    id: `india-state-${config.code.toLowerCase()}`,
+    name: config.name,
+    displayName: `${config.name}, India`,
+    category: "State",
+    latitude: config.centroid[1],
+    longitude: config.centroid[0],
+    population: null,
+    populationSource: "State-level population is resolved via official census reference.",
+    boundingBox: null,
+    boundary: null,
+    address: { state: config.name },
+    source: `${config.name} Phase 3.1 multi-state configuration`,
+  };
+}
+
 export const indiaDeepLinks: Record<string, IndiaLocation> = {
   india: { ...andhraPradeshDefault, id: "india-overview", name: "India", displayName: "India nationwide overview", category: "Place", latitude: 22.9734, longitude: 78.6569, boundingBox: [6.5, 68, 37.2, 98], address: {}, source: "Shareable DIVA nationwide India link; reference layers retrieved on context load" },
   visakhapatnam: { ...andhraPradeshDefault, id: "india-visakhapatnam", name: "Visakhapatnam", displayName: "Visakhapatnam, Andhra Pradesh, India", category: "City", latitude: 17.6868, longitude: 83.2185, boundingBox: null, address: { state: "Andhra Pradesh", city: "Visakhapatnam" }, source: "Shareable DIVA India location link; boundary retrieved on context load" },
@@ -59,6 +97,12 @@ export const indiaDeepLinks: Record<string, IndiaLocation> = {
   nizamabad: { ...andhraPradeshDefault, id: "india-nizamabad", name: "Nizamabad", displayName: "Nizamabad, Telangana, India", category: "City", latitude: 18.6725, longitude: 78.0941, boundingBox: null, address: { state: "Telangana", city: "Nizamabad" }, source: "Shareable DIVA India location link; boundary retrieved on context load" },
   assam: assamDefault,
   "banjara-hills": { ...andhraPradeshDefault, id: "india-banjara-hills", name: "Banjara Hills", displayName: "Banjara Hills, Hyderabad, Telangana, India", category: "Locality", latitude: 17.4156, longitude: 78.4347, boundingBox: null, address: { state: "Telangana", city: "Hyderabad", locality: "Banjara Hills" }, source: "Shareable DIVA India location link; boundary retrieved on context load" },
+  ...Object.fromEntries(
+    Object.values(STATE_CONFIGURATIONS).flatMap(config => [
+      [config.code.toLowerCase(), stateConfigToLocation(config)],
+      [config.name.toLowerCase().replace(/\s+/g, "-"), stateConfigToLocation(config)],
+    ])
+  ),
 };
 
 export type IndiaLocationResolution = {

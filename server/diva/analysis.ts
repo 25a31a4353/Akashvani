@@ -39,9 +39,39 @@ export function buildAssessmentAnalysis(area: AssessmentArea): AssessmentAnalysi
   ];
 
   const candidateSites: CandidateSite[] = [
-    { id: "SITE-01", name: "Dharani Community Ground", capacity: 3200, availableCapacity: 2140, serviceAccess: 82, suitability: 79, constraints: ["Temporary drainage reinforcement needed"], score: 81, recommendation: "Preferred for phased temporary relocation." },
-    { id: "SITE-02", name: "North Bank Transit Campus", capacity: 2100, availableCapacity: 860, serviceAccess: 89, suitability: 74, constraints: ["Limited expansion area", "Seasonal traffic bottleneck"], score: 76, recommendation: "Use for priority households and medical needs." },
-    { id: "SITE-03", name: "Kheroni Resettlement Parcel", capacity: 4400, availableCapacity: 3650, serviceAccess: 64, suitability: 72, constraints: ["Water network extension pending"], score: 71, recommendation: "Suitable subject to service upgrades." },
+    {
+      id: `${area.id}-SITE-01`,
+      name: `${area.district} Central Relief & Transit Campus`,
+      capacity: Math.round(Math.max(1500, area.population * 0.008)),
+      availableCapacity: Math.round(Math.max(1000, area.population * 0.0055)),
+      serviceAccess: clamp(80 + (area.roadAccessScore > 60 ? 8 : -5)),
+      suitability: clamp(78 + (area.waterAvailabilityScore > 60 ? 6 : -4)),
+      constraints: ["Temporary drainage reinforcement needed"],
+      score: 81,
+      recommendation: "Preferred for phased temporary relocation.",
+    },
+    {
+      id: `${area.id}-SITE-02`,
+      name: `${area.district} North Zone Transit Facility`,
+      capacity: Math.round(Math.max(1000, area.population * 0.005)),
+      availableCapacity: Math.round(Math.max(450, area.population * 0.0022)),
+      serviceAccess: clamp(86 + (area.roadAccessScore > 60 ? 5 : -3)),
+      suitability: 74,
+      constraints: ["Limited expansion area", "Seasonal traffic bottleneck"],
+      score: 76,
+      recommendation: "Use for priority households and medical needs.",
+    },
+    {
+      id: `${area.id}-SITE-03`,
+      name: `${area.district} Resettlement & Staging Parcel`,
+      capacity: Math.round(Math.max(2000, area.population * 0.011)),
+      availableCapacity: Math.round(Math.max(1600, area.population * 0.009)),
+      serviceAccess: 68,
+      suitability: 72,
+      constraints: ["Water network extension pending"],
+      score: 71,
+      recommendation: "Suitable subject to service upgrades.",
+    },
   ];
 
   const riskLevel = classifyRisk(overallRisk);

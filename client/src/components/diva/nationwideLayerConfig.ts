@@ -24,9 +24,38 @@ export const nationwideMapLayerVisibility = {
   combinedSensitivity: ["national-sensitivity-combined"],
 } as const;
 
+export const authoritativeHazardLayerControls = [
+  ["seismicOfficial", "[OFFICIAL] BIS IS 1893 Seismic Zones"],
+  ["cwcGauges", "[OFFICIAL] CWC River Monitoring Gauges"],
+  ["floodPlains", "[OFFICIAL] Historical Floodplains (NRSC)"],
+  ["erosionCorridors", "[OFFICIAL] Active Riverbank Erosion Corridors"],
+  ["landslideEvents", "[OBSERVED] Landslide Events (ISRO/GSI)"],
+  ["cycloneTracks", "[OBSERVED] Cyclone Tracks (IBTrACS/IMD)"],
+  ["redZones", "[PS191] Red / Orange / Green Classification"],
+  ["facilities", "[PS191] Evacuation Facilities (OSM)"],
+  ["exposedHabitations", "[DERIVED] Exposed Habitations"],
+] as const;
+
+export const authoritativeHazardMapLayerVisibility = {
+  seismicOfficial: ["hazard-seismic-fill", "hazard-seismic-line", "hazard-seismic-label"],
+  cwcGauges: ["hazard-cwc-circle", "hazard-cwc-label"],
+  floodPlains: ["hazard-floodplain-fill", "hazard-floodplain-line"],
+  erosionCorridors: ["hazard-erosion-line"],
+  landslideEvents: ["hazard-landslide-circle", "hazard-landslide-label"],
+  cycloneTracks: ["hazard-cyclone-line", "hazard-cyclone-label"],
+  redZones: ["hazard-redzone-fill", "hazard-redzone-line", "hazard-redzone-label"],
+  facilities: ["hazard-facility-circle", "hazard-facility-label"],
+  exposedHabitations: ["hazard-habitation-circle", "hazard-habitation-label"],
+};
+
 export function resolveNationwideMapLayerVisibility(layers: Record<string, boolean>): Record<string, boolean> {
-  return Object.entries(nationwideMapLayerVisibility).reduce<Record<string, boolean>>((visibility, [control, mapLayerIds]) => {
+  const combinedMap = {
+    ...nationwideMapLayerVisibility,
+    ...authoritativeHazardMapLayerVisibility,
+  };
+  return Object.entries(combinedMap).reduce<Record<string, boolean>>((visibility, [control, mapLayerIds]) => {
     mapLayerIds.forEach(mapLayerId => { visibility[mapLayerId] = Boolean(layers[control]); });
     return visibility;
   }, {});
 }
+

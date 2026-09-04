@@ -1,7 +1,34 @@
 import type { Express } from "express";
+import fs from "fs";
+import path from "path";
 import { ENV } from "./env";
 
+const LOCAL_UPLOADS_DIR = path.resolve(process.cwd(), "uploads");
+
 export function registerStorageProxy(app: Express) {
+  // Handle local storage files
+  app.get("/local-storage/*", (req, res) => {
+    const key = (req.params as Record<string, string>)[0];
+    if (!key) {
+      res.status(400).send("Missing storage key");
+      return;
+    }
+
+    const safePath = path.resolve(LOCAL_UPLOADS_DIR, key);
+    if (!safePath.startsWith(LOCAL_UPLOADS_DIR)) {
+      res.status(403).send("Access denied");
+      return;
+    }
+
+    if (!fs.existsSync(safePath)) {
+      res.status(404).send("File not found");
+      return;
+    }
+
+    res.sendFile(safePath);
+  });
+
+  // Handle manus storage files (with fallback to local storage if forge is not configured)
   app.get("/manus-storage/*", async (req, res) => {
     const key = (req.params as Record<string, string>)[0];
     if (!key) {
@@ -10,7 +37,13 @@ export function registerStorageProxy(app: Express) {
     }
 
     if (!ENV.forgeApiUrl || !ENV.forgeApiKey) {
-      res.status(500).send("Storage proxy not configured");
+      // Check if file exists in local storage
+      const safePath = path.resolve(LOCAL_UPLOADS_DIR, key);
+      if (safePath.startsWith(LOCAL_UPLOADS_DIR) && fs.existsSync(safePath)) {
+        res.sendFile(safePath);
+        return;
+      }
+      res.status(500).send("Storage proxy not configured and file not in local storage");
       return;
     }
 

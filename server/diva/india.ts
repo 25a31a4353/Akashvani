@@ -1,5 +1,21 @@
-import { andhraPradeshDefault, type IndiaBoundary, type IndiaLocation, type IndiaLocationContext } from "../../shared/india";
+import {
+  andhraPradeshDefault,
+  type IndiaBoundary,
+  type IndiaLocation,
+  type IndiaLocationContext,
+  getStateByName,
+  getStateByCode,
+  type DistrictInfo,
+} from "../../shared/india";
 import { getEnvironmentalContext } from "./environment";
+import {
+  resolveTerrain,
+  resolveHydrology,
+  categorizeInfrastructure,
+  resolveStateBoundary,
+  buildProvenance,
+} from "./multiState";
+import { buildMultiHazardProfile } from "./hazards/engine";
 
 type NominatimResult = { place_id: number; display_name: string; lat: string; lon: string; type?: string; addresstype?: string; class?: string; boundingbox?: string[]; geojson?: { type: string; coordinates: unknown }; address?: Record<string, string> };
 type OpenMeteoResult = { id: number; name: string; latitude: number; longitude: number; population?: number; admin1?: string; admin2?: string; admin3?: string; admin4?: string; feature_code?: string };
@@ -97,16 +113,115 @@ async function getNearbyInfrastructure(location: IndiaLocation): Promise<IndiaLo
 
 export async function getIndiaLocationContext(location: IndiaLocation): Promise<IndiaLocationContext> {
   const seededLocation = location.id === andhraPradeshDefault.id ? { ...andhraPradeshDefault, ...location } : location;
+  const stateName = seededLocation.address.state ?? seededLocation.name;
+  const stateConfig = getStateByName(stateName) ?? (seededLocation.address.state ? getStateByCode(seededLocation.address.state) : undefined);
+
   const unavailableEnvironment = { temperatureC: null, precipitationMm: null, weatherCode: null, usAqi: null, pm25: null, observedAt: null, forecast: [], source: "Selected-location environmental context could not be refreshed before the response deadline.", status: "UNAVAILABLE" as const };
   const unavailableInfrastructure: IndiaLocationContext["infrastructure"] = { items: [], source: "OpenStreetMap facility lookup is temporarily unavailable.", status: "UNAVAILABLE", observedAt: null };
-  const [selected, environment, infrastructure] = await Promise.all([
+
+  const [selectedWithBoundary, environment, infrastructure, terrain] = await Promise.all([
     resolveWithin(enrichBoundary(seededLocation), 3_500, seededLocation),
     resolveWithin(getEnvironmentalContext(seededLocation.latitude, seededLocation.longitude), 4_500, unavailableEnvironment),
     resolveWithin(getNearbyInfrastructure(seededLocation), 4_500, unavailableInfrastructure),
+    resolveWithin(
+      resolveTerrain(seededLocation.latitude, seededLocation.longitude, stateConfig?.code),
+      3_500,
+      {
+        elevationMeters: null,
+        slopeDegrees: null,
+        terrainClass: stateConfig?.terrainProfile ?? "Physiographic classification",
+        source: "Open-Meteo DEM timed out; fallback physiographic context",
+        timestamp: null,
+        confidence: "UNAVAILABLE" as const,
+        status: "UNAVAILABLE" as const,
+      }
+    ),
   ]);
+
+  // If boundary is still null but we have a stateConfig and category is State, try authoritative state boundary
+  let finalLocation = selectedWithBoundary;
+  if (!finalLocation.boundary && stateConfig && finalLocation.category === "State") {
+    try {
+      const stateBoundary = await resolveStateBoundary(stateConfig.code);
+      if (stateBoundary) {
+        finalLocation = { ...finalLocation, boundary: stateBoundary, source: `${finalLocation.source}; geoBoundaries ADM1 boundary` };
+      }
+    } catch {
+      // Continue with current location
+    }
+  }
+
+  const hydrology = resolveHydrology(seededLocation.latitude, seededLocation.longitude, stateConfig?.code);
+  const categorizedInfra = categorizeInfrastructure(infrastructure.items);
+
+  let districtInfo: DistrictInfo | undefined = undefined;
+  if (seededLocation.address.district && stateConfig) {
+    districtInfo = {
+      name: seededLocation.address.district,
+      stateCode: stateConfig.code,
+      isFocusDistrict: stateConfig.focusDistricts.some(
+        d => d.toLowerCase() === seededLocation.address.district?.toLowerCase()
+      ),
+      terrainProfile: stateConfig.terrainProfile,
+      primaryHazards: stateConfig.primaryHazards,
+      censusPopulation2011: null,
+      source: `${stateConfig.name} district administrative directory`,
+    };
+  }
+
+  const provenance = buildProvenance(
+    stateConfig ? `${stateConfig.name} Multi-State Real Data Foundation` : "Akashvani Spatial Intelligence",
+    "OFFICIAL",
+    "HIGH",
+    `Authoritative administrative boundary and multi-source context for ${finalLocation.name}`
+  );
+
   const values = [environment.precipitationMm === null ? null : Math.min(42, environment.precipitationMm * 7), environment.temperatureC === null ? null : Math.max(0, environment.temperatureC - 28) * 4, environment.usAqi === null ? null : Math.max(0, environment.usAqi - 50) / 3].filter((value): value is number => value !== null);
   const riskScore = values.length ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length) : null;
   const riskLevel = riskScore === null ? "Unavailable" : riskScore >= 55 ? "High" : riskScore >= 25 ? "Moderate" : "Low";
   const priority = riskScore === null ? "Unavailable" : riskScore >= 70 ? "Immediate" : riskScore >= 50 ? "High" : riskScore >= 25 ? "Moderate" : "Low";
-  return { location: selected, environment, infrastructure, screening: { riskScore, riskLevel, priority, hazardContext: riskScore === null ? "Live environmental inputs are unavailable; no screening context is calculated." : "Screening context is derived from selected-location modelled precipitation, temperature and air quality. It is not an official hazard warning.", populationContext: selected.population === null ? "Population value is unavailable from the selected geocoding result and is not estimated." : `${selected.population.toLocaleString("en-IN")} inhabitants reported by the selected geocoding source.`, status: "LOCATION-SPECIFIC SCREENING CONTEXT" } };
+
+  const hazardProfile = buildMultiHazardProfile({
+    locationName: finalLocation.name,
+    latitude: finalLocation.latitude,
+    longitude: finalLocation.longitude,
+    stateCode: stateConfig?.code,
+    stateName: stateConfig?.name,
+    district: seededLocation.address.district,
+    slopeDegrees: terrain.slopeDegrees,
+    elevationMeters: terrain.elevationMeters,
+    currentRainfallMm: environment.precipitationMm,
+    forecastMaxMm: environment.forecast[0]?.precipitationSumMm,
+    currentTemperatureC: environment.temperatureC,
+    isCoastalState: stateConfig?.isCoastal,
+  });
+
+  const hazardContext = hazardProfile.redZone.triggers.length > 0
+    ? `${hazardProfile.redZone.status} ZONE: ${hazardProfile.redZone.explainability}`
+    : riskScore === null
+      ? "Live environmental inputs are unavailable; no screening context is calculated."
+      : "Screening context is derived from selected-location modelled precipitation, temperature and air quality. It is not an official hazard warning.";
+
+  return {
+    location: finalLocation,
+    environment,
+    infrastructure,
+    screening: {
+      riskScore,
+      riskLevel,
+      priority,
+      hazardContext,
+      populationContext: finalLocation.population === null ? "Population value is unavailable from the selected geocoding result and is not estimated." : `${finalLocation.population.toLocaleString("en-IN")} inhabitants reported by the selected geocoding source.`,
+      status: "LOCATION-SPECIFIC SCREENING CONTEXT",
+    },
+    terrain,
+    hydrology,
+    categorizedInfrastructure: categorizedInfra,
+    provenance,
+    stateConfig,
+    districtInfo,
+    hazardProfile,
+    redZone: hazardProfile.redZone,
+  };
 }
+

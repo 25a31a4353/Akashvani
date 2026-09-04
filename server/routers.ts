@@ -14,6 +14,23 @@ import { getIndiaLocationContext, searchIndiaLocations } from "./diva/india";
 import { getNationwideIndiaMap } from "./diva/nationwideMap";
 import { mergePersistentPdfArchive } from "./diva/reportArchive";
 import { andhraPradeshDefault } from "../shared/india";
+import {
+  getAllStates,
+  getStateByCode,
+  getDistrictHierarchy,
+  resolveStateBoundary,
+  normalizeLocation,
+} from "./diva/multiState";
+import {
+  buildMultiHazardProfile,
+  findExposedHabitations,
+  getHazardMapLayers,
+} from "./diva/hazards/engine";
+import { getClassificationLayer } from "./diva/hazards/classification";
+import { buildCarryingCapacityAssessment } from "./diva/hazards/capacity";
+import { discoverFacilities, discoverFacilitiesSync } from "./diva/hazards/facilityDiscovery";
+import { buildRelocationRecommendation } from "./diva/hazards/relocation";
+import { findRealDistrict, ALL_REAL_DISTRICTS } from "./diva/hazards/data/realDistricts";
 
 const filtersSchema = z.object({
   hazards: z.array(z.string()).default([]),
@@ -25,7 +42,7 @@ const filtersSchema = z.object({
 
 const geometrySchema = z.object({ type: z.literal("FeatureCollection"), features: z.array(z.object({ type: z.literal("Feature"), properties: z.record(z.string(), z.unknown()).optional(), geometry: z.object({ type: z.string(), coordinates: z.unknown() }) })).max(5_000) });
 const indiaLocationSchema = z.object({ id: z.string(), name: z.string(), displayName: z.string(), category: z.enum(["State", "District", "City", "Locality", "Place"]), latitude: z.number().min(5).max(37), longitude: z.number().min(68).max(98), population: z.number().int().nonnegative().nullable(), populationSource: z.string(), boundingBox: z.tuple([z.number(), z.number(), z.number(), z.number()]).nullable(), boundary: z.object({ type: z.literal("Feature"), properties: z.record(z.string(), z.unknown()), geometry: z.object({ type: z.string(), coordinates: z.unknown() }) }).nullable(), address: z.object({ state: z.string().optional(), district: z.string().optional(), city: z.string().optional(), locality: z.string().optional() }), source: z.string() });
-const indiaContextSchema = z.object({ location: indiaLocationSchema, environment: z.object({ temperatureC: z.number().nullable(), precipitationMm: z.number().nullable(), usAqi: z.number().nullable(), pm25: z.number().nullable(), observedAt: z.string().nullable(), forecast: z.array(z.object({ date: z.string(), temperatureMinC: z.number().nullable(), temperatureMaxC: z.number().nullable(), precipitationProbability: z.number().nullable(), precipitationSumMm: z.number().nullable(), windSpeedMaxKph: z.number().nullable(), windGustMaxKph: z.number().nullable(), weatherCode: z.number().nullable() })), source: z.string(), status: z.string() }), infrastructure: z.object({ items: z.array(z.object({ id: z.string(), name: z.string(), type: z.string(), latitude: z.number(), longitude: z.number() })), source: z.string(), status: z.enum(["LIVE OSM FACILITY SAMPLE", "UNAVAILABLE"]), observedAt: z.string().nullable() }), screening: z.object({ riskScore: z.number().nullable(), riskLevel: z.enum(["Low", "Moderate", "High", "Unavailable"]), priority: z.enum(["Immediate", "High", "Moderate", "Low", "Unavailable"]), hazardContext: z.string(), populationContext: z.string(), status: z.string() }) });
+const indiaContextSchema = z.object({ location: indiaLocationSchema, environment: z.object({ temperatureC: z.number().nullable(), precipitationMm: z.number().nullable(), usAqi: z.number().nullable(), pm25: z.number().nullable(), observedAt: z.string().nullable(), forecast: z.array(z.object({ date: z.string(), temperatureMinC: z.number().nullable(), temperatureMaxC: z.number().nullable(), precipitationProbability: z.number().nullable(), precipitationSumMm: z.number().nullable(), windSpeedMaxKph: z.number().nullable(), windGustMaxKph: z.number().nullable(), weatherCode: z.number().nullable() })), source: z.string(), status: z.string() }), infrastructure: z.object({ items: z.array(z.object({ id: z.string(), name: z.string(), type: z.string(), latitude: z.number(), longitude: z.number() })), source: z.string(), status: z.enum(["LIVE OSM FACILITY SAMPLE", "UNAVAILABLE"]), observedAt: z.string().nullable() }), screening: z.object({ riskScore: z.number().nullable(), riskLevel: z.enum(["Low", "Moderate", "High", "Unavailable"]), priority: z.enum(["Immediate", "High", "Moderate", "Low", "Unavailable"]), hazardContext: z.string(), populationContext: z.string(), status: z.string() }) }).passthrough();
 const simulationSchema = z.object({ rainfallMultiplier: z.number().min(0.5).max(2.5), populationMultiplier: z.number().min(0.5).max(2.5), shelterMultiplier: z.number().min(0.1).max(2), routeBlocked: z.boolean(), temperatureDeltaC: z.number().min(-5).max(8) });
 
 function detailFor(id: string) {
@@ -77,6 +94,103 @@ export const appRouter = router({
       search: publicProcedure.input(z.object({ query: z.string().trim().min(2).max(120) })).query(({ input }) => searchIndiaLocations(input.query)),
       context: publicProcedure.input(indiaLocationSchema).query(({ input }) => getIndiaLocationContext(input)),
       nationwideMap: publicProcedure.query(() => getNationwideIndiaMap()),
+      states: publicProcedure.query(() => getAllStates()),
+      state: publicProcedure.input(z.object({ code: z.string().min(2).max(10) })).query(async ({ input }) => {
+        const config = getStateByCode(input.code);
+        if (!config) throw new Error(`State with code ${input.code} was not found in Akashvani multi-state directory.`);
+        const boundary = await resolveStateBoundary(input.code);
+        return { config, boundary };
+      }),
+      districts: publicProcedure.input(z.object({ stateCode: z.string().min(2).max(10) })).query(({ input }) => {
+        return getDistrictHierarchy(input.stateCode);
+      }),
+      normalize: publicProcedure.input(z.object({ location: indiaLocationSchema, stateCode: z.string().optional() })).query(async ({ input }) => {
+        return normalizeLocation(input.location, input.stateCode);
+      }),
+    }),
+    hazards: router({
+      profile: publicProcedure.input(z.object({
+        locationName: z.string(),
+        latitude: z.number().min(5).max(38),
+        longitude: z.number().min(68).max(98),
+        stateCode: z.string().optional(),
+        stateName: z.string().optional(),
+        district: z.string().optional(),
+        slopeDegrees: z.number().nullable().optional(),
+        elevationMeters: z.number().nullable().optional(),
+        currentRainfallMm: z.number().nullable().optional(),
+        forecastMaxMm: z.number().nullable().optional(),
+        currentTemperatureC: z.number().nullable().optional(),
+        isCoastalState: z.boolean().optional(),
+      })).query(({ input }) => {
+        return buildMultiHazardProfile(input);
+      }),
+      habitations: publicProcedure.input(z.object({
+        latitude: z.number().min(5).max(38),
+        longitude: z.number().min(68).max(98),
+        radiusKm: z.number().min(5).max(200).default(50),
+        stateCode: z.string().optional(),
+        district: z.string().optional(),
+      })).query(({ input }) => {
+        return findExposedHabitations(input.latitude, input.longitude, input.radiusKm, input.stateCode, input.district);
+      }),
+      layers: publicProcedure.query(() => {
+        return getHazardMapLayers();
+      }),
+      classification: publicProcedure.query(() => {
+        return getClassificationLayer();
+      }),
+      capacity: publicProcedure.input(z.object({
+        districtId: z.string().min(1),
+        stateCode: z.string().min(2).max(10).optional(),
+        radiusKm: z.number().min(5).max(100).default(30),
+      })).query(async ({ input }) => {
+        const district = ALL_REAL_DISTRICTS.find((d) => d.id === input.districtId);
+        if (!district) {
+          throw new Error(`District '${input.districtId}' not found. Use a valid realDistricts id (e.g. DIST-AS-DIB).`);
+        }
+        // Use async facility discovery (OSM + cache + fallback)
+        const { facilities, source } = await discoverFacilities(
+          district.latitude,
+          district.longitude,
+          input.radiusKm,
+          district.stateCode
+        );
+        const assessment = buildCarryingCapacityAssessment(input.districtId, facilities, input.radiusKm);
+        return { ...assessment, facilitySource: source };
+      }),
+      relocation: publicProcedure.input(z.object({
+        districtId: z.string().min(1),
+        stateCode: z.string().min(2).max(10).optional(),
+        radiusKm: z.number().min(5).max(100).default(30),
+      })).query(async ({ input }) => {
+        const district = ALL_REAL_DISTRICTS.find((d) => d.id === input.districtId);
+        if (!district) {
+          throw new Error(`District '${input.districtId}' not found. Use a valid realDistricts id (e.g. DIST-AS-DIB).`);
+        }
+        const { facilities } = await discoverFacilities(
+          district.latitude,
+          district.longitude,
+          input.radiusKm,
+          district.stateCode
+        );
+        const assessment = buildCarryingCapacityAssessment(input.districtId, facilities, input.radiusKm);
+        return buildRelocationRecommendation(assessment);
+      }),
+      facilities: publicProcedure.input(z.object({
+        latitude: z.number().min(5).max(38),
+        longitude: z.number().min(68).max(98),
+        radiusKm: z.number().min(5).max(100).default(30),
+        stateCode: z.string().min(2).max(10).optional(),
+      })).query(async ({ input }) => {
+        const { facilities, source, fromCache } = await discoverFacilities(
+          input.latitude,
+          input.longitude,
+          input.radiusKm,
+          input.stateCode
+        );
+        return { facilities, source, fromCache, count: facilities.length };
+      }),
     }),
     riskAnalyze: publicProcedure.input(z.object({ id: z.string().min(1) })).mutation(async ({ input }) => {
       const { area, analysis } = detailFor(input.id);

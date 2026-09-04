@@ -10,6 +10,9 @@ const terrainImage = "https://utility.arcgis.com/usrsvcs/servers/6ff9b2ff0b2940c
 let statesCache: { expiresAt: number; value: GeoCollection } | null = null;
 let nationwideCache: { expiresAt: number; value: NationwideMapContext } | null = null;
 
+import { getHazardMapLayers } from "./hazards/engine";
+import { getClassificationLayer } from "./hazards/classification";
+
 export type NationwideMapContext = {
   states: GeoCollection;
   weather: GeoCollection;
@@ -20,6 +23,8 @@ export type NationwideMapContext = {
   terrainImage: string;
   sources: Record<"states" | "population" | "terrain" | "geology" | "weather" | "sensitivity", string>;
   statuses: Record<"states" | "population" | "terrain" | "geology" | "weather" | "sensitivity", string>;
+  hazardLayers?: ReturnType<typeof getHazardMapLayers>;
+  classificationLayer?: ReturnType<typeof getClassificationLayer>;
   updatedAt: string;
 };
 
@@ -113,6 +118,8 @@ export async function getNationwideIndiaMap(): Promise<NationwideMapContext> {
       weather: weather.features.some(feature => feature.properties.temperatureC !== null) ? "LIVE MODELLED WEATHER, WIND + 3-DAY FORECAST COVERAGE GRID" : "UNAVAILABLE",
       sensitivity: "BROAD ANALYTICAL SENSITIVITY EXTENTS — NOT OFFICIAL ZONES, EVENT IMPACTS, OR FORECASTS",
     },
+    hazardLayers: getHazardMapLayers(),
+    classificationLayer: getClassificationLayer(),
     updatedAt: new Date().toISOString(),
   };
   nationwideCache = { expiresAt: Date.now() + 5 * 60 * 1000, value };
