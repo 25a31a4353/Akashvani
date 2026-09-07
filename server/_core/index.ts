@@ -34,7 +34,21 @@ async function startServer() {
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
+
+  // CORS — allow the configured frontend origin (set ALLOWED_ORIGIN on the backend host).
+  // In development (no ALLOWED_ORIGIN), falls back to "*" so localhost works unchanged.
+  const allowedOrigin = process.env.ALLOWED_ORIGIN ?? "*";
+  app.use((_req, res, next) => {
+    res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+    res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization,x-trpc-source");
+    if (_req.method === "OPTIONS") { res.sendStatus(204); return; }
+    next();
+  });
+
   registerStorageProxy(app);
+
   registerOAuthRoutes(app);
   // tRPC API
   app.use(
