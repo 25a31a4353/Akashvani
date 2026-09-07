@@ -2,26 +2,22 @@ export const nationwideLayerControls = [
   ["nationalStates", "States & union territories"],
   ["population", "Population density"],
   ["terrain", "Physical terrain"],
-  ["geology", "Geological reference"],
   ["liveWeather", "Live weather coverage"],
   ["wind", "10 m wind speed & direction"],
   ["earthquakeSensitivity", "Earthquake sensitivity extent"],
   ["landslideSensitivity", "Landslide sensitivity extent"],
   ["floodSensitivity", "Flood sensitivity extent"],
-  ["combinedSensitivity", "Combined multi-hazard screening"],
 ] as const;
 
 export const nationwideMapLayerVisibility = {
   nationalStates: ["national-state-fill", "national-state-line", "national-state-label"],
   population: ["national-population"],
   terrain: ["national-terrain"],
-  geology: ["national-geology"],
   liveWeather: ["national-weather-fill", "national-weather-line"],
   wind: ["national-wind-symbol"],
   earthquakeSensitivity: ["national-sensitivity-earthquake-fill", "national-sensitivity-earthquake-line"],
   landslideSensitivity: ["national-sensitivity-landslide-fill", "national-sensitivity-landslide-line"],
   floodSensitivity: ["national-sensitivity-flood-fill", "national-sensitivity-flood-line"],
-  combinedSensitivity: ["national-sensitivity-combined"],
 } as const;
 
 export const authoritativeHazardLayerControls = [
@@ -46,7 +42,56 @@ export const authoritativeHazardMapLayerVisibility = {
   redZones: ["hazard-redzone-fill", "hazard-redzone-line", "hazard-redzone-label"],
   facilities: ["hazard-facility-circle", "hazard-facility-label"],
   exposedHabitations: ["hazard-habitation-circle", "hazard-habitation-label"],
+  boundaries: ["boundary-line", "district-fill", "district-line", "selected-location-fill", "selected-location-line"],
+  infrastructure: ["infrastructure-points"],
 };
+
+export const auditedLayerGroups = [
+  {
+    label: "India Context",
+    items: [
+      ["nationalStates", "States & union territories"],
+      ["boundaries", "District boundary"],
+      ["population", "Population density"],
+      ["terrain", "Physical terrain"],
+    ] as const,
+  },
+  {
+    label: "PS191 Decision Support",
+    items: [
+      ["redZones", "Red / Orange / Green classification"],
+      ["exposedHabitations", "Exposed habitations"],
+      ["facilities", "Evacuation facilities (OSM)"],
+    ] as const,
+  },
+  {
+    label: "Authoritative Hazards",
+    items: [
+      ["seismicOfficial", "BIS IS 1893 Seismic Zones"],
+      ["cwcGauges", "CWC River Monitoring Gauges"],
+      ["floodPlains", "Historical Floodplains (NRSC)"],
+      ["erosionCorridors", "Active Riverbank Erosion Corridors"],
+      ["landslideEvents", "Observed Landslide Events (ISRO/GSI)"],
+      ["cycloneTracks", "Observed Cyclone Tracks (IBTrACS/IMD)"],
+    ] as const,
+  },
+  {
+    label: "Live / Modelled",
+    items: [
+      ["liveWeather", "Live weather coverage"],
+      ["wind", "10 m wind speed & direction"],
+      ["earthquakeSensitivity", "Earthquake sensitivity extent"],
+      ["landslideSensitivity", "Landslide sensitivity extent"],
+      ["floodSensitivity", "Flood sensitivity extent"],
+    ] as const,
+  },
+  {
+    label: "Reference",
+    items: [
+      ["infrastructure", "Critical infrastructure (OSM)"],
+    ] as const,
+  },
+] as const;
 
 export function resolveNationwideMapLayerVisibility(layers: Record<string, boolean>): Record<string, boolean> {
   const combinedMap = {
@@ -58,4 +103,5 @@ export function resolveNationwideMapLayerVisibility(layers: Record<string, boole
     return visibility;
   }, {});
 }
+
 

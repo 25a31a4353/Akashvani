@@ -2,8 +2,10 @@ import type { IndiaLocationContext, IndiaLocation } from "@shared/india";
 import { STATE_CONFIGURATIONS, stateConfigToLocation, buildIndiaLocationSearch } from "@shared/india";
 import { SelectedLocationInfrastructure } from "./SelectedLocationInfrastructure";
 import { PS191DecisionPanel } from "./PS191DecisionPanel";
-import { AlertTriangle, CheckCircle2, CloudSun, Compass, Droplets, FileText, MapPin, Mountain, ShieldAlert, Users, Wind, Layers } from "lucide-react";
-import React from "react";
+import { AlertTriangle, Building2, CheckCircle2, ChevronDown, CloudSun, Compass, Droplets, FileText, MapPin, Mountain, ShieldAlert, Users, Wind, Layers } from "lucide-react";
+import React, { useState } from "react";
+import { cn } from "@/lib/utils";
+
 
 const REAL_DISTRICT_MAP: Record<string, { id: string; name: string; stateCode: string }> = {
   "dibrugarh": { id: "DIST-AS-DIB", name: "Dibrugarh", stateCode: "AS" },
@@ -97,11 +99,103 @@ export function SelectedLocationForecastSidebar({ context }: { context: IndiaLoc
   return <aside data-testid="selected-location-forecast-sidebar" className="mt-3 rounded-2xl border border-[#bcdde3] bg-white p-3.5 shadow-[0_12px_30px_rgba(28,55,70,.08)]"><p className="text-[10px] font-bold uppercase tracking-[.12em] text-[#1d788d]">Selected India forecast sidebar</p><p className="mt-1 text-sm font-bold text-[#294d60]">{context.location.name}</p><div className="mt-2 grid grid-cols-2 gap-2 text-[10px]"><div className="rounded-lg bg-[#f2f8fa] p-2"><p className="font-bold text-[#345c6c]">Next day</p><p className="mt-1">{next ? `${next.temperatureMinC ?? "—"}–${next.temperatureMaxC ?? "—"}°C` : "Unavailable"}</p></div><div className="rounded-lg bg-[#f2f8fa] p-2"><p className="font-bold text-[#345c6c]">Rain / wind</p><p className="mt-1">{next ? `${next.precipitationProbability ?? "—"}% · ${next.windSpeedMaxKph ?? "—"} km/h` : "Unavailable"}</p></div></div><p className="mt-2 text-[9px] leading-relaxed text-[#6f858f]">{context.environment.status} · Updated {context.environment.observedAt ? new Date(context.environment.observedAt).toLocaleString("en-IN") : "unavailable"}</p></aside>;
 }
 
+interface AccordionSectionProps {
+  id: string;
+  title: string;
+  icon: React.ComponentType<{ className?: string }>;
+  summary?: React.ReactNode;
+  badge?: React.ReactNode;
+  isOpen: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+  testId?: string;
+}
+
+function AccordionSection({
+  id,
+  title,
+  icon: Icon,
+  summary,
+  badge,
+  isOpen,
+  onToggle,
+  children,
+  testId,
+}: AccordionSectionProps) {
+  return (
+    <div
+      data-testid={testId ?? `accordion-${id}`}
+      className="overflow-hidden rounded-xl border border-[#d9e8ea] bg-white transition-colors hover:border-[#b5d5dc]"
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={isOpen}
+        aria-controls={`accordion-content-${id}`}
+        id={`accordion-header-${id}`}
+        className="flex w-full items-start justify-between gap-2.5 p-3 text-left transition-colors hover:bg-[#f8fcfc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1d788d]"
+      >
+        <div className="flex min-w-0 flex-1 items-start gap-2.5">
+          <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-[#eef6f8] text-[#1d788d]">
+            <Icon className="h-3.5 w-3.5" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[11px] font-bold uppercase tracking-[.08em] text-[#1e475c]">
+                {title}
+              </span>
+              {badge}
+            </div>
+            {summary && (
+              <p className="mt-0.5 text-[10px] leading-snug text-[#6a828e] line-clamp-1">
+                {summary}
+              </p>
+            )}
+          </div>
+        </div>
+        <ChevronDown
+          className={cn(
+            "mt-1 h-4 w-4 shrink-0 text-[#718894] transition-transform duration-200",
+            isOpen && "rotate-180"
+          )}
+        />
+      </button>
+      {isOpen && (
+        <div
+          id={`accordion-content-${id}`}
+          role="region"
+          aria-labelledby={`accordion-header-${id}`}
+          className="border-t border-[#eaf1f3] p-3 pt-2.5"
+        >
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function IndiaContextSidebar({ context, onOpenKeralaAssessment }: { context: IndiaLocationContext; onOpenKeralaAssessment: () => void }) {
   const next = context.environment.forecast[0];
   const realDistrict = lookupRealDistrict(context.location.name, context.location.address.district);
+
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({
+    hazardRisk: true,       // OPEN BY DEFAULT
+    environment: false,     // CLOSED BY DEFAULT
+    terrain: false,         // CLOSED BY DEFAULT
+    hydrology: false,       // CLOSED BY DEFAULT
+    exposure: false,        // CLOSED BY DEFAULT
+    capacity: false,        // CLOSED BY DEFAULT
+    relocation: false,      // CLOSED BY DEFAULT
+    provenance: false,      // CLOSED BY DEFAULT
+  });
+
+  const toggleSection = (section: string) => {
+    setOpenSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
+
   return (
     <aside data-testid="india-context-sidebar" className="z-10 rounded-2xl border border-[#bcdde3] bg-white shadow-[0_16px_38px_rgba(22,75,91,.12)] xl:col-start-2 xl:row-start-1">
+      {/* Multi-State Quick Switch (13 States) */}
       <div className="border-b border-[#e2edef] bg-[#f8fcfd] p-2.5">
         <p className="mb-1.5 text-[9px] font-bold uppercase tracking-[.12em] text-[#1d788d]">Akashvani Multi-State Quick Switch (13 States)</p>
         <div className="flex flex-wrap gap-1">
@@ -128,11 +222,23 @@ export function IndiaContextSidebar({ context, onOpenKeralaAssessment }: { conte
           })}
         </div>
       </div>
+
+      {/* 1. LOCATION OVERVIEW (Fixed Header) */}
       <div className="border-b border-[#e2edef] p-4">
-        <p className="text-[10px] font-bold uppercase tracking-[.12em] text-[#1d788d]">Selected India location</p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[10px] font-bold uppercase tracking-[.12em] text-[#1d788d]">Selected India location</p>
+          <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold ${badgeClass(context.screening.priority)}`}>
+            {context.screening.priority.toUpperCase()} PRIORITY
+          </span>
+        </div>
         <h2 className="mt-1 text-lg font-bold tracking-tight text-[#193d53]">{context.location.name}</h2>
         <p className="mt-0.5 text-xs text-[#71828c]">{context.location.category} · {context.location.address.state ?? "India"}</p>
+        <div className="mt-1 flex items-center gap-1.5 text-[9px] text-[#718894]">
+          <MapPin className="h-3 w-3 text-[#1d788d]" />
+          <span>{context.location.latitude.toFixed(3)}°N, {context.location.longitude.toFixed(3)}°E</span>
+        </div>
       </div>
+
       <div className="grid grid-cols-2 gap-px bg-[#e7edef]">
         <div className="bg-white px-3 py-3">
           <p className="text-[9px] font-bold uppercase text-[#819099]">Population</p>
@@ -141,67 +247,250 @@ export function IndiaContextSidebar({ context, onOpenKeralaAssessment }: { conte
               ? context.location.population.toLocaleString("en-IN")
               : <span className="text-xs font-semibold text-[#819099]">Unavailable</span>}
           </p>
+          <p className="mt-0.5 text-[8.5px] text-[#819099] truncate">{context.location.populationSource}</p>
         </div>
         <div className="bg-white px-3 py-3">
           <p className="text-[9px] font-bold uppercase text-[#819099]">Screening risk</p>
           <p className="mt-1 text-sm font-bold text-[#274b60]">
             {context.screening.riskScore === null ? "Unavailable" : `${context.screening.riskScore}/100`}
           </p>
+          <p className={`mt-0.5 text-[8.5px] font-semibold ${riskTextClass(context.screening.riskLevel)}`}>
+            {context.screening.riskLevel} screened risk
+          </p>
         </div>
       </div>
-      <div className="p-4 space-y-3">
-        <div className="rounded-xl border border-[#d9e8ea] bg-[#f4faf9] p-2.5">
-          <p className="text-[9px] font-bold uppercase tracking-[.1em] text-[#2b7585]">{context.environment.status}</p>
-          <p className="mt-1 text-[11px] font-semibold text-[#385a67]">
-            {context.environment.temperatureC ?? "—"}°C · {context.environment.precipitationMm ?? "—"} mm precipitation · US AQI {context.environment.usAqi ?? "—"}
-          </p>
-          <p className="mt-1 text-[10px] font-semibold text-[#385a67]">
-            Next day: {next ? `${next.temperatureMinC ?? "—"}–${next.temperatureMaxC ?? "—"}°C · ${next.precipitationProbability ?? "—"}% rain · ${next.windSpeedMaxKph ?? "—"} km/h wind` : "Modelled forecast unavailable"}
-          </p>
-          <p className="mt-1 text-[9px] leading-relaxed text-[#758b94]">{context.environment.source} · Updated {context.environment.observedAt ? new Date(context.environment.observedAt).toLocaleString("en-IN") : "unavailable"}</p>
-        </div>
 
-        {/* Terrain & Physiography Context */}
-        <div className="rounded-xl border border-[#d9e8ea] bg-white p-3">
-          <div className="flex items-center justify-between">
-            <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[.1em] text-[#2b687a]">
-              <Mountain className="h-3.5 w-3.5 text-[#1e788f]" /> Terrain & Physiography
-            </p>
+      {/* Collapsible Information Sections */}
+      <div className="p-3 space-y-2">
+        {/* 2. HAZARD & RISK ASSESSMENT (OPEN by default) */}
+        <AccordionSection
+          id="hazardRisk"
+          title="Hazard & Risk Assessment"
+          icon={ShieldAlert}
+          isOpen={openSections.hazardRisk}
+          onToggle={() => toggleSection("hazardRisk")}
+          badge={
+            context.hazardProfile ? (
+              <span className={`rounded px-1.5 py-0.5 text-[8px] font-extrabold ${
+                context.hazardProfile.redZone.status === "RED"
+                  ? "bg-[#fee2e2] text-[#b91c1c]"
+                  : context.hazardProfile.redZone.status === "ORANGE"
+                    ? "bg-[#ffedd5] text-[#c2410c]"
+                    : context.hazardProfile.redZone.status === "YELLOW"
+                      ? "bg-[#fef9c3] text-[#a16207]"
+                      : "bg-[#dcfce7] text-[#15803d]"
+              }`}>
+                {context.hazardProfile.redZone.status} ZONE
+              </span>
+            ) : (
+              <span className={`rounded px-1.5 py-0.5 text-[8px] font-bold ${badgeClass(context.screening.priority)}`}>
+                {context.screening.priority}
+              </span>
+            )
+          }
+          summary={
+            context.hazardProfile
+              ? `${context.hazardProfile.redZone.status} Zone (${context.hazardProfile.redZone.score}/100) · ${context.hazardProfile.redZone.primaryHazard}`
+              : `${context.screening.riskLevel} risk · ${context.screening.priority} priority`
+          }
+          testId="accordion-hazard-risk"
+        >
+          {context.hazardProfile ? (
+            <div data-testid="hazard-redzone-panel" className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-[.1em] text-[#1c4d62]">
+                  Hazard Red-Zone Engine
+                </span>
+                <span className={`rounded-md border px-2 py-0.5 text-[9px] font-extrabold ${
+                  context.hazardProfile.redZone.status === "RED"
+                    ? "bg-[#fee2e2] text-[#b91c1c] border-[#f87171]"
+                    : context.hazardProfile.redZone.status === "ORANGE"
+                      ? "bg-[#ffedd5] text-[#c2410c] border-[#fb923c]"
+                      : context.hazardProfile.redZone.status === "YELLOW"
+                        ? "bg-[#fef9c3] text-[#a16207] border-[#fde047]"
+                        : "bg-[#dcfce7] text-[#15803d] border-[#86efac]"
+                }`}>
+                  {context.hazardProfile.redZone.status} ZONE ({context.hazardProfile.redZone.score}/100)
+                </span>
+              </div>
+
+              <p className="text-[10px] leading-relaxed text-[#476371]">
+                <strong className="text-[#1c3c4b]">Primary Driver:</strong> {context.hazardProfile.redZone.primaryHazard}
+              </p>
+              <p className="text-[10px] leading-relaxed text-[#5a7380]">
+                {context.hazardProfile.redZone.explainability}
+              </p>
+
+              {/* Evidence Triggers */}
+              {context.hazardProfile.redZone.triggers.length > 0 && (
+                <div className="space-y-1 rounded-lg bg-[#f8fafb] p-2">
+                  <p className="text-[8.5px] font-bold uppercase tracking-[.08em] text-[#627d8b]">
+                    Verified Triggers ({context.hazardProfile.redZone.triggers.length})
+                  </p>
+                  {context.hazardProfile.redZone.triggers.slice(0, 3).map((trig, i) => (
+                    <div key={i} className="flex items-start gap-1.5 text-[9px] leading-snug text-[#375463]">
+                      <span className="mt-0.5 text-[#e53935]">•</span>
+                      <span>{trig}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Authoritative Domain Summary */}
+              <div className="grid grid-cols-2 gap-1.5 text-[9px]">
+                <div className="rounded border border-[#e5eef0] bg-[#fdfefe] p-1.5">
+                  <span className="font-bold text-[#1e788f]">Seismic Zone</span>
+                  <span className="block font-medium text-[#375463]">
+                    {context.hazardProfile.seismic.zone} (Z={context.hazardProfile.seismic.zoneFactor})
+                  </span>
+                  <span className="text-[7.5px] text-[#78909c]">BIS IS 1893:2016</span>
+                </div>
+                <div className="rounded border border-[#e5eef0] bg-[#fdfefe] p-1.5">
+                  <span className="font-bold text-[#1e788f]">Landslide Rank</span>
+                  <span className="block font-medium text-[#375463]">
+                    {context.hazardProfile.landslide.districtRank ? `#${context.hazardProfile.landslide.districtRank}/147 in India` : "Low/Moderate"}
+                  </span>
+                  <span className="text-[7.5px] text-[#78909c]">ISRO Atlas 2023</span>
+                </div>
+                <div className="rounded border border-[#e5eef0] bg-[#fdfefe] p-1.5">
+                  <span className="font-bold text-[#1e788f]">CWC River Gauge</span>
+                  <span className="block truncate font-medium text-[#375463]">
+                    {context.hazardProfile.flood.nearestCwcGauge?.stationName ?? "None within 50km"}
+                  </span>
+                  <span className="text-[7.5px] text-[#78909c]">CWC Flood Network</span>
+                </div>
+                <div className="rounded border border-[#e5eef0] bg-[#fdfefe] p-1.5">
+                  <span className="font-bold text-[#1e788f]">Cyclone / Coast</span>
+                  <span className="block font-medium text-[#375463]">
+                    {context.hazardProfile.cyclone.coastalVulnerabilityClass}
+                  </span>
+                  <span className="text-[7.5px] text-[#78909c]">IBTrACS / IMD</span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2 text-[10px] text-[#556e79]">
+              <p className="leading-relaxed">{context.screening.hazardContext}</p>
+              <div className="rounded-lg bg-[#f8fafb] p-2 text-[9px] text-[#6b828e]">
+                Dominant screening risk: <strong>{context.screening.riskLevel}</strong> ({context.screening.riskScore === null ? "—" : `${context.screening.riskScore}/100`}).
+              </div>
+            </div>
+          )}
+
+          {/* Focus Districts (if state is selected) */}
+          {context.stateConfig && context.stateConfig.focusDistricts.length > 0 && (
+            <div className="mt-2.5 rounded-lg border border-[#e4eff1] bg-[#f8fcfd] p-2">
+              <p className="text-[9px] font-bold uppercase tracking-[.08em] text-[#2b687a]">
+                {context.stateConfig.name} Focus Districts ({context.stateConfig.focusDistricts.length})
+              </p>
+              <div className="mt-1 flex flex-wrap gap-1">
+                {context.stateConfig.focusDistricts.map(d => (
+                  <span key={d} className="rounded bg-[#eaf2f5] px-1.5 py-0.5 text-[8.5px] font-medium text-[#2d5668]">
+                    {d}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </AccordionSection>
+
+        {/* 3. LIVE ENVIRONMENTAL CONTEXT (CLOSED by default) */}
+        <AccordionSection
+          id="environment"
+          title="Live Environmental Context"
+          icon={CloudSun}
+          isOpen={openSections.environment}
+          onToggle={() => toggleSection("environment")}
+          badge={
+            <span className="rounded bg-[#e8f6f2] px-1.5 py-0.5 text-[8px] font-bold text-[#1d7d63]">
+              {context.environment.temperatureC !== null ? "LIVE" : "MODELLED"}
+            </span>
+          }
+          summary={
+            next
+              ? `Next day: ${next.temperatureMinC ?? "—"}–${next.temperatureMaxC ?? "—"}°C · ${next.precipitationProbability ?? "—"}% rain · ${next.windSpeedMaxKph ?? "—"} km/h wind`
+              : (context.environment.temperatureC !== null
+                ? `${context.environment.temperatureC}°C · ${context.environment.precipitationMm ?? 0} mm precipitation · US AQI ${context.environment.usAqi ?? "—"}`
+                : "Live forecast loading")
+          }
+          testId="accordion-environment"
+        >
+          <div className="space-y-2">
+            <div className="rounded-xl border border-[#d9e8ea] bg-[#f4faf9] p-2.5">
+              <p className="text-[9px] font-bold uppercase tracking-[.1em] text-[#2b7585]">{context.environment.status}</p>
+              <p className="mt-1 text-[11px] font-semibold text-[#385a67]">
+                {context.environment.temperatureC ?? "—"}°C · {context.environment.precipitationMm ?? "—"} mm precipitation · US AQI {context.environment.usAqi ?? "—"}
+              </p>
+              <p className="mt-1 text-[10px] font-semibold text-[#385a67]">
+                Next day: {next ? `${next.temperatureMinC ?? "—"}–${next.temperatureMaxC ?? "—"}°C · ${next.precipitationProbability ?? "—"}% rain · ${next.windSpeedMaxKph ?? "—"} km/h wind` : "Modelled forecast unavailable"}
+              </p>
+              <p className="mt-1 text-[9px] leading-relaxed text-[#758b94]">
+                {context.environment.source} · Updated {context.environment.observedAt ? new Date(context.environment.observedAt).toLocaleString("en-IN") : "unavailable"}
+              </p>
+            </div>
+            {context.environment.pm25 !== null && context.environment.pm25 !== undefined && (
+              <div className="flex items-center justify-between rounded-lg bg-[#f8fafb] px-2.5 py-1.5 text-[9.5px] text-[#556e79]">
+                <span>Fine particulate matter (PM2.5)</span>
+                <span className="font-bold text-[#274b60]">{context.environment.pm25} µg/m³</span>
+              </div>
+            )}
+          </div>
+        </AccordionSection>
+
+        {/* 4. TERRAIN & PHYSIOGRAPHY (CLOSED by default) */}
+        <AccordionSection
+          id="terrain"
+          title="Terrain & Physiography"
+          icon={Mountain}
+          isOpen={openSections.terrain}
+          onToggle={() => toggleSection("terrain")}
+          badge={
             <span className={`rounded px-1.5 py-0.5 text-[8px] font-bold ${
               context.terrain?.status === "AVAILABLE" ? "bg-[#e6f5ec] text-[#267553]" : "bg-[#edf1f3] text-[#71828c]"
             }`}>
               {context.terrain?.status ?? "UNAVAILABLE"}
             </span>
-          </div>
-          <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
-            <div className="rounded-lg bg-[#f7fbfb] p-2">
-              <p className="text-[9px] font-bold uppercase text-[#819099]">Elevation</p>
-              <p className="mt-0.5 font-bold text-[#274b60]">
-                {context.terrain?.elevationMeters !== null && context.terrain?.elevationMeters !== undefined
-                  ? `${context.terrain.elevationMeters} m`
-                  : <span className="text-[10px] font-medium text-[#819099]">Unavailable</span>}
-              </p>
+          }
+          summary={
+            context.terrain?.elevationMeters !== null && context.terrain?.elevationMeters !== undefined
+              ? `${context.terrain.elevationMeters} m elevation · ${context.terrain.slopeDegrees ?? "—"}° slope relief`
+              : (context.terrain?.status ?? "Physiography context")
+          }
+          testId="accordion-terrain"
+        >
+          <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-lg bg-[#f7fbfb] p-2 border border-[#e6eff1]">
+                <p className="text-[9px] font-bold uppercase text-[#819099]">Elevation</p>
+                <p className="mt-0.5 font-bold text-[#274b60]">
+                  {context.terrain?.elevationMeters !== null && context.terrain?.elevationMeters !== undefined
+                    ? `${context.terrain.elevationMeters} m`
+                    : <span className="text-[10px] font-medium text-[#819099]">Unavailable</span>}
+                </p>
+              </div>
+              <div className="rounded-lg bg-[#f7fbfb] p-2 border border-[#e6eff1]">
+                <p className="text-[9px] font-bold uppercase text-[#819099]">Slope Relief</p>
+                <p className="mt-0.5 font-bold text-[#274b60]">
+                  {context.terrain?.slopeDegrees !== null && context.terrain?.slopeDegrees !== undefined
+                    ? `${context.terrain.slopeDegrees}°`
+                    : <span className="text-[10px] font-medium text-[#819099]">Unavailable</span>}
+                </p>
+              </div>
             </div>
-            <div className="rounded-lg bg-[#f7fbfb] p-2">
-              <p className="text-[9px] font-bold uppercase text-[#819099]">Slope Relief</p>
-              <p className="mt-0.5 font-bold text-[#274b60]">
-                {context.terrain?.slopeDegrees !== null && context.terrain?.slopeDegrees !== undefined
-                  ? `${context.terrain.slopeDegrees}°`
-                  : <span className="text-[10px] font-medium text-[#819099]">Unavailable</span>}
-              </p>
-            </div>
-          </div>
-          <p className="mt-2 text-[10px] text-[#556e79] leading-relaxed">
-            {context.terrain?.terrainClass ?? "Regional physiographic baseline"}
-          </p>
-        </div>
-
-        {/* Hydrology & River Basin Context */}
-        <div className="rounded-xl border border-[#d9e8ea] bg-white p-3">
-          <div className="flex items-center justify-between">
-            <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[.1em] text-[#2b687a]">
-              <Droplets className="h-3.5 w-3.5 text-[#1e788f]" /> Hydrology & Basin
+            <p className="text-[10px] text-[#556e79] leading-relaxed">
+              {context.terrain?.terrainClass ?? "Regional physiographic baseline"}
             </p>
+          </div>
+        </AccordionSection>
+
+        {/* 5. HYDROLOGY & BASIN (CLOSED by default) */}
+        <AccordionSection
+          id="hydrology"
+          title="Hydrology & Basin"
+          icon={Droplets}
+          isOpen={openSections.hydrology}
+          onToggle={() => toggleSection("hydrology")}
+          badge={
             <span className={`rounded px-1.5 py-0.5 text-[8px] font-bold ${
               context.hydrology?.status === "REGIONAL_MAPPING" || context.hydrology?.status === "AVAILABLE"
                 ? "bg-[#eaf5f7] text-[#1c7084]"
@@ -209,223 +498,226 @@ export function IndiaContextSidebar({ context, onOpenKeralaAssessment }: { conte
             }`}>
               {context.hydrology?.status ?? "UNAVAILABLE"}
             </span>
-          </div>
-          <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
-            <div className="rounded-lg bg-[#f7fbfb] p-2">
-              <p className="text-[9px] font-bold uppercase text-[#819099]">River Basin</p>
-              <p className="mt-0.5 truncate font-bold text-[#274b60]">
-                {context.hydrology?.basin ?? <span className="text-[10px] font-medium text-[#819099]">Unavailable</span>}
-              </p>
-            </div>
-            <div className="rounded-lg bg-[#f7fbfb] p-2">
-              <p className="text-[9px] font-bold uppercase text-[#819099]">Nearest River</p>
-              <p className="mt-0.5 truncate font-bold text-[#274b60]">
-                {context.hydrology?.nearestRiver
-                  ? `${context.hydrology.nearestRiver}${context.hydrology.riverDistanceKm !== null && context.hydrology.riverDistanceKm !== undefined ? ` (${context.hydrology.riverDistanceKm}km)` : ""}`
-                  : <span className="text-[10px] font-medium text-[#819099]">Unavailable</span>}
-              </p>
-            </div>
-          </div>
-          {context.hydrology?.floodplainIndicator !== null && context.hydrology?.floodplainIndicator !== undefined && (
-            <p className="mt-1.5 text-[9px] font-semibold text-[#1c7084]">
-              {context.hydrology.floodplainIndicator ? "⚠ Within active riverine floodplain zone" : "Outside immediate floodplain zone"}
-            </p>
-          )}
-        </div>
-
-        {/* Categorized Infrastructure Breakdown */}
-        {context.categorizedInfrastructure && context.categorizedInfrastructure.totalCount > 0 && (
-          <div className="rounded-xl border border-[#d9e8ea] bg-white p-3">
-            <p className="text-[10px] font-bold uppercase tracking-[.1em] text-[#2b687a]">
-              Categorized Facilities ({context.categorizedInfrastructure.totalCount})
-            </p>
-            <div className="mt-1.5 grid grid-cols-3 gap-1.5 text-center text-[9px]">
-              <div className="rounded bg-[#f4faf9] p-1.5">
-                <span className="font-bold text-[#267553]">{context.categorizedInfrastructure.hospitals.length}</span>
-                <span className="block text-[#6f858f]">Hospitals</span>
-              </div>
-              <div className="rounded bg-[#f4faf9] p-1.5">
-                <span className="font-bold text-[#b86728]">{context.categorizedInfrastructure.emergencyFacilities.length}</span>
-                <span className="block text-[#6f858f]">Emergency</span>
-              </div>
-              <div className="rounded bg-[#f4faf9] p-1.5">
-                <span className="font-bold text-[#1d788d]">{context.categorizedInfrastructure.shelters.length}</span>
-                <span className="block text-[#6f858f]">Shelters</span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Focus Districts (if state is selected) */}
-        {context.stateConfig && context.stateConfig.focusDistricts.length > 0 && (
-          <div className="rounded-xl border border-[#d9e8ea] bg-white p-3">
-            <p className="text-[10px] font-bold uppercase tracking-[.1em] text-[#2b687a]">
-              {context.stateConfig.name} Focus Districts ({context.stateConfig.focusDistricts.length})
-            </p>
-            <div className="mt-1.5 flex flex-wrap gap-1">
-              {context.stateConfig.focusDistricts.map(d => (
-                <span key={d} className="rounded bg-[#f0f6f8] px-1.5 py-0.5 text-[9px] font-medium text-[#2d5668]">
-                  {d}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Multi-Hazard Red-Zone Intelligence Panel (PS 191 Core) */}
-        {context.hazardProfile && (
-          <div data-testid="hazard-redzone-panel" className="rounded-xl border border-[#d9e8ea] bg-white p-3 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <ShieldAlert className="h-4 w-4 text-[#b91c1c]" />
-                <span className="text-[10px] font-bold uppercase tracking-[.1em] text-[#1c4d62]">
-                  Hazard Red-Zone Engine
-                </span>
-              </div>
-              <span className={`rounded-md border px-2 py-0.5 text-[9px] font-extrabold ${
-                context.hazardProfile.redZone.status === "RED"
-                  ? "bg-[#fee2e2] text-[#b91c1c] border-[#f87171]"
-                  : context.hazardProfile.redZone.status === "ORANGE"
-                    ? "bg-[#ffedd5] text-[#c2410c] border-[#fb923c]"
-                    : context.hazardProfile.redZone.status === "YELLOW"
-                      ? "bg-[#fef9c3] text-[#a16207] border-[#fde047]"
-                      : "bg-[#dcfce7] text-[#15803d] border-[#86efac]"
-              }`}>
-                {context.hazardProfile.redZone.status} ZONE ({context.hazardProfile.redZone.score}/100)
-              </span>
-            </div>
-
-            <p className="mt-2 text-[10px] leading-relaxed text-[#476371]">
-              <strong className="text-[#1c3c4b]">Primary Driver:</strong> {context.hazardProfile.redZone.primaryHazard}
-            </p>
-            <p className="mt-1 text-[10px] leading-relaxed text-[#5a7380]">
-              {context.hazardProfile.redZone.explainability}
-            </p>
-
-            {/* Evidence Triggers */}
-            {context.hazardProfile.redZone.triggers.length > 0 && (
-              <div className="mt-2 space-y-1 rounded-lg bg-[#f8fafb] p-2">
-                <p className="text-[8.5px] font-bold uppercase tracking-[.08em] text-[#627d8b]">
-                  Verified Triggers ({context.hazardProfile.redZone.triggers.length})
+          }
+          summary={
+            context.hydrology?.basin
+              ? `${context.hydrology.basin}${context.hydrology.nearestRiver ? ` · ${context.hydrology.nearestRiver}` : ""}`
+              : (context.hydrology?.status ?? "Hydrology context")
+          }
+          testId="accordion-hydrology"
+        >
+          <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-lg bg-[#f7fbfb] p-2 border border-[#e6eff1]">
+                <p className="text-[9px] font-bold uppercase text-[#819099]">River Basin</p>
+                <p className="mt-0.5 truncate font-bold text-[#274b60]">
+                  {context.hydrology?.basin ?? <span className="text-[10px] font-medium text-[#819099]">Unavailable</span>}
                 </p>
-                {context.hazardProfile.redZone.triggers.slice(0, 3).map((trig, i) => (
-                  <div key={i} className="flex items-start gap-1.5 text-[9px] leading-snug text-[#375463]">
-                    <span className="mt-0.5 text-[#e53935]">•</span>
-                    <span>{trig}</span>
+              </div>
+              <div className="rounded-lg bg-[#f7fbfb] p-2 border border-[#e6eff1]">
+                <p className="text-[9px] font-bold uppercase text-[#819099]">Nearest River</p>
+                <p className="mt-0.5 truncate font-bold text-[#274b60]">
+                  {context.hydrology?.nearestRiver
+                    ? `${context.hydrology.nearestRiver}${context.hydrology.riverDistanceKm !== null && context.hydrology.riverDistanceKm !== undefined ? ` (${context.hydrology.riverDistanceKm}km)` : ""}`
+                    : <span className="text-[10px] font-medium text-[#819099]">Unavailable</span>}
+                </p>
+              </div>
+            </div>
+            {context.hydrology?.floodplainIndicator !== null && context.hydrology?.floodplainIndicator !== undefined && (
+              <p className="text-[9px] font-semibold text-[#1c7084]">
+                {context.hydrology.floodplainIndicator ? "⚠ Within active riverine floodplain zone" : "Outside immediate floodplain zone"}
+              </p>
+            )}
+          </div>
+        </AccordionSection>
+
+        {/* 6. EXPOSURE & HABITATIONS (CLOSED by default) */}
+        <AccordionSection
+          id="exposure"
+          title="Exposure & Habitations"
+          icon={Users}
+          isOpen={openSections.exposure}
+          onToggle={() => toggleSection("exposure")}
+          badge={
+            <span className="rounded bg-[#fef3c7] px-1.5 py-0.5 text-[8px] font-bold text-[#b45309]">
+              {context.hazardProfile?.exposedHabitations.length ?? 0} Habitations
+            </span>
+          }
+          summary={
+            context.hazardProfile?.exposedHabitations.length
+              ? `${context.hazardProfile.exposedHabitations.length} habitations exposed · Census 2011`
+              : (context.location.population ? `${context.location.population.toLocaleString("en-IN")} population` : "Population context")
+          }
+          testId="accordion-exposure"
+        >
+          <div className="space-y-2">
+            <p className="text-[10px] leading-relaxed text-[#556e79]">{context.screening.populationContext}</p>
+            {context.hazardProfile?.exposedHabitations && context.hazardProfile.exposedHabitations.length > 0 ? (
+              <div className="space-y-1.5 pt-1">
+                <div className="flex items-center justify-between text-[9px] font-bold uppercase tracking-[.08em] text-[#1c4d62]">
+                  <span>Exposed Habitations ({context.hazardProfile.exposedHabitations.length})</span>
+                  <span className="text-[8.5px] font-semibold text-[#78909c]">Census 2011</span>
+                </div>
+                {context.hazardProfile.exposedHabitations.slice(0, 4).map(hab => (
+                  <div key={hab.habitationId} className="flex items-center justify-between rounded bg-[#f7fafb] px-2.5 py-1.5 text-[9.5px] border border-[#e6eff1]">
+                    <div>
+                      <span className="font-bold text-[#2a4e60]">{hab.name}</span>
+                      <span className="block text-[8px] text-[#718894]">{hab.hazardType} · {Math.round(hab.distanceToHazardKm)}km away</span>
+                    </div>
+                    <span className="font-semibold text-[#375463]">
+                      {hab.population !== null ? `${hab.population.toLocaleString("en-IN")} pop` : <span className="text-[#889ca6]">Unavailable</span>}
+                    </span>
                   </div>
                 ))}
               </div>
+            ) : (
+              <p className="text-[9.5px] text-[#78909c] italic">No high-risk habitations within immediate screening buffer.</p>
             )}
+          </div>
+        </AccordionSection>
 
-            {/* Authoritative Domain Summary */}
-            <div className="mt-2.5 grid grid-cols-2 gap-1.5 text-[9px]">
-              <div className="rounded border border-[#e5eef0] bg-[#fdfefe] p-1.5">
-                <span className="font-bold text-[#1e788f]">Seismic Zone</span>
-                <span className="block font-medium text-[#375463]">
-                  {context.hazardProfile.seismic.zone} (Z={context.hazardProfile.seismic.zoneFactor})
-                </span>
-                <span className="text-[7.5px] text-[#78909c]">BIS IS 1893:2016</span>
+        {/* 7. CARRYING CAPACITY (CLOSED by default) */}
+        <AccordionSection
+          id="capacity"
+          title="Carrying Capacity"
+          icon={Building2}
+          isOpen={openSections.capacity}
+          onToggle={() => toggleSection("capacity")}
+          badge={
+            <span className="rounded bg-[#e6f5ec] px-1.5 py-0.5 text-[8px] font-bold text-[#267553]">
+              {context.categorizedInfrastructure?.totalCount ?? context.infrastructure.items.length} Facilities
+            </span>
+          }
+          summary={
+            context.categorizedInfrastructure?.totalCount
+              ? `${context.categorizedInfrastructure.hospitals.length} Hosp · ${context.categorizedInfrastructure.shelters.length} Shelters · ${context.categorizedInfrastructure.emergencyFacilities.length} Emerg`
+              : (realDistrict ? "District capacity assessment" : "Nearby facility sample")
+          }
+          testId="accordion-capacity"
+        >
+          <div className="space-y-2.5">
+            {context.categorizedInfrastructure && context.categorizedInfrastructure.totalCount > 0 ? (
+              <div>
+                <p className="text-[9.5px] font-bold uppercase tracking-[.08em] text-[#2b687a]">
+                  Categorized Nearby Facilities ({context.categorizedInfrastructure.totalCount})
+                </p>
+                <div className="mt-1.5 grid grid-cols-3 gap-1.5 text-center text-[9px]">
+                  <div className="rounded bg-[#f4faf9] p-2 border border-[#e2eff0]">
+                    <span className="font-bold text-sm text-[#267553]">{context.categorizedInfrastructure.hospitals.length}</span>
+                    <span className="block text-[8.5px] text-[#6f858f]">Hospitals</span>
+                  </div>
+                  <div className="rounded bg-[#f4faf9] p-2 border border-[#e2eff0]">
+                    <span className="font-bold text-sm text-[#b86728]">{context.categorizedInfrastructure.emergencyFacilities.length}</span>
+                    <span className="block text-[8.5px] text-[#6f858f]">Emergency</span>
+                  </div>
+                  <div className="rounded bg-[#f4faf9] p-2 border border-[#e2eff0]">
+                    <span className="font-bold text-sm text-[#1d788d]">{context.categorizedInfrastructure.shelters.length}</span>
+                    <span className="block text-[8.5px] text-[#6f858f]">Shelters</span>
+                  </div>
+                </div>
               </div>
-              <div className="rounded border border-[#e5eef0] bg-[#fdfefe] p-1.5">
-                <span className="font-bold text-[#1e788f]">Landslide Rank</span>
-                <span className="block font-medium text-[#375463]">
-                  {context.hazardProfile.landslide.districtRank ? `#${context.hazardProfile.landslide.districtRank}/147 in India` : "Low/Moderate"}
-                </span>
-                <span className="text-[7.5px] text-[#78909c]">ISRO Atlas 2023</span>
+            ) : (
+              <div className="rounded-lg bg-[#f8fafb] p-2.5 text-[10px] text-[#6f858f]">
+                <p>Nearby facility count: <strong>{context.infrastructure.items.length}</strong> mapped facilities.</p>
+                <p className="mt-1 text-[9px] text-[#8ea0a8]">Detailed occupancy & carrying capacity is evaluated at district resolution.</p>
               </div>
-              <div className="rounded border border-[#e5eef0] bg-[#fdfefe] p-1.5">
-                <span className="font-bold text-[#1e788f]">CWC River Gauge</span>
-                <span className="block truncate font-medium text-[#375463]">
-                  {context.hazardProfile.flood.nearestCwcGauge?.stationName ?? "None within 50km"}
-                </span>
-                <span className="text-[7.5px] text-[#78909c]">CWC Flood Network</span>
-              </div>
-              <div className="rounded border border-[#e5eef0] bg-[#fdfefe] p-1.5">
-                <span className="font-bold text-[#1e788f]">Cyclone / Coast</span>
-                <span className="block font-medium text-[#375463]">
-                  {context.hazardProfile.cyclone.coastalVulnerabilityClass}
-                </span>
-                <span className="text-[7.5px] text-[#78909c]">IBTrACS / IMD</span>
-              </div>
+            )}
+          </div>
+        </AccordionSection>
+
+        {/* 8. RELOCATION INTELLIGENCE (CLOSED by default) */}
+        <AccordionSection
+          id="relocation"
+          title="Relocation Intelligence"
+          icon={Compass}
+          isOpen={openSections.relocation}
+          onToggle={() => toggleSection("relocation")}
+          badge={
+            <span className={`rounded px-1.5 py-0.5 text-[8px] font-bold ${badgeClass(context.screening.priority)}`}>
+              {context.screening.priority}
+            </span>
+          }
+          summary={
+            realDistrict
+              ? `${realDistrict.name} relocation assessment · PS191 Decision Support`
+              : `${context.screening.priority} priority screening · Candidate guidance`
+          }
+          testId="accordion-relocation"
+        >
+          {realDistrict ? (
+            <div className="pt-0.5">
+              <PS191DecisionPanel
+                districtId={realDistrict.id}
+                districtName={realDistrict.name}
+                classification={
+                  context.hazardProfile?.redZone.status === "RED"
+                    ? "RED"
+                    : context.hazardProfile?.redZone.status === "ORANGE" || context.hazardProfile?.redZone.status === "YELLOW"
+                    ? "ORANGE"
+                    : context.hazardProfile?.redZone.status === "LOW"
+                    ? "GREEN"
+                    : "UNAVAILABLE"
+                }
+                stateCode={realDistrict.stateCode}
+              />
             </div>
-
-            {/* Nearby Exposed Habitations (PS 191 Core) */}
-            {context.hazardProfile.exposedHabitations.length > 0 && (
-              <div className="mt-2.5 border-t border-[#edf3f5] pt-2">
-                <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-[.08em] text-[#1c4d62]">
-                    <Users className="h-3 w-3 text-[#fb8c00]" /> Exposed Habitations ({context.hazardProfile.exposedHabitations.length})
-                  </span>
-                  <span className="text-[8.5px] font-semibold text-[#78909c]">Census 2011</span>
-                </div>
-                <div className="mt-1.5 space-y-1">
-                  {context.hazardProfile.exposedHabitations.slice(0, 3).map(hab => (
-                    <div key={hab.habitationId} className="flex items-center justify-between rounded bg-[#f7fafb] px-2 py-1 text-[9px]">
-                      <div>
-                        <span className="font-bold text-[#2a4e60]">{hab.name}</span>
-                        <span className="block text-[8px] text-[#718894]">{hab.hazardType} · {Math.round(hab.distanceToHazardKm)}km away</span>
-                      </div>
-                      <span className="font-semibold text-[#375463]">
-                        {hab.population !== null ? `${hab.population.toLocaleString("en-IN")} pop` : <span className="text-[#889ca6]">Unavailable</span>}
-                      </span>
-                    </div>
-                  ))}
-                </div>
+          ) : (
+            <div className="rounded-xl border border-[#d9e8ea] bg-[#f8fafb] p-3 text-[10px] text-[#556e79] space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-[#234b5f]">Screened Relocation Priority</span>
+                <span className={`rounded px-2 py-0.5 text-[9px] font-bold ${badgeClass(context.screening.priority)}`}>
+                  {context.screening.priority.toUpperCase()}
+                </span>
               </div>
-            )}
-          </div>
-        )}
+              <p className="leading-relaxed">
+                Relocation corridor analysis operates across indexed district boundaries with verified ADM2 datasets. Location-level priority is currently calculated as <strong>{context.screening.priority}</strong> based on terrain, hydrology, and multi-hazard exposure.
+              </p>
+            </div>
+          )}
+        </AccordionSection>
 
-        {/* PS191 Decision Panel (Phase 3.3 Carrying Capacity + Relocation Intelligence) */}
-        {realDistrict && (
-          <div className="mt-2.5">
-            <PS191DecisionPanel
-              districtId={realDistrict.id}
-              districtName={realDistrict.name}
-              classification={
-                context.hazardProfile?.redZone.status === "RED"
-                  ? "RED"
-                  : context.hazardProfile?.redZone.status === "ORANGE" || context.hazardProfile?.redZone.status === "YELLOW"
-                  ? "ORANGE"
-                  : context.hazardProfile?.redZone.status === "LOW"
-                  ? "GREEN"
-                  : "UNAVAILABLE"
-              }
-              stateCode={realDistrict.stateCode}
-            />
-          </div>
-        )}
-
-        {/* Data Provenance & Authoritative Dimensions */}
-        <div className="rounded-xl bg-[#f7fbfb] p-3 text-[9px] leading-relaxed text-[#718892]">
-          <div className="flex items-center justify-between gap-1 mb-1">
-            <span className="font-bold uppercase tracking-[.1em] text-[#2b687a]">Data Provenance</span>
+        {/* 9. DATA SOURCES & LIMITATIONS (CLOSED by default) */}
+        <AccordionSection
+          id="provenance"
+          title="Data Sources & Limitations"
+          icon={FileText}
+          isOpen={openSections.provenance}
+          onToggle={() => toggleSection("provenance")}
+          badge={
             <span className="rounded bg-[#d7eef0] px-1.5 py-0.5 text-[8px] font-bold text-[#1b7184]">
               {context.provenance?.sourceType ?? "OFFICIAL"}
             </span>
+          }
+          summary={`Source: ${context.provenance?.sourceType ?? "OFFICIAL"} · Multi-hazard provenance`}
+          testId="accordion-provenance"
+        >
+          <div className="space-y-2.5 text-[9.5px] leading-relaxed text-[#718892]">
+            <div className="flex items-center justify-between gap-1">
+              <span className="font-bold uppercase tracking-[.08em] text-[#2b687a]">Data Provenance</span>
+              <span className="rounded bg-[#d7eef0] px-1.5 py-0.5 text-[8px] font-bold text-[#1b7184]">
+                {context.provenance?.sourceType ?? "OFFICIAL"}
+              </span>
+            </div>
+            <p className="text-[#516b77]">{context.provenance?.provenanceLabel ?? "Authoritative administrative context"}</p>
+            <div className="flex flex-wrap gap-1">
+              <span className="rounded border border-[#dfeaec] bg-white px-1.5 py-0.5 text-[8px] text-[#607682]">CEEW 2021 CVI</span>
+              <span className="rounded border border-[#dfeaec] bg-white px-1.5 py-0.5 text-[8px] text-[#607682]">DST Common Framework</span>
+              <span className="rounded border border-[#dfeaec] bg-white px-1.5 py-0.5 text-[8px] text-[#607682]">XDI 2050 Risk</span>
+              <span className="rounded border border-[#dfeaec] bg-white px-1.5 py-0.5 text-[8px] text-[#607682]">geoBoundaries ADM1</span>
+            </div>
+            <p className="pt-1 text-[9px] text-[#819099] border-t border-[#eaf1f3]">
+              The screening value is a transparent decision-support signal; it is not an official hazard warning or evacuation order.
+            </p>
+            <button type="button" onClick={onOpenKeralaAssessment} disabled aria-disabled="true" className="h-7 w-full cursor-not-allowed rounded-lg border border-[#d9e4e6] bg-[#f4f7f8] text-[10px] font-semibold text-[#8a9aa1]">
+              Retained Kerala assessment actions disabled for this location
+            </button>
           </div>
-          <p className="text-[#516b77]">{context.provenance?.provenanceLabel ?? "Authoritative administrative context"}</p>
-          <div className="mt-2 flex flex-wrap gap-1">
-            <span className="rounded border border-[#dfeaec] bg-white px-1.5 py-0.5 text-[8px] text-[#607682]">CEEW 2021 CVI</span>
-            <span className="rounded border border-[#dfeaec] bg-white px-1.5 py-0.5 text-[8px] text-[#607682]">DST Common Framework</span>
-            <span className="rounded border border-[#dfeaec] bg-white px-1.5 py-0.5 text-[8px] text-[#607682]">XDI 2050 Risk</span>
-            <span className="rounded border border-[#dfeaec] bg-white px-1.5 py-0.5 text-[8px] text-[#607682]">geoBoundaries ADM1</span>
-          </div>
-        </div>
-
-        <div className="space-y-2 rounded-xl bg-[#f7fbfb] p-3">
-          <p className="text-[10px] font-bold uppercase tracking-[.1em] text-[#2b687a]">Hazard & analysis context</p>
-          <p className="text-[11px] leading-relaxed text-[#5f7783]">{context.screening.hazardContext}</p>
-          <p className="text-[10px] leading-relaxed text-[#718892]">{context.screening.populationContext}</p>
-        </div>
-
-        <button type="button" onClick={onOpenKeralaAssessment} disabled aria-disabled="true" className="h-8 w-full cursor-not-allowed rounded-lg border border-[#d9e4e6] bg-[#f4f7f8] text-[11px] font-semibold text-[#8a9aa1]">
-          Retained Kerala assessment actions disabled for this location
-        </button>
+        </AccordionSection>
       </div>
     </aside>
   );
 }
+
 
 export function IndiaLocationSummaryStrip({ context }: { context: IndiaLocationContext }) {
   const next = context.environment.forecast[0];

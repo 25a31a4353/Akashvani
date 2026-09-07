@@ -35,11 +35,9 @@ function safeSetData(map: MapLibreMap, sourceId: string, data: unknown) {
 function setVisibility(map: MapLibreMap, id: string, enabled: boolean) { if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", enabled ? "visible" : "none"); }
 function applyLayers(map: MapLibreMap, layers: MapLayerState, opacity: number, baseStyle: "muted" | "terrain") {
   const layerMap: Array<[string, string]> = [
-    ["population-points", "population"], ["vulnerable-points", "vulnerable"], ["hazard-fill", "flood"], ["hazard-line", "flood"],
-    ["landslide-fill", "landslide"], ["landslide-line", "landslide"], ["rainfall-points", "rainfall"], ["temperature-points", "temperature"],
-    ["aqi-points", "aqi"], ["infrastructure-points", "infrastructure"], ["boundary-line", "boundaries"], ["district-fill", "boundaries"],
+    ["population-points", "population"], ["boundary-line", "boundaries"], ["district-fill", "boundaries"],
     ["district-line", "boundaries"], ["selected-location-fill", "boundaries"], ["selected-location-line", "boundaries"],
-    ["national-terrain", "terrain"], ["national-population", "population"], ["national-geology", "geology"], ["national-state-fill", "nationalStates"],
+    ["national-terrain", "terrain"], ["national-population", "population"], ["national-state-fill", "nationalStates"],
     ["national-state-line", "nationalStates"], ["national-state-label", "nationalStates"], ["national-weather-fill", "liveWeather"],
     ["national-weather-line", "liveWeather"], ["national-wind-symbol", "wind"],
     ["hazard-redzone-fill", "redZones"], ["hazard-redzone-line", "redZones"], ["hazard-redzone-label", "redZones"],
@@ -54,8 +52,8 @@ function applyLayers(map: MapLibreMap, layers: MapLayerState, opacity: number, b
     ["national-sensitivity-earthquake-fill", "earthquakeSensitivity"], ["national-sensitivity-earthquake-line", "earthquakeSensitivity"],
     ["national-sensitivity-landslide-fill", "landslideSensitivity"], ["national-sensitivity-landslide-line", "landslideSensitivity"],
     ["national-sensitivity-flood-fill", "floodSensitivity"], ["national-sensitivity-flood-line", "floodSensitivity"],
-    ["national-sensitivity-combined", "combinedSensitivity"], ["relocation-route-glow", "routes"],
-    ["relocation-route-line", "routes"], ["relocation-route-destination", "routes"]
+    ["infrastructure-points", "infrastructure"],
+    ["relocation-route-glow", "routes"], ["relocation-route-line", "routes"], ["relocation-route-destination", "routes"]
   ];
   layerMap.forEach(([id, key]) => setVisibility(map, id, Boolean(layers[key])));
   ["hazard-fill", "landslide-fill", "hazard-redzone-fill", "population-points", "vulnerable-points", "rainfall-points", "temperature-points", "aqi-points"].forEach(id => { if (!map.getLayer(id)) return; map.setPaintProperty(id, id.endsWith("fill") ? "fill-opacity" : "circle-opacity", (id === "hazard-redzone-fill" ? 0.38 : id.includes("hazard") || id.includes("landslide") ? 0.2 : 0.56) * opacity); });

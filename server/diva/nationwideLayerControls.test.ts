@@ -10,23 +10,21 @@ import { nationwideLayerControls, nationwideMapLayerVisibility, resolveNationwid
 
 describe("India overview layer controls", () => {
   it("maps every visible India overview control to the intended map layers", () => {
-    expect(nationwideLayerControls.map(([id]) => id)).toEqual(["nationalStates", "population", "terrain", "geology", "liveWeather", "wind", "earthquakeSensitivity", "landslideSensitivity", "floodSensitivity", "combinedSensitivity"]);
+    expect(nationwideLayerControls.map(([id]) => id)).toEqual(["nationalStates", "population", "terrain", "liveWeather", "wind", "earthquakeSensitivity", "landslideSensitivity", "floodSensitivity"]);
     expect(nationwideMapLayerVisibility).toEqual({
       nationalStates: ["national-state-fill", "national-state-line", "national-state-label"],
       population: ["national-population"],
       terrain: ["national-terrain"],
-      geology: ["national-geology"],
       liveWeather: ["national-weather-fill", "national-weather-line"],
       wind: ["national-wind-symbol"],
       earthquakeSensitivity: ["national-sensitivity-earthquake-fill", "national-sensitivity-earthquake-line"],
       landslideSensitivity: ["national-sensitivity-landslide-fill", "national-sensitivity-landslide-line"],
       floodSensitivity: ["national-sensitivity-flood-fill", "national-sensitivity-flood-line"],
-      combinedSensitivity: ["national-sensitivity-combined"],
     });
   });
 
   it("resolves enabled and disabled nationwide controls to the visible map-layer state", () => {
-    expect(resolveNationwideMapLayerVisibility({ nationalStates: true, population: false, terrain: true, geology: false, liveWeather: false, wind: false, earthquakeSensitivity: true, landslideSensitivity: false, floodSensitivity: true, combinedSensitivity: true })).toMatchObject({ "national-state-fill": true, "national-state-line": true, "national-state-label": true, "national-population": false, "national-terrain": true, "national-geology": false, "national-weather-fill": false, "national-weather-line": false, "national-wind-symbol": false, "national-sensitivity-earthquake-fill": true, "national-sensitivity-landslide-fill": false, "national-sensitivity-flood-fill": true, "national-sensitivity-combined": true });
+    expect(resolveNationwideMapLayerVisibility({ nationalStates: true, population: false, terrain: true, liveWeather: false, wind: false, earthquakeSensitivity: true, landslideSensitivity: false, floodSensitivity: true })).toMatchObject({ "national-state-fill": true, "national-state-line": true, "national-state-label": true, "national-population": false, "national-terrain": true, "national-weather-fill": false, "national-weather-line": false, "national-wind-symbol": false, "national-sensitivity-earthquake-fill": true, "national-sensitivity-landslide-fill": false, "national-sensitivity-flood-fill": true });
   });
 
   it("renders the India overview provenance and unavailable-geology status for route-level UI evidence", () => {
@@ -41,7 +39,7 @@ describe("India overview layer controls", () => {
 
   it("changes visible India overview layer-control state through real DOM interactions", async () => {
     function ControlHarness() {
-      const [layers, setLayers] = useState<Record<string, boolean>>({ nationalStates: true, population: true, terrain: true, geology: false, liveWeather: true, wind: true, earthquakeSensitivity: true, landslideSensitivity: true, floodSensitivity: true, combinedSensitivity: false });
+      const [layers, setLayers] = useState<Record<string, boolean>>({ nationalStates: true, population: true, terrain: true, liveWeather: true, wind: true, earthquakeSensitivity: true, landslideSensitivity: true, floodSensitivity: true });
       return createElement("div", null, createElement(IndiaOverviewLayerControls, { layers, onChange: (id, enabled) => setLayers(current => ({ ...current, [id]: enabled })) }), createElement("output", { "data-testid": "national-layer-state" }, JSON.stringify(layers)));
     }
     const user = userEvent.setup();
@@ -49,11 +47,13 @@ describe("India overview layer controls", () => {
     await user.click(screen.getByRole("switch", { name: "Toggle Physical terrain" }));
     await user.click(screen.getByRole("switch", { name: "Toggle Live weather coverage" }));
     await user.click(screen.getByRole("switch", { name: "Toggle Earthquake sensitivity extent" }));
-    await user.click(screen.getByRole("switch", { name: "Toggle Combined multi-hazard screening" }));
+    await user.click(screen.getByRole("switch", { name: "Toggle 10 m wind speed & direction" }));
     expect(screen.getByTestId("national-layer-state").textContent).toContain('"terrain":false');
     expect(screen.getByTestId("national-layer-state").textContent).toContain('"liveWeather":false');
     expect(screen.getByTestId("national-layer-state").textContent).toContain('"earthquakeSensitivity":false');
-    expect(screen.getByTestId("national-layer-state").textContent).toContain('"combinedSensitivity":true');
-    expect(screen.getByRole("switch", { name: "Toggle Geological reference" }).getAttribute("data-state")).toBe("unchecked");
+    expect(screen.getByTestId("national-layer-state").textContent).toContain('"wind":false');
+    expect(screen.queryByRole("switch", { name: "Toggle Geological reference" })).toBeNull();
+    expect(screen.queryByRole("switch", { name: "Toggle Combined multi-hazard screening" })).toBeNull();
   });
 });
+
