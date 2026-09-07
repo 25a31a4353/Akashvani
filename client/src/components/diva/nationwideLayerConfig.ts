@@ -33,7 +33,7 @@ export const authoritativeHazardLayerControls = [
 ] as const;
 
 export const authoritativeHazardMapLayerVisibility = {
-  seismicOfficial: ["hazard-seismic-fill", "hazard-seismic-line", "hazard-seismic-label"],
+  seismicOfficial: ["hazard-seismic-fill", "hazard-seismic-line"],
   cwcGauges: ["hazard-cwc-circle", "hazard-cwc-label"],
   floodPlains: ["hazard-floodplain-fill", "hazard-floodplain-line"],
   erosionCorridors: ["hazard-erosion-line"],

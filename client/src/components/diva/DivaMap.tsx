@@ -56,7 +56,7 @@ function applyLayers(map: MapLibreMap, layers: MapLayerState, opacity: number, b
     ["relocation-route-glow", "routes"], ["relocation-route-line", "routes"], ["relocation-route-destination", "routes"]
   ];
   layerMap.forEach(([id, key]) => setVisibility(map, id, Boolean(layers[key])));
-  ["hazard-fill", "landslide-fill", "hazard-redzone-fill", "population-points", "vulnerable-points", "rainfall-points", "temperature-points", "aqi-points"].forEach(id => { if (!map.getLayer(id)) return; map.setPaintProperty(id, id.endsWith("fill") ? "fill-opacity" : "circle-opacity", (id === "hazard-redzone-fill" ? 0.38 : id.includes("hazard") || id.includes("landslide") ? 0.2 : 0.56) * opacity); });
+  ["hazard-fill", "landslide-fill", "hazard-redzone-fill", "population-points"].forEach(id => { if (!map.getLayer(id)) return; map.setPaintProperty(id, id.endsWith("fill") ? "fill-opacity" : "circle-opacity", (id === "hazard-redzone-fill" ? 0.38 : id.includes("hazard") || id.includes("landslide") ? 0.2 : 0.56) * opacity); });
   if (map.getLayer("satellite")) { map.setPaintProperty("satellite", "raster-saturation", baseStyle === "terrain" ? 0 : -0.34); map.setPaintProperty("satellite", "raster-contrast", baseStyle === "terrain" ? 0.14 : 0.02); map.setPaintProperty("satellite", "raster-opacity", baseStyle === "terrain" ? 0.56 : 0.42); }
 }
 
@@ -164,7 +164,7 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
         map.addLayer({ id: "national-population", type: "raster", source: "national-population", paint: { "raster-opacity": 0.56 } });
       }
 
-      map.addLayer({ id: "national-geology", type: "fill", source: "geology", paint: { "fill-color": "#87674e", "fill-opacity": 0.24 } });
+      // national-geology removed — no toggle, always-on, low-value overlay
       map.addLayer({ id: "national-state-fill", type: "fill", source: "states", paint: { "fill-color": "#cf4c3f", "fill-opacity": 0.035 } });
       map.addLayer({ id: "national-state-line", type: "line", source: "states", paint: { "line-color": "#24485a", "line-width": 1.15 } });
       map.addLayer({ id: "national-state-label", type: "symbol", source: "states", layout: { "text-field": ["get", "stateName"], "text-size": 9 }, paint: { "text-color": "#153847", "text-halo-color": "#ffffff", "text-halo-width": 1.1 } });
@@ -195,8 +195,8 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
         map.addLayer({ id: `national-sensitivity-${kind}-fill`, type: "fill", source: "sensitivity", filter: ["==", ["get", "hazard"], hazard], paint: { "fill-color": color, "fill-opacity": 0.19 } });
         map.addLayer({ id: `national-sensitivity-${kind}-line`, type: "line", source: "sensitivity", filter: ["==", ["get", "hazard"], hazard], paint: { "line-color": color, "line-width": 1.25, "line-dasharray": [3, 2] } });
       });
-      map.addLayer({ id: "national-sensitivity-combined", type: "fill", source: "sensitivity", paint: { "fill-color": "#a54b79", "fill-opacity": 0.12 } });
-      map.addLayer({ id: "roads", type: "line", source: "roads", paint: { "line-color": "#f3f7ef", "line-width": 1.35, "line-opacity": 0.82, "line-dasharray": [2.5, 2.5] } });
+      // national-sensitivity-combined removed — redundant with individual earthquake/landslide/flood toggles
+      map.addLayer({ id: "roads", type: "line", source: "roads", layout: { "visibility": "none" }, paint: { "line-color": "#f3f7ef", "line-width": 1.35, "line-opacity": 0.82, "line-dasharray": [2.5, 2.5] } });
       map.addLayer({ id: "relocation-route-glow", type: "line", source: "relocation-route", paint: { "line-color": "#ffffff", "line-width": 7, "line-opacity": 0.2, "line-blur": 1.4 } });
       map.addLayer({ id: "relocation-route-line", type: "line", source: "relocation-route", paint: { "line-color": "#ffffff", "line-width": 2.2, "line-opacity": 0.96, "line-dasharray": [1.1, 1.25] } });
       map.addLayer({ id: "relocation-route-destination", type: "circle", source: "relocation-destination", paint: { "circle-radius": 6, "circle-color": "#55d46b", "circle-stroke-color": "#ffffff", "circle-stroke-width": 2 } });
@@ -206,18 +206,16 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
       map.addLayer({ id: "selected-location-fill", type: "fill", source: "selected-location", paint: { "fill-color": "#2f8aa0", "fill-opacity": 0.12 } });
       map.addLayer({ id: "selected-location-line", type: "line", source: "selected-location", paint: { "line-color": "#155b75", "line-width": 2.2 } });
       map.addLayer({ id: "active-marker", type: "circle", source: "active-marker", paint: { "circle-radius": 9, "circle-color": "#1d788d", "circle-stroke-color": "#ffffff", "circle-stroke-width": 2.3 } });
-      map.addLayer({ id: "hazard-fill", type: "fill", source: "hazards", filter: ["!=", ["get", "type"], "Landslide"], paint: { "fill-color": ["match", ["get", "level"], "Critical", "#d9534f", "High", "#e58b3a", "Moderate", "#edc856", "#e58b3a"], "fill-opacity": 0.2 } });
-      map.addLayer({ id: "hazard-line", type: "line", source: "hazards", filter: ["!=", ["get", "type"], "Landslide"], paint: { "line-color": "#bc7041", "line-width": 1.2 } });
-      map.addLayer({ id: "landslide-fill", type: "fill", source: "hazards", filter: ["==", ["get", "type"], "Landslide"], paint: { "fill-color": "#bd3034", "fill-opacity": 0.2 } });
-      map.addLayer({ id: "landslide-line", type: "line", source: "hazards", filter: ["==", ["get", "type"], "Landslide"], paint: { "line-color": "#984b2d", "line-width": 1.2 } });
+      map.addLayer({ id: "hazard-fill", type: "fill", source: "hazards", layout: { "visibility": "none" }, filter: ["!=", ["get", "type"], "Landslide"], paint: { "fill-color": ["match", ["get", "level"], "Critical", "#d9534f", "High", "#e58b3a", "Moderate", "#edc856", "#e58b3a"], "fill-opacity": 0.2 } });
+      map.addLayer({ id: "hazard-line", type: "line", source: "hazards", layout: { "visibility": "none" }, filter: ["!=", ["get", "type"], "Landslide"], paint: { "line-color": "#bc7041", "line-width": 1.2 } });
+      map.addLayer({ id: "landslide-fill", type: "fill", source: "hazards", layout: { "visibility": "none" }, filter: ["==", ["get", "type"], "Landslide"], paint: { "fill-color": "#bd3034", "fill-opacity": 0.2 } });
+      map.addLayer({ id: "landslide-line", type: "line", source: "hazards", layout: { "visibility": "none" }, filter: ["==", ["get", "type"], "Landslide"], paint: { "line-color": "#984b2d", "line-width": 1.2 } });
       map.addLayer({ id: "population-points", type: "circle", source: "areas", paint: { "circle-radius": ["interpolate", ["linear"], ["get", "populationDensity"], 800, 5, 2200, 10, 5000, 17], "circle-color": ["get", "markerColor"], "circle-opacity": 0.78, "circle-stroke-color": "#f7fff5", "circle-stroke-width": 1.2 } });
       map.addLayer({ id: "selected-area-ring", type: "circle", source: "selected-area", paint: { "circle-radius": 15, "circle-color": "#ffffff", "circle-opacity": 0.18, "circle-stroke-color": "#ffffff", "circle-stroke-width": 2.2 } });
       map.addLayer({ id: "selected-area-core", type: "circle", source: "selected-area", paint: { "circle-radius": 7, "circle-color": "#ff4a4f", "circle-stroke-color": "#ffffff", "circle-stroke-width": 2.2 } });
       map.addLayer({ id: "assessment-labels", type: "symbol", source: "areas", layout: { "text-field": ["get", "name"], "text-size": 10, "text-offset": [0, 1.35], "text-anchor": "top" }, paint: { "text-color": "#ffffff", "text-halo-color": "#10232a", "text-halo-width": 1.4, "text-opacity": 0.92 } });
-      map.addLayer({ id: "vulnerable-points", type: "circle", source: "areas", paint: { "circle-radius": 10, "circle-color": "#975eae", "circle-opacity": 0.56 } });
-      map.addLayer({ id: "rainfall-points", type: "circle", source: "areas", paint: { "circle-radius": 8, "circle-color": "#247caa", "circle-opacity": 0.46 } });
-      map.addLayer({ id: "temperature-points", type: "circle", source: "areas", paint: { "circle-radius": 8, "circle-color": "#d65a3b", "circle-opacity": 0.46 } });
-      map.addLayer({ id: "aqi-points", type: "circle", source: "areas", paint: { "circle-radius": 8, "circle-color": "#ad8134", "circle-opacity": 0.48 } });
+      // vulnerable-points, rainfall-points, temperature-points, aqi-points removed
+      // — orphan layers with no toggle mapping, drawn from DIVA demo areas source (empty in India context mode)
       map.addLayer({ id: "infrastructure-points", type: "circle", source: "infrastructure", paint: { "circle-radius": 6, "circle-color": "#163e5b", "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.5 } });
 
       // Click handlers
