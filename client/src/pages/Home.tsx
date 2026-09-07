@@ -112,6 +112,9 @@ export default function Home() {
   const selectedContextLoading = Boolean(initialIndiaLocation.requested) && (indiaContextRequest.isLoading || (indiaContextRequest.isFetching && indiaContextRequest.data?.location.id !== indiaLocation.id));
   const mappedAreas = useMemo(() => filteredQuery.data ? filteredQuery.data.map(item => item.area) : allAreas, [allAreas, filteredQuery.data]);
   const searchResults = useMemo(() => search.trim().length > 1 ? allAreas.filter(area => `${area.name} ${area.district} ${area.id}`.toLowerCase().includes(search.toLowerCase())).slice(0, 6) : [], [allAreas, search]);
+  const headerSearchRef = useRef<HTMLDivElement>(null);
+  const [isHeaderSearchOpen, setIsHeaderSearchOpen] = useState(false);
+  const indiaHeaderSearch = trpc.diva.india.search.useQuery({ query: search }, { enabled: search.trim().length >= 2, staleTime: 15 * 60 * 1000 });
   const mapData = useMemo(() => mapQuery.data ? { ...mapQuery.data, center: [indiaLocation.longitude, indiaLocation.latitude] as [number, number], areas: mappedAreas, nationwide: nationwideMapQuery.data } : undefined, [indiaLocation.latitude, indiaLocation.longitude, mapQuery.data, mappedAreas, nationwideMapQuery.data]);
   const divaMapData = useMemo(() => mapData ? { ...mapData, activeLocation: mapLocationContext, nearbyInfrastructure: mapLocationContext?.infrastructure.items, environment: mapLocationContext ? { latitude: mapLocationContext.location.latitude, longitude: mapLocationContext.location.longitude, temperatureC: mapLocationContext.environment.temperatureC, precipitationMm: mapLocationContext.environment.precipitationMm, usAqi: mapLocationContext.environment.usAqi, status: mapLocationContext.environment.status } : environmentQuery.data ? { latitude: selectedCoordinates.latitude, longitude: selectedCoordinates.longitude, temperatureC: environmentQuery.data.temperatureC, precipitationMm: environmentQuery.data.precipitationMm, usAqi: environmentQuery.data.usAqi, status: environmentQuery.data.status } : undefined } : undefined, [environmentQuery.data, mapData, mapLocationContext, selectedCoordinates.latitude, selectedCoordinates.longitude]);
 
@@ -132,6 +135,16 @@ export default function Home() {
     retainedQueue.hidden = Boolean(mapLocationContext && workspace !== "capacity" && workspace !== "relocation" && workspace !== "reports");
     return () => { retainedQueue.hidden = false; };
   }, [dashboardQuery.data, mapLocationContext, workspace]);
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (headerSearchRef.current && !headerSearchRef.current.contains(event.target as Node)) {
+        setIsHeaderSearchOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   const selectArea = useCallback((id: string) => { setSelectedId(id); setSearch(""); setShowScenarioPanel(true); setWorkspace("map"); }, []);
   const toggleArray = <T extends string,>(value: T, current: T[], set: (values: T[]) => void) => set(current.includes(value) ? current.filter(item => item !== value) : [...current, value]);
   const handleArtifact = async (file?: File) => {
@@ -156,7 +169,104 @@ export default function Home() {
     <header className="sticky top-0 z-40 border-b border-[#e0e8eb] bg-[#fbfcfc]/95 backdrop-blur">
       <div className="flex h-[68px] items-center gap-4 px-4 lg:px-6">
         <div className="flex shrink-0 items-center gap-3"><div className="grid h-9 w-9 place-items-center rounded-xl bg-[#163c58] text-white shadow-[0_8px_18px_rgba(22,60,88,0.24)]"><div className="relative h-4 w-4"><span className="absolute inset-x-0 bottom-0 h-1.5 rounded-sm bg-[#80cbd6]" /><span className="absolute bottom-0 left-1.5 h-3 w-1.5 rounded-t-sm bg-white" /><span className="absolute bottom-0 right-1 h-2.5 w-1.5 rounded-t-sm bg-[#c0e5ea]" /></div></div><div className="hidden sm:block"><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#1f788d]">PS 191 · SIH</p><p className="text-sm font-bold tracking-tight text-[#15384f]">Akashvani</p></div></div>
-        <div className="relative mx-auto w-full max-w-[510px]"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#84949d]" /><Input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search an assessment area" className="h-10 rounded-xl border-[#dce6e9] bg-[#f6f9fa] pl-9 text-sm shadow-none focus-visible:ring-[#4894a5]" aria-label="Search assessment areas" />{searchResults.length > 0 && <div className="absolute top-11 z-50 w-full overflow-hidden rounded-xl border border-[#dce6e9] bg-white p-1.5 shadow-xl">{searchResults.map(result => <button key={result.id} onClick={() => selectArea(result.id)} className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left hover:bg-[#eff7f8]"><span><span className="block text-sm font-semibold text-[#274a60]">{result.name}</span><span className="block text-[11px] text-[#7a8994]">{result.district} · {result.population.toLocaleString()} people</span></span><MapPin className="h-4 w-4 text-[#1f788d]" /></button>)}</div>}</div>
+        <div ref={headerSearchRef} className="relative mx-auto w-full max-w-[510px]">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#84949d]" />
+          <Input
+            value={search}
+            onChange={event => {
+              setSearch(event.target.value);
+              setIsHeaderSearchOpen(true);
+            }}
+            onFocus={() => {
+              if (search.trim().length > 0) setIsHeaderSearchOpen(true);
+            }}
+            onKeyDown={event => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                if (indiaHeaderSearch.data && indiaHeaderSearch.data.length > 0) {
+                  const loc = indiaHeaderSearch.data[0];
+                  setIndiaLocation(loc);
+                  setLocationNotice(null);
+                  window.history.replaceState(null, "", buildIndiaLocationSearch(loc));
+                  setSearch("");
+                  setIsHeaderSearchOpen(false);
+                } else if (searchResults.length > 0) {
+                  selectArea(searchResults[0].id);
+                  setSearch("");
+                  setIsHeaderSearchOpen(false);
+                }
+              } else if (event.key === "Escape") {
+                setIsHeaderSearchOpen(false);
+              }
+            }}
+            placeholder="Search India: state, district, city, or area"
+            className="h-10 rounded-xl border-[#dce6e9] bg-[#f6f9fa] pl-9 pr-8 text-sm shadow-none focus-visible:ring-[#4894a5]"
+            aria-label="Search assessment areas"
+          />
+          {search.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearch("");
+                setIsHeaderSearchOpen(false);
+              }}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#84949d] hover:text-black"
+              aria-label="Clear search"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {isHeaderSearchOpen && (searchResults.length > 0 || (indiaHeaderSearch.data && indiaHeaderSearch.data.length > 0) || (search.trim().length >= 2 && indiaHeaderSearch.isLoading)) && (
+            <div className="absolute top-11 z-50 max-h-[420px] w-full overflow-y-auto rounded-xl border border-[#dce6e9] bg-white p-1.5 shadow-2xl">
+              {indiaHeaderSearch.isLoading && <p className="px-3 py-2 text-xs text-[#7a8994]">Searching Indian locations…</p>}
+              {indiaHeaderSearch.data && indiaHeaderSearch.data.length > 0 && (
+                <div className="mb-1">
+                  <p className="px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.1em] text-[#1f788d]">Indian Locations & Districts</p>
+                  {indiaHeaderSearch.data.map(item => (
+                    <button
+                      key={item.id}
+                      onClick={() => {
+                        setIndiaLocation(item);
+                        setLocationNotice(null);
+                        window.history.replaceState(null, "", buildIndiaLocationSearch(item));
+                        setSearch("");
+                        setIsHeaderSearchOpen(false);
+                      }}
+                      className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left hover:bg-[#eff7f8]"
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-xs font-semibold text-[#274a60]">{item.name}</span>
+                        <span className="block truncate text-[10px] text-[#7a8994]">{item.category} · {item.displayName}</span>
+                      </span>
+                      <MapPin className="ml-2 h-3.5 w-3.5 shrink-0 text-[#1f788d]" />
+                    </button>
+                  ))}
+                </div>
+              )}
+              {searchResults.length > 0 && (
+                <div>
+                  <p className="px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.1em] text-[#1f788d]">Assessment Areas</p>
+                  {searchResults.map(result => (
+                    <button
+                      key={result.id}
+                      onClick={() => {
+                        selectArea(result.id);
+                        setIsHeaderSearchOpen(false);
+                      }}
+                      className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left hover:bg-[#eff7f8]"
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-xs font-semibold text-[#274a60]">{result.name}</span>
+                        <span className="block truncate text-[10px] text-[#7a8994]">{result.district} · {result.population.toLocaleString()} people</span>
+                      </span>
+                      <MapPin className="ml-2 h-3.5 w-3.5 shrink-0 text-[#1f788d]" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
         <div className="ml-auto flex items-center gap-2"><div className="hidden items-center gap-1.5 rounded-full bg-[#e6f5ed] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.1em] text-[#267653] md:flex"><span className="h-1.5 w-1.5 rounded-full bg-[#2e9a67]" /> Demo mode</div><Button variant="outline" size="icon" onClick={() => setIsMobileNavOpen(true)} className="h-9 w-9 rounded-xl border-[#dbe5e8] bg-white text-[#476574] lg:hidden" aria-label="Open navigation"><Menu className="h-4 w-4" /></Button><Button variant="outline" size="icon" onClick={() => setIsMoreOpen(current => !current)} className="hidden h-9 w-9 rounded-xl border-[#dbe5e8] bg-white text-[#476574] sm:inline-flex" aria-label="More options"><MoreHorizontal className="h-4 w-4" /></Button></div>
       </div>
     </header>

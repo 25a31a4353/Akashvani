@@ -6,7 +6,10 @@ import {
   getStateByName,
   getStateByCode,
   type DistrictInfo,
+  STATE_CONFIGURATIONS,
+  stateConfigToLocation,
 } from "../../shared/india";
+import { ALL_REAL_DISTRICTS } from "./hazards/data/realDistricts";
 import { getEnvironmentalContext } from "./environment";
 import {
   resolveTerrain,
@@ -53,19 +56,55 @@ function fromOpenMeteo(item: OpenMeteoResult): IndiaLocation {
 export async function searchIndiaLocations(query: string): Promise<IndiaLocation[]> {
   const normalized = query.trim(); if (normalized.length < 2) return [];
   const key = normalized.toLowerCase(); const cached = cache.get(key); if (cached && cached.expiresAt > Date.now()) return cached.values;
+
+  // 1. Authoritative local district and state matches (instant 0ms response)
+  const localMatches: IndiaLocation[] = [];
+  for (const d of ALL_REAL_DISTRICTS) {
+    const distLower = d.district.toLowerCase();
+    const stateLower = d.state.toLowerCase();
+    if (distLower.includes(key) || (key.length >= 3 && stateLower.includes(key))) {
+      localMatches.push({
+        id: d.id,
+        name: d.district,
+        displayName: `${d.district}, ${d.state}, India`,
+        category: "District",
+        latitude: d.latitude,
+        longitude: d.longitude,
+        population: d.population ?? null,
+        populationSource: "Census of India 2011 / geoBoundaries ADM2",
+        boundingBox: null,
+        boundary: {
+          type: "Feature",
+          properties: { id: d.id, district: d.district, state: d.state, source: d.source },
+          geometry: d.geometry as { type: string; coordinates: unknown },
+        },
+        address: { state: d.state, district: d.district },
+        source: `Authoritative ADM2 District: ${d.source}`,
+      });
+      if (localMatches.length >= 6) break;
+    }
+  }
+
+  for (const cfg of Object.values(STATE_CONFIGURATIONS)) {
+    if (cfg.name.toLowerCase().includes(key) || cfg.code.toLowerCase() === key) {
+      localMatches.push(stateConfigToLocation(cfg));
+      if (localMatches.length >= 8) break;
+    }
+  }
+
   const params = new URLSearchParams({ q: `${normalized}, India`, format: "jsonv2", addressdetails: "1", polygon_geojson: "1", countrycodes: "in", limit: "6" });
   const geo = new URLSearchParams({ name: normalized, countryCode: "IN", count: "6", language: "en" });
   const [nominatim, openMeteo] = await Promise.allSettled([
-    fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, { headers: header, signal: AbortSignal.timeout(8000) }).then(async result => {
+    fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, { headers: header, signal: AbortSignal.timeout(4000) }).then(async result => {
       const parsed = await parseProviderJson<unknown>(result, []);
       return Array.isArray(parsed) ? parsed as NominatimResult[] : [];
     }),
-    fetch(`https://geocoding-api.open-meteo.com/v1/search?${geo.toString()}`, { signal: AbortSignal.timeout(8000) }).then(async result => {
+    fetch(`https://geocoding-api.open-meteo.com/v1/search?${geo.toString()}`, { signal: AbortSignal.timeout(4000) }).then(async result => {
       const parsed = await parseProviderJson<unknown>(result, { results: [] });
       return parsed && typeof parsed === "object" && Array.isArray((parsed as { results?: unknown }).results) ? parsed as { results: OpenMeteoResult[] } : { results: [] };
     }),
   ]);
-  const result: IndiaLocation[] = [];
+  const result: IndiaLocation[] = [...localMatches];
   if (nominatim.status === "fulfilled") result.push(...nominatim.value.filter(item => Number.isFinite(Number(item.lat)) && Number.isFinite(Number(item.lon))).map(fromNominatim));
   if (openMeteo.status === "fulfilled") result.push(...(openMeteo.value.results ?? []).map(fromOpenMeteo));
   const values = result.reduce<IndiaLocation[]>((output, item) => {
@@ -74,7 +113,7 @@ export async function searchIndiaLocations(query: string): Promise<IndiaLocation
     const existing = output[existingIndex];
     if (existing && existing.population === null && item.population !== null) output[existingIndex] = { ...existing, population: item.population, populationSource: item.populationSource, source: `${existing.source}; population: ${item.source}` };
     return output;
-  }, []).slice(0, 8);
+  }, []).slice(0, 10);
   cache.set(key, { expiresAt: Date.now() + 15 * 60 * 1000, values });
   return values;
 }
