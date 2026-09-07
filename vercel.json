@@ -3,6 +3,8 @@
   "outputDirectory": "dist/public",
   "installCommand": "pnpm install",
   "rewrites": [
+    { "source": "/api/trpc", "destination": "https://akashvani-production.up.railway.app/api/trpc" },
+    { "source": "/api/trpc/(.*)", "destination": "https://akashvani-production.up.railway.app/api/trpc/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

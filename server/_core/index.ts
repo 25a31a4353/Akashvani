@@ -36,10 +36,13 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
   // CORS — allow the configured frontend origin (set ALLOWED_ORIGIN on the backend host).
-  // In development (no ALLOWED_ORIGIN), falls back to "*" so localhost works unchanged.
+  // When ALLOWED_ORIGIN is "*" or unset, reflects the requesting origin so credentialed cross-origin fetches pass browser CORS policies.
   const allowedOrigin = process.env.ALLOWED_ORIGIN ?? "*";
   app.use((_req, res, next) => {
-    res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
+    const origin = _req.headers.origin;
+    const effectiveOrigin = allowedOrigin === "*" ? (origin || "*") : allowedOrigin;
+    res.setHeader("Access-Control-Allow-Origin", effectiveOrigin);
+    res.setHeader("Vary", "Origin");
     res.setHeader("Access-Control-Allow-Credentials", "true");
     res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization,x-trpc-source");

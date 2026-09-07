@@ -63,12 +63,16 @@ const trpcHeaders = () => {
   return {};
 };
 
-const trpcFetch = (input: RequestInfo | URL, init?: RequestInit) => globalThis.fetch(input, { ...(init ?? {}), credentials: "include" });
-
 // Allow the backend URL to be configured at build time.
 // On localhost, VITE_TRPC_URL is unset → falls back to same-origin "/api/trpc" (unchanged behaviour).
 // On Vercel, set VITE_TRPC_URL=https://<backend>.railway.app/api/trpc in Vercel project settings.
 const trpcUrl = import.meta.env.VITE_TRPC_URL ?? "/api/trpc";
+
+const trpcFetch = (input: RequestInfo | URL, init?: RequestInit) =>
+  globalThis.fetch(input, {
+    ...(init ?? {}),
+    credentials: trpcUrl.startsWith("http") ? "same-origin" : "include",
+  });
 
 const trpcClient = trpc.createClient({
   links: [
