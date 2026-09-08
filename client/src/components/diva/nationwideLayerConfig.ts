@@ -44,7 +44,7 @@ export const authoritativeHazardMapLayerVisibility = {
   redZones: ["hazard-redzone-fill", "hazard-redzone-line", "hazard-redzone-label"],
   facilities: ["hazard-facility-circle", "hazard-facility-label"],
   hospitals: ["hazard-hospital-circle", "hazard-hospital-label"],
-  routes: ["relocation-route-glow", "relocation-route-line", "relocation-origin-marker", "relocation-origin-label", "relocation-route-destination", "relocation-destination-label"],
+  routes: ["relocation-route-glow", "relocation-route-casing", "relocation-route-line", "relocation-origin-marker", "relocation-origin-label", "relocation-route-destination", "relocation-destination-label"],
   exposedHabitations: ["hazard-habitation-circle", "hazard-habitation-label"],
   boundaries: ["boundary-line", "district-fill", "district-line", "selected-location-fill", "selected-location-line"],
   infrastructure: ["infrastructure-points"],

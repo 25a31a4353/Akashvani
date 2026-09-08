@@ -147,29 +147,35 @@ export async function fetchRoadRoute(
     return cached.result;
   }
 
-  try {
-    const url = `https://router.project-osrm.org/route/v1/driving/${fromLon.toFixed(5)},${fromLat.toFixed(5)};${toLon.toFixed(5)},${toLat.toFixed(5)}?overview=false`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(2000) });
-    if (res.ok) {
-      const data = (await res.json()) as {
-        code: string;
-        routes?: Array<{ distance: number; duration: number }>;
-      };
-      if (data.code === "Ok" && data.routes && data.routes.length > 0) {
-        const routeDist = Number((data.routes[0].distance / 1000).toFixed(1));
-        const travelMins = Math.max(1, Math.round(data.routes[0].duration / 60));
-        const result: OsrmRouteResult = {
-          routeDistanceKm: routeDist,
-          travelTimeMinutes: travelMins,
-          distanceType: "ROAD_NETWORK",
-          accessibilityNote: `Road-network distance ${routeDist} km (${travelMins} mins travel time via OSRM routing engine). Straight-line: ${straightLineKm.toFixed(1)} km.`,
+  const endpoints = [
+    `https://routing.openstreetmap.de/routed-car/route/v1/driving/${fromLon.toFixed(5)},${fromLat.toFixed(5)};${toLon.toFixed(5)},${toLat.toFixed(5)}?overview=false`,
+    `https://router.project-osrm.org/route/v1/driving/${fromLon.toFixed(5)},${fromLat.toFixed(5)};${toLon.toFixed(5)},${toLat.toFixed(5)}?overview=false`,
+  ];
+
+  for (const url of endpoints) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(2500) });
+      if (res.ok) {
+        const data = (await res.json()) as {
+          code: string;
+          routes?: Array<{ distance: number; duration: number }>;
         };
-        routingCache.set(key, { expiresAt: Date.now() + ROUTING_CACHE_TTL_MS, result });
-        return result;
+        if (data.code === "Ok" && data.routes && data.routes.length > 0) {
+          const routeDist = Number((data.routes[0].distance / 1000).toFixed(1));
+          const travelMins = Math.max(1, Math.round(data.routes[0].duration / 60));
+          const result: OsrmRouteResult = {
+            routeDistanceKm: routeDist,
+            travelTimeMinutes: travelMins,
+            distanceType: "ROAD_NETWORK",
+            accessibilityNote: `Road-network distance ${routeDist} km (${travelMins} mins travel time via OSRM routing engine). Straight-line: ${straightLineKm.toFixed(1)} km.`,
+          };
+          routingCache.set(key, { expiresAt: Date.now() + ROUTING_CACHE_TTL_MS, result });
+          return result;
+        }
       }
+    } catch {
+      // Try next endpoint or fall back
     }
-  } catch {
-    // Graceful fallback to straight-line distance
   }
 
   const fallbackResult: OsrmRouteResult = {
@@ -200,42 +206,48 @@ export async function fetchRoadRouteWithGeometry(
     return cached.result;
   }
 
-  try {
-    const url = `https://router.project-osrm.org/route/v1/driving/${fromLon.toFixed(5)},${fromLat.toFixed(5)};${toLon.toFixed(5)},${toLat.toFixed(5)}?overview=full&geometries=geojson`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(3500) });
-    if (res.ok) {
-      const data = (await res.json()) as {
-        code: string;
-        routes?: Array<{
-          distance: number;
-          duration: number;
-          geometry?: { coordinates: number[][] };
-        }>;
-      };
-      if (data.code === "Ok" && data.routes && data.routes.length > 0) {
-        const primary = data.routes[0];
-        const routeDist = Number((primary.distance / 1000).toFixed(1));
-        const travelMins = Math.max(1, Math.round(primary.duration / 60));
-        const coords = primary.geometry?.coordinates ?? [];
-        if (coords.length > 0) {
-          const originLabel = fromName ?? "Vulnerable origin";
-          const destLabel = toName ?? "Relocation destination";
-          const result: OsrmRouteGeometryResult = {
-            coordinates: coords,
-            routeDistanceKm: routeDist,
-            travelTimeMinutes: travelMins,
-            distanceType: "ROAD_NETWORK",
-            source: "OSRM",
-            status: "OK",
-            note: `Verified road route via OSRM (${originLabel} → ${destLabel}): ${routeDist} km (~${travelMins} mins travel time). Follows verified road-network geometry.`,
-          };
-          geometryRoutingCache.set(key, { expiresAt: Date.now() + ROUTING_CACHE_TTL_MS, result });
-          return result;
+  const endpoints = [
+    `https://routing.openstreetmap.de/routed-car/route/v1/driving/${fromLon.toFixed(5)},${fromLat.toFixed(5)};${toLon.toFixed(5)},${toLat.toFixed(5)}?overview=full&geometries=geojson`,
+    `https://router.project-osrm.org/route/v1/driving/${fromLon.toFixed(5)},${fromLat.toFixed(5)};${toLon.toFixed(5)},${toLat.toFixed(5)}?overview=full&geometries=geojson`,
+  ];
+
+  for (const url of endpoints) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(3500) });
+      if (res.ok) {
+        const data = (await res.json()) as {
+          code: string;
+          routes?: Array<{
+            distance: number;
+            duration: number;
+            geometry?: { coordinates: number[][] };
+          }>;
+        };
+        if (data.code === "Ok" && data.routes && data.routes.length > 0) {
+          const primary = data.routes[0];
+          const routeDist = Number((primary.distance / 1000).toFixed(1));
+          const travelMins = Math.max(1, Math.round(primary.duration / 60));
+          const coords = primary.geometry?.coordinates ?? [];
+          if (coords.length > 0) {
+            const originLabel = fromName ?? "Vulnerable origin";
+            const destLabel = toName ?? "Relocation destination";
+            const result: OsrmRouteGeometryResult = {
+              coordinates: coords,
+              routeDistanceKm: routeDist,
+              travelTimeMinutes: travelMins,
+              distanceType: "ROAD_NETWORK",
+              source: "OSRM",
+              status: "OK",
+              note: `Verified road route via OSRM (${originLabel} → ${destLabel}): ${routeDist} km (~${travelMins} mins travel time). Follows verified road-network geometry.`,
+            };
+            geometryRoutingCache.set(key, { expiresAt: Date.now() + ROUTING_CACHE_TTL_MS, result });
+            return result;
+          }
         }
       }
+    } catch {
+      // Try next endpoint or fall back
     }
-  } catch {
-    // Graceful fallback — road network geometry is strictly not fabricated
   }
 
   const fallbackResult: OsrmRouteGeometryResult = {

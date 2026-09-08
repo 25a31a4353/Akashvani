@@ -187,6 +187,9 @@ export interface RedZoneAssessment {
   score: number; // 0–100 composite severity
   compositeScore: number; // Alias for score
   primaryHazard: HazardType;
+  secondaryHazards?: HazardType[];
+  primaryDriverReason?: string;
+  supportingEvidence?: string[];
   triggers: string[];
   explanation: string; // Human-readable rationale
   explainability: string; // Detailed audit trace

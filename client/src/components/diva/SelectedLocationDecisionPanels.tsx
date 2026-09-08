@@ -314,20 +314,45 @@ export function IndiaContextSidebar({ context, onOpenKeralaAssessment }: { conte
                 </span>
               </div>
 
-              <p className="text-[10px] leading-relaxed text-[#476371]">
-                <strong className="text-[#1c3c4b]">Primary Driver:</strong> {context.hazardProfile.redZone.primaryHazard}
-              </p>
+              <div className="rounded-lg bg-[#f8fafb] p-2 border border-[#e5eef0] space-y-1 text-[10px]">
+                <div>
+                  <strong className="text-[#1c3c4b]">Primary Driver:</strong>{" "}
+                  <span className="font-bold text-[#b91c1c]">{context.hazardProfile.redZone.primaryHazard}</span>
+                  {context.hazardProfile.redZone.primaryDriverReason && (
+                    <span className="block text-[9px] text-[#5a7380] mt-0.5">
+                      {context.hazardProfile.redZone.primaryDriverReason}
+                    </span>
+                  )}
+                </div>
+
+                {context.hazardProfile.redZone.secondaryHazards && context.hazardProfile.redZone.secondaryHazards.length > 0 && (
+                  <div className="pt-1 border-t border-[#e2edf0]">
+                    <strong className="text-[#1c3c4b]">Secondary Hazards:</strong>{" "}
+                    <span className="font-semibold text-[#b45309]">
+                      {context.hazardProfile.redZone.secondaryHazards.join(", ")}
+                    </span>
+                    {context.hazardProfile.redZone.supportingEvidence && context.hazardProfile.redZone.supportingEvidence.length > 0 && (
+                      <ul className="mt-0.5 list-disc pl-3 text-[8.5px] text-[#5a7380] space-y-0.5">
+                        {context.hazardProfile.redZone.supportingEvidence.map((ev, i) => (
+                          <li key={i}>{ev}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+              </div>
+
               <p className="text-[10px] leading-relaxed text-[#5a7380]">
                 {context.hazardProfile.redZone.explainability}
               </p>
 
               {/* Evidence Triggers */}
               {context.hazardProfile.redZone.triggers.length > 0 && (
-                <div className="space-y-1 rounded-lg bg-[#f8fafb] p-2">
+                <div className="space-y-1 rounded-lg bg-[#f8fafb] p-2 border border-[#e5eef0]">
                   <p className="text-[8.5px] font-bold uppercase tracking-[.08em] text-[#627d8b]">
                     Verified Triggers ({context.hazardProfile.redZone.triggers.length})
                   </p>
-                  {context.hazardProfile.redZone.triggers.slice(0, 3).map((trig, i) => (
+                  {context.hazardProfile.redZone.triggers.slice(0, 4).map((trig, i) => (
                     <div key={i} className="flex items-start gap-1.5 text-[9px] leading-snug text-[#375463]">
                       <span className="mt-0.5 text-[#e53935]">•</span>
                       <span>{trig}</span>
@@ -343,7 +368,7 @@ export function IndiaContextSidebar({ context, onOpenKeralaAssessment }: { conte
                   <span className="block font-medium text-[#375463]">
                     {context.hazardProfile.seismic.zone} (Z={context.hazardProfile.seismic.zoneFactor})
                   </span>
-                  <span className="text-[7.5px] text-[#78909c]">BIS IS 1893:2016</span>
+                  <span className="text-[7.5px] text-[#78909c]">BIS IS 1893:2016 (Regulatory baseline)</span>
                 </div>
                 <div className="rounded border border-[#e5eef0] bg-[#fdfefe] p-1.5">
                   <span className="font-bold text-[#1e788f]">Landslide Rank</span>
@@ -357,14 +382,14 @@ export function IndiaContextSidebar({ context, onOpenKeralaAssessment }: { conte
                   <span className="block truncate font-medium text-[#375463]">
                     {context.hazardProfile.flood.nearestCwcGauge?.stationName ?? "None within 50km"}
                   </span>
-                  <span className="text-[7.5px] text-[#78909c]">CWC Flood Network</span>
+                  <span className="text-[7.5px] text-[#78909c]">CWC Official Network</span>
                 </div>
                 <div className="rounded border border-[#e5eef0] bg-[#fdfefe] p-1.5">
                   <span className="font-bold text-[#1e788f]">Cyclone / Coast</span>
                   <span className="block font-medium text-[#375463]">
                     {context.hazardProfile.cyclone.coastalVulnerabilityClass}
                   </span>
-                  <span className="text-[7.5px] text-[#78909c]">IBTrACS / IMD</span>
+                  <span className="text-[7.5px] text-[#78909c]">IBTrACS / IMD (Historical buffer)</span>
                 </div>
               </div>
             </div>

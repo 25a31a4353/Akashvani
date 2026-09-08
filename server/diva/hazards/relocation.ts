@@ -45,6 +45,10 @@ import {
   RELOCATION_CONDITIONAL_ROLES,
   RELOCATION_ELIGIBLE_ROLES,
 } from "../../../shared/hazards";
+export {
+  RELOCATION_CONDITIONAL_ROLES,
+  RELOCATION_ELIGIBLE_ROLES,
+};
 
 // ─── Score component calculators ─────────────────────────────────────────────
 

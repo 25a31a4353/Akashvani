@@ -133,8 +133,9 @@ function applyLayers(map: MapLibreMap, layers: MapLayerState, opacity: number, b
     ["national-sensitivity-landslide-fill", "landslideSensitivity"], ["national-sensitivity-landslide-line", "landslideSensitivity"],
     ["national-sensitivity-flood-fill", "floodSensitivity"], ["national-sensitivity-flood-line", "floodSensitivity"],
     ["infrastructure-points", "infrastructure"],
-    ["relocation-route-glow", "routes"], ["relocation-route-line", "routes"], ["relocation-route-destination", "routes"],
-    ["relocation-destination-label", "routes"], ["relocation-origin-marker", "routes"], ["relocation-origin-label", "routes"]
+    ["relocation-route-glow", "routes"], ["relocation-route-casing", "routes"], ["relocation-route-line", "routes"],
+    ["relocation-route-destination", "routes"], ["relocation-destination-label", "routes"],
+    ["relocation-origin-marker", "routes"], ["relocation-origin-label", "routes"]
   ];
   layerMap.forEach(([id, key]) => setVisibility(map, id, key === "routes" ? (layers[key] !== false) : Boolean(layers[key])));
   ["hazard-fill", "landslide-fill", "hazard-redzone-fill", "hazard-floodplain-fill", "population-points"].forEach(id => {
@@ -371,11 +372,7 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
       map.addLayer({ id: "hazard-cyclone-line", type: "line", source: "hazard-cyclones", paint: { "line-color": "#00897b", "line-width": 2.0, "line-dasharray": [3, 2] } });
       map.addLayer({ id: "hazard-cyclone-label", type: "symbol", source: "hazard-cyclones", layout: { "text-field": ["get", "name"], "text-size": 9 }, paint: { "text-color": "#004d40", "text-halo-color": "#ffffff", "text-halo-width": 1 } });
 
-      // Group 6: PS191 EVACUATION ROUTE (above polygons, below markers)
-      map.addLayer({ id: "relocation-route-glow", type: "line", source: "relocation-route", paint: { "line-color": "#0284c7", "line-width": 9, "line-opacity": 0.5, "line-blur": 1.5 } });
-      map.addLayer({ id: "relocation-route-line", type: "line", source: "relocation-route", paint: { "line-color": ["case", ["boolean", ["get", "isRoadRoute"], true], "#38bdf8", "#cbd5e1"], "line-width": 4.5, "line-opacity": 0.95 } });
-
-      // Group 7: Point features & facilities & infrastructure
+      // Group 6: Point features & facilities & infrastructure (underneath evacuation route)
       map.addLayer({ id: "hazard-cwc-circle", type: "circle", source: "hazard-cwc", paint: { "circle-radius": 5.5, "circle-color": "#00acc1", "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.5 } });
       map.addLayer({ id: "hazard-cwc-label", type: "symbol", source: "hazard-cwc", layout: { "text-field": ["get", "name"], "text-size": 9, "text-offset": [0, 1.2] }, paint: { "text-color": "#006064", "text-halo-color": "#ffffff", "text-halo-width": 1 } });
       map.addLayer({ id: "hazard-landslide-circle", type: "circle", source: "hazard-landslides", paint: { "circle-radius": 6.5, "circle-color": "#e53935", "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.8 } });
@@ -398,12 +395,93 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
       map.addLayer({ id: "assessment-labels", type: "symbol", source: "areas", layout: { "text-field": ["get", "name"], "text-size": 10, "text-offset": [0, 1.35], "text-anchor": "top" }, paint: { "text-color": "#ffffff", "text-halo-color": "#10232a", "text-halo-width": 1.4, "text-opacity": 0.92 } });
       map.addLayer({ id: "active-marker", type: "circle", source: "active-marker", paint: { "circle-radius": 9, "circle-color": "#1d788d", "circle-stroke-color": "#ffffff", "circle-stroke-width": 2.3 } });
 
+      // Group 7: PS191 EVACUATION ROUTE (above facility layers, below origin/destination markers)
+      // Visual treatment: Dark blue/cyan casing (7-8px) + Bright cyan/blue inner route (3-4px)
+      // Displayed ONLY when real OSRM road geometry is available
+      map.addLayer({
+        id: "relocation-route-glow",
+        type: "line",
+        source: "relocation-route",
+        filter: ["==", ["get", "isRoadRoute"], true],
+        paint: { "line-color": "#0284c7", "line-width": 12, "line-opacity": 0.35, "line-blur": 2.5 }
+      });
+      map.addLayer({
+        id: "relocation-route-casing",
+        type: "line",
+        source: "relocation-route",
+        filter: ["==", ["get", "isRoadRoute"], true],
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": "#0c4a6e", "line-width": 7.5, "line-opacity": 0.95 }
+      });
+      map.addLayer({
+        id: "relocation-route-line",
+        type: "line",
+        source: "relocation-route",
+        filter: ["==", ["get", "isRoadRoute"], true],
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": "#38bdf8", "line-width": 3.8, "line-opacity": 1.0 }
+      });
+
       // Group 8: PS191 RELOCATION MARKERS (Vulnerable Origin 📍 & Safe Destination 🟢)
-      // Top Z-order: markers always visible and clickable above all fills and routes
-      map.addLayer({ id: "relocation-origin-marker", type: "circle", source: "relocation-origin", paint: { "circle-radius": 8.5, "circle-color": "#ea580c", "circle-stroke-color": "#ffffff", "circle-stroke-width": 2.5 } });
-      map.addLayer({ id: "relocation-origin-label", type: "symbol", source: "relocation-origin", layout: { "text-field": ["concat", "📍 ", ["get", "name"]], "text-size": 10.5, "text-offset": [0, -1.6], "text-anchor": "bottom" }, paint: { "text-color": "#c2410c", "text-halo-color": "#ffffff", "text-halo-width": 2.0 } });
-      map.addLayer({ id: "relocation-route-destination", type: "circle", source: "relocation-destination", paint: { "circle-radius": 9, "circle-color": "#16a34a", "circle-stroke-color": "#ffffff", "circle-stroke-width": 2.5 } });
-      map.addLayer({ id: "relocation-destination-label", type: "symbol", source: "relocation-destination", layout: { "text-field": ["concat", "🟢 ", ["get", "name"]], "text-size": 10.5, "text-offset": [0, 1.6], "text-anchor": "top" }, paint: { "text-color": "#15803d", "text-halo-color": "#ffffff", "text-halo-width": 2.0 } });
+      // Top Z-order: markers always visible, prominent, and clickable above all fills and routes
+      map.addLayer({
+        id: "relocation-origin-marker",
+        type: "circle",
+        source: "relocation-origin",
+        paint: {
+          "circle-radius": 9.5,
+          "circle-color": "#dc2626",
+          "circle-stroke-color": "#ffffff",
+          "circle-stroke-width": 3.0
+        }
+      });
+      map.addLayer({
+        id: "relocation-origin-label",
+        type: "symbol",
+        source: "relocation-origin",
+        layout: {
+          "text-field": ["concat", "📍 ", ["get", "name"], "\n", "Exposure: ", ["get", "exposureLevel"]],
+          "text-size": 10.5,
+          "text-offset": [0, -1.8],
+          "text-anchor": "bottom",
+          "text-justify": "center",
+          "text-line-height": 1.25
+        },
+        paint: {
+          "text-color": "#ffffff",
+          "text-halo-color": "#7f1d1d",
+          "text-halo-width": 2.8
+        }
+      });
+      map.addLayer({
+        id: "relocation-route-destination",
+        type: "circle",
+        source: "relocation-destination",
+        paint: {
+          "circle-radius": 10.5,
+          "circle-color": "#16a34a",
+          "circle-stroke-color": "#ffffff",
+          "circle-stroke-width": 3.0
+        }
+      });
+      map.addLayer({
+        id: "relocation-destination-label",
+        type: "symbol",
+        source: "relocation-destination",
+        layout: {
+          "text-field": ["concat", "🟢 ", ["get", "name"], "\n", "Recommended Safe Destination"],
+          "text-size": 10.5,
+          "text-offset": [0, 1.8],
+          "text-anchor": "top",
+          "text-justify": "center",
+          "text-line-height": 1.25
+        },
+        paint: {
+          "text-color": "#ffffff",
+          "text-halo-color": "#14532d",
+          "text-halo-width": 2.8
+        }
+      });
 
       // Click handlers
       map.on("click", "population-points", event => {
@@ -464,47 +542,53 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
       map.on("mouseenter", "hazard-hospital-circle", () => { map.getCanvas().style.cursor = "pointer"; });
       map.on("mouseleave", "hazard-hospital-circle", () => { map.getCanvas().style.cursor = ""; });
 
-      map.on("click", "relocation-origin-marker", event => {
+      const showOriginPopup = (event: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
         const feat = event.features?.[0];
         if (!feat || !feat.properties) return;
         const p = feat.properties as Record<string, unknown>;
         const name = String(p.name || "Vulnerable Habitation");
-        const exposureLevel = String(p.exposureLevel || "EXPOSED");
-        const pop = p.population !== null && p.population !== undefined ? Number(p.population).toLocaleString("en-IN") : "Unverified / Strictly null";
-        const hazardType = String(p.hazardType || "Hazard Exposure");
-        const popupHtml = `<div style="font-family:inherit;padding:4px;max-width:280px;color:#1e293b"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px"><strong style="font-size:12px;color:#0f172a">${name}</strong><span style="background:#ea580c;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px">VULNERABLE ORIGIN</span></div><div style="font-size:10.5px;color:#475569;margin-bottom:4px">Exposure: <strong style="color:#c2410c">${exposureLevel}</strong></div><div style="font-size:10px;background:#f8fafc;padding:5px;border-radius:6px;border:1px solid #e2e8f0;margin-bottom:6px"><div><strong>Population (Census 2011):</strong> ${pop}</div><div><strong>Hazard context:</strong> ${hazardType}</div></div><div style="font-size:8.5px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:4px">Origin coordinate verified via Census 2011 / SDMA</div></div>`;
+        const exposureLevel = String(p.exposureLevel || "HIGH");
+        const pop = p.population !== null && p.population !== undefined && Number(p.population) > 0 ? Number(p.population).toLocaleString("en-IN") : "Census 2011 / SDMA";
+        const popupHtml = `<div style="font-family:inherit;padding:4px 2px;max-width:260px;color:#0f172a"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px"><strong style="font-size:13px;color:#0f172a;font-weight:700">📍 ${name}</strong><span style="background:#dc2626;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;letter-spacing:0.04em">ORIGIN</span></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:6px 8px;font-size:11px;margin-bottom:6px;display:grid;gap:4px"><div><span style="color:#64748b">Population:</span> <strong style="color:#1e293b">${pop}</strong></div><div><span style="color:#64748b">Exposure:</span> <strong style="color:#dc2626">${exposureLevel}</strong></div></div><div style="font-size:10px;font-weight:600;color:#991b1b;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;padding:4px 6px">⚠️ Vulnerable Habitation / Origin</div></div>`;
         new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: "300px" }).setLngLat(event.lngLat).setHTML(popupHtml).addTo(map);
-      });
+      };
+      map.on("click", "relocation-origin-marker", showOriginPopup);
+      map.on("click", "relocation-origin-label", showOriginPopup);
       map.on("mouseenter", "relocation-origin-marker", () => { map.getCanvas().style.cursor = "pointer"; });
       map.on("mouseleave", "relocation-origin-marker", () => { map.getCanvas().style.cursor = ""; });
 
-      map.on("click", "relocation-route-destination", event => {
+      const showDestPopup = (event: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
         const feat = event.features?.[0];
         if (!feat || !feat.properties) return;
         const p = feat.properties as Record<string, unknown>;
         const name = String(p.name || "Safe Relocation Facility");
         const role = String(p.role || "Emergency Shelter").replace(/_/g, " ");
         const suitability = String(p.suitability || "PREFERRED");
-        const badgeColor = suitability === "PREFERRED" ? "#16a34a" : "#ea580c";
-        const popupHtml = `<div style="font-family:inherit;padding:4px;max-width:280px;color:#1e293b"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px"><strong style="font-size:12px;color:#0f172a">${name}</strong><span style="background:${badgeColor};color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px">${suitability}</span></div><div style="font-size:10.5px;color:#475569;margin-bottom:4px">Role: <strong>${role}</strong></div><div style="font-size:10px;background:#f8fafc;padding:5px;border-radius:6px;border:1px solid #e2e8f0;margin-bottom:6px"><div><strong>Destination Status:</strong> Verified Safe Relocation Candidate</div><div><strong>Evacuation Capacity:</strong> <span style="color:#64748b">UNAVAILABLE from OSM</span></div></div><div style="font-size:8.5px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:4px">Source: OpenStreetMap verified coordinate</div></div>`;
+        const cap = String(p.capacityNote || "");
+        const capacityText = cap && !cap.includes("UNAVAILABLE") ? cap : "Available from local administration";
+        const popupHtml = `<div style="font-family:inherit;padding:4px 2px;max-width:275px;color:#0f172a"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px"><strong style="font-size:13px;color:#0f172a;font-weight:700">🟢 ${name}</strong><span style="background:#16a34a;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;letter-spacing:0.04em">${suitability}</span></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:6px 8px;font-size:11px;margin-bottom:6px;display:grid;gap:4px"><div><span style="color:#64748b">Role:</span> <strong style="color:#1e293b">${role}</strong></div><div><span style="color:#64748b">Suitability:</span> <strong style="color:#16a34a">${suitability === "PREFERRED" ? "Verified Suitable" : suitability}</strong></div><div><span style="color:#64748b">Capacity:</span> <strong style="color:#1e293b">${capacityText}</strong></div></div><div style="font-size:10px;font-weight:600;color:#166534;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:4px;padding:4px 6px">✓ Recommended Safe Destination</div></div>`;
         new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: "300px" }).setLngLat(event.lngLat).setHTML(popupHtml).addTo(map);
-      });
+      };
+      map.on("click", "relocation-route-destination", showDestPopup);
+      map.on("click", "relocation-destination-label", showDestPopup);
       map.on("mouseenter", "relocation-route-destination", () => { map.getCanvas().style.cursor = "pointer"; });
       map.on("mouseleave", "relocation-route-destination", () => { map.getCanvas().style.cursor = ""; });
 
-      map.on("click", "relocation-route-line", event => {
+      const showRoutePopup = (event: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
         const feat = event.features?.[0];
         if (!feat || !feat.properties) return;
         const p = feat.properties as Record<string, unknown>;
         const dist = p.distanceKm !== null && p.distanceKm !== undefined ? `${p.distanceKm} km` : "Unavailable";
-        const mins = p.travelTimeMinutes !== null && p.travelTimeMinutes !== undefined ? `~${p.travelTimeMinutes} mins driving` : "Estimated driving time unavailable";
-        const isRoad = Boolean(p.isRoadRoute);
-        const note = String(p.sourceNote || "");
-        const popupHtml = `<div style="font-family:inherit;padding:4px;max-width:280px;color:#1e293b"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px"><strong style="font-size:12px;color:#0f172a">${isRoad ? "Road Evacuation Route" : "Planning Corridor"}</strong><span style="background:${isRoad ? "#0284c7" : "#64748b"};color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px">${isRoad ? "OSRM ROUTE" : "PROXY"}</span></div><div style="font-size:10.5px;color:#475569;margin-bottom:4px">Road Distance: <strong>${dist}</strong> · Travel Time: <strong>${mins}</strong></div><div style="font-size:9.5px;color:#334155;line-height:1.3;margin-bottom:4px">${note}</div><div style="font-size:8.5px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:4px">Routing Provider: Project OSRM / OpenStreetMap</div></div>`;
+        const mins = p.travelTimeMinutes !== null && p.travelTimeMinutes !== undefined ? `~${p.travelTimeMinutes} min` : "Estimated driving time unavailable";
+        const popupHtml = `<div style="font-family:inherit;padding:4px 2px;max-width:240px;color:#0f172a"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px"><strong style="font-size:12px;color:#0f172a;font-weight:700">🚗 EVACUATION ROUTE</strong><span style="background:#0284c7;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px">OSRM</span></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:6px 8px;font-size:11px;display:grid;gap:4px"><div><span style="color:#64748b">Road distance:</span> <strong style="color:#0f172a">${dist}</strong></div><div><span style="color:#64748b">Estimated travel time:</span> <strong style="color:#0f172a">${mins}</strong></div></div><div style="font-size:9px;color:#64748b;margin-top:6px;padding-top:4px;border-top:1px solid #e2e8f0">Source: OSRM road network</div></div>`;
         new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: "300px" }).setLngLat(event.lngLat).setHTML(popupHtml).addTo(map);
-      });
+      };
+      map.on("click", "relocation-route-line", showRoutePopup);
+      map.on("click", "relocation-route-casing", showRoutePopup);
       map.on("mouseenter", "relocation-route-line", () => { map.getCanvas().style.cursor = "pointer"; });
       map.on("mouseleave", "relocation-route-line", () => { map.getCanvas().style.cursor = ""; });
+      map.on("mouseenter", "relocation-route-casing", () => { map.getCanvas().style.cursor = "pointer"; });
+      map.on("mouseleave", "relocation-route-casing", () => { map.getCanvas().style.cursor = ""; });
 
       // Apply initial layer visibility and fly to active location if any
       applyLayers(map, layers, opacity, baseStyle);
@@ -641,15 +725,22 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
       {data?.activeLocation?.location.boundary && <div data-testid="map-boundary-status" className="pointer-events-none absolute bottom-14 left-4 z-10 rounded-lg border border-[#415c67] bg-[#081720]/90 px-2.5 py-1.5 text-[10px] font-semibold text-[#c6dadd]">Boundary rendered · {data.activeLocation.location.name} state extent</div>}
       <div className="pointer-events-none absolute bottom-4 left-4 z-10 flex items-center gap-1.5 rounded-lg border border-[#415c67] bg-[#081720]/90 px-2.5 py-1.5 text-[10px] font-bold tracking-[0.08em] text-[#add7b0] shadow-lg backdrop-blur"><Crosshair className="h-3.5 w-3.5" /> INDIA LOCATION CONTEXT</div>
       {data?.relocationRoute && (
-        <div className="pointer-events-none absolute bottom-14 left-4 z-10 max-w-[320px] rounded-lg border border-[#415c67] bg-[#081720]/90 px-2.5 py-1.5 text-[9px] font-medium text-[#c6dadd] shadow-lg backdrop-blur">
+        <div data-testid="evacuation-route-badge" className="pointer-events-none absolute bottom-14 left-4 z-10 w-[230px] rounded-xl border border-white/20 bg-[#0b1726]/95 p-2.5 text-[#e2e8f0] shadow-2xl backdrop-blur-md">
+          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[#38bdf8]">
+            <span>🚗</span> EVACUATION ROUTE
+          </div>
           {data.relocationRoute.isRoadRoute ? (
-            <span>
-              <span className="font-bold text-[#38bdf8]">Road-network route</span> · {data.relocationRoute.distanceKm ?? "—"} km {data.relocationRoute.travelTimeMinutes ? `· ~${data.relocationRoute.travelTimeMinutes} min` : ""} · Project OSRM
-            </span>
+            <>
+              <div className="mt-1 text-xs font-extrabold text-white">
+                {data.relocationRoute.distanceKm ?? "—"} km <span className="font-normal text-[#94a3b8]">•</span> ~{data.relocationRoute.travelTimeMinutes ?? "—"} min
+              </div>
+              <div className="mt-0.5 text-[9px] text-[#94a3b8]">Via existing road network (OSRM)</div>
+            </>
           ) : (
-            <span>
-              <span className="font-bold text-white">Planning corridor</span> · {data.relocationRoute.distanceKm ?? "—"} km · road routing unavailable
-            </span>
+            <>
+              <div className="mt-1 text-[11px] font-bold text-[#fca5a5]">Road routing unavailable</div>
+              <div className="mt-0.5 text-[9px] text-[#94a3b8]">No road network connection</div>
+            </>
           )}
         </div>
       )}

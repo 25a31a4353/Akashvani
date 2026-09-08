@@ -123,97 +123,127 @@ export function evaluateRedZone(
 ): RedZoneAssessment {
   const triggers: string[] = [];
   let score = 20; // Baseline low risk score
-  let primaryHazard: HazardType = "FLOOD";
-  let maxHazardScore = 0;
+  const hazardContributions: Array<{ hazard: HazardType; score: number; reason: string; trigger: string }> = [];
 
   // 1. Flood Criteria
   if (flood.status === "CRITICAL") {
     score += 55;
-    triggers.push("[HISTORICAL_FLOODPLAIN] Critical Flood Hazard: Located inside annual riverine flood inundation corridor with low elevation");
-    if (55 > maxHazardScore) { maxHazardScore = 55; primaryHazard = "FLOOD"; }
+    const trigger = "[HISTORICAL_FLOODPLAIN] Critical Flood Hazard: Located inside annual riverine flood inundation corridor with low elevation";
+    triggers.push(trigger);
+    hazardContributions.push({ hazard: "FLOOD", score: 55, reason: "Located inside annual riverine flood inundation corridor and CWC flood watch network", trigger });
   } else if (flood.status === "HIGH") {
     score += 35;
-    triggers.push("[HISTORICAL_FLOODPLAIN] High Flood Risk: Inside multi-year flood plain or within 15 km of river gauge with low terrain relief");
-    if (35 > maxHazardScore) { maxHazardScore = 35; primaryHazard = "FLOOD"; }
+    const trigger = "[HISTORICAL_FLOODPLAIN] High Flood Risk: Inside multi-year flood plain or within 15 km of river gauge with low terrain relief";
+    triggers.push(trigger);
+    hazardContributions.push({ hazard: "FLOOD", score: 35, reason: "Inside multi-year flood plain or proximal to monitored CWC river gauge", trigger });
   } else if (flood.status === "MODERATE") {
     score += 18;
     triggers.push("Moderate Flood Exposure: Regional floodplain buffer");
+    hazardContributions.push({ hazard: "FLOOD", score: 18, reason: "Regional riverine floodplain buffer", trigger: "Moderate Flood Exposure: Regional floodplain buffer" });
   }
 
   // 2. Landslide Criteria
   if (landslide.status === "CRITICAL") {
     score += 60;
+    const trigger = `[CRITICAL_LANDSLIDE_HAZARD] Critical Landslide Hazard: Steep slope (${landslide.slopeDegrees ?? "—"}°) in high-vulnerability hill zone`;
     if (landslide.nearestEvent && (landslide.nearestEvent.distanceKm ?? 999) <= 12) {
       triggers.push(`[HISTORICAL_LANDSLIDE_IMPACT] Landslide ground zero: within ${landslide.nearestEvent.distanceKm} km of catastrophic event (${landslide.nearestEvent.name})`);
     }
     if (landslide.districtRank && landslide.districtRank <= 15) {
       triggers.push(`[ISRO_LANDSLIDE_RANK_TOP15] ISRO Landslide Atlas Rank #${landslide.districtRank}/147 in India`);
     }
-    triggers.push(`[CRITICAL_LANDSLIDE_HAZARD] Critical Landslide Hazard: Steep slope (${landslide.slopeDegrees ?? "—"}°) in high-vulnerability hill zone`);
-    if (60 > maxHazardScore) { maxHazardScore = 60; primaryHazard = "LANDSLIDE"; }
+    triggers.push(trigger);
+    hazardContributions.push({ hazard: "LANDSLIDE", score: 60, reason: `Steep slope (${landslide.slopeDegrees ?? "—"}°) and ISRO Landslide Atlas Rank #${landslide.districtRank ?? "—"}/147`, trigger });
   } else if (landslide.status === "HIGH") {
     score += 40;
+    const trigger = `[HIGH_LANDSLIDE_HAZARD] High Landslide Susceptibility: ISRO ${landslide.susceptibilityClass} tier or slope >= 25°`;
     if (landslide.districtRank && landslide.districtRank <= 15) {
       triggers.push(`[ISRO_LANDSLIDE_RANK_TOP15] ISRO Landslide Atlas Rank #${landslide.districtRank}/147`);
     }
-    triggers.push(`[HIGH_LANDSLIDE_HAZARD] High Landslide Susceptibility: ISRO ${landslide.susceptibilityClass} tier or slope >= 25°`);
-    if (40 > maxHazardScore) { maxHazardScore = 40; primaryHazard = "LANDSLIDE"; }
+    triggers.push(trigger);
+    hazardContributions.push({ hazard: "LANDSLIDE", score: 40, reason: `ISRO high susceptibility tier and slope >= 25°`, trigger });
   } else if (landslide.status === "MODERATE") {
     score += 15;
     triggers.push("Moderate Landslide Exposure: Hilly terrain buffer");
+    hazardContributions.push({ hazard: "LANDSLIDE", score: 15, reason: "Hilly terrain buffer", trigger: "Moderate Landslide Exposure: Hilly terrain buffer" });
   }
 
   // 3. Riverbank Erosion Criteria (Dedicated Layer)
   if (erosion.status === "CRITICAL") {
     score += 50;
-    triggers.push(`[ACTIVE_EROSION_CORRIDOR] Critical Riverbank Erosion: Inside active 250m bank migration corridor of ${erosion.riverSystem ?? "river"}`);
-    if (50 > maxHazardScore) { maxHazardScore = 50; primaryHazard = "RIVERBANK_EROSION"; }
+    const trigger = `[ACTIVE_EROSION_CORRIDOR] Critical Riverbank Erosion: Inside active 250m bank migration corridor of ${erosion.riverSystem ?? "river"}`;
+    triggers.push(trigger);
+    hazardContributions.push({ hazard: "RIVERBANK_EROSION", score: 50, reason: `Active 250m bank migration corridor of ${erosion.riverSystem ?? "river"}`, trigger });
   } else if (erosion.status === "HIGH") {
     score += 30;
-    triggers.push(`[ACTIVE_EROSION_CORRIDOR] High Bank Erosion Warning: Within 800m of migrating ${erosion.riverSystem ?? "river"} reach`);
-    if (30 > maxHazardScore) { maxHazardScore = 30; primaryHazard = "RIVERBANK_EROSION"; }
+    const trigger = `[ACTIVE_EROSION_CORRIDOR] High Bank Erosion Warning: Within 800m of migrating ${erosion.riverSystem ?? "river"} reach`;
+    triggers.push(trigger);
+    hazardContributions.push({ hazard: "RIVERBANK_EROSION", score: 30, reason: `Within 800m of migrating ${erosion.riverSystem ?? "river"} reach`, trigger });
   }
 
   // 4. Cyclone & Coastal Criteria
   if (cyclone.status === "CRITICAL") {
     score += 45;
-    triggers.push(`[CYCLONE_COASTAL_SURGE] Critical Coastal Surge Hazard: Low-elevation shoreline (${cyclone.elevationMeters ?? "—"}m) within 50 km of severe cyclone landfall`);
-    if (45 > maxHazardScore) { maxHazardScore = 45; primaryHazard = "CYCLONE"; }
+    const trigger = `[CYCLONE_COASTAL_SURGE] Critical Coastal Surge Hazard: Low-elevation shoreline (${cyclone.elevationMeters ?? "—"}m) within 50 km of severe cyclone landfall (Fine-grained cyclone hazard footprint unavailable; based on IMD/IBTrACS historical coastal buffer)`;
+    triggers.push(trigger);
+    hazardContributions.push({ hazard: "CYCLONE", score: 45, reason: `Low-elevation shoreline (${cyclone.elevationMeters ?? "—"}m) within 50 km of severe cyclone landfall`, trigger });
   } else if (cyclone.status === "HIGH") {
     score += 30;
-    triggers.push(`[CYCLONE_COASTAL_SURGE] High Cyclone Exposure: Coastal proximity (${cyclone.distanceToCoastKm ?? "—"} km) in active storm track zone`);
-    if (30 > maxHazardScore) { maxHazardScore = 30; primaryHazard = "CYCLONE"; }
+    const trigger = `[CYCLONE_COASTAL_SURGE] High Cyclone Exposure: Coastal proximity (${cyclone.distanceToCoastKm ?? "—"} km) in active storm track zone (Fine-grained cyclone hazard footprint unavailable; based on IMD/IBTrACS historical coastal buffer)`;
+    triggers.push(trigger);
+    hazardContributions.push({ hazard: "CYCLONE", score: 30, reason: `Coastal proximity (${cyclone.distanceToCoastKm ?? "—"} km) in active storm track zone`, trigger });
   } else if (cyclone.status === "MODERATE") {
     score += 12;
-    triggers.push("Moderate Maritime / Cyclone influence");
+    triggers.push("Moderate Maritime / Cyclone influence (Fine-grained cyclone hazard footprint unavailable)");
+    hazardContributions.push({ hazard: "CYCLONE", score: 12, reason: "Moderate maritime / coastal influence", trigger: "Moderate Maritime / Cyclone influence" });
   }
 
-  // 5. Seismic Criteria (BIS IS 1893:2016)
+  // 5. Seismic Criteria (BIS IS 1893:2016) — Engineering / Regulatory Baseline
   if (seismic.zone === "ZONE_V") {
     score += 28;
-    triggers.push("[SEISMIC_ZONE_V] Regulatory Seismic Zone V: Highest earthquake damage risk (Zone factor Z=0.36, MSK IX+)");
-    if (28 > maxHazardScore) { maxHazardScore = 28; primaryHazard = "SEISMIC"; }
+    const trigger = "[SEISMIC_ZONE_V] Regulatory Seismic Zone V: Highest earthquake damage risk (Zone factor Z=0.36, MSK IX+; engineering/regulatory baseline, not an observed rupture footprint)";
+    triggers.push(trigger);
+    hazardContributions.push({ hazard: "SEISMIC", score: 28, reason: "Regulatory Seismic Zone V macro-zone baseline (BIS IS 1893:2016, Z=0.36)", trigger });
   } else if (seismic.zone === "ZONE_IV") {
     score += 16;
-    triggers.push("[SEISMIC_ZONE_IV] Regulatory Seismic Zone IV: High earthquake damage risk (Zone factor Z=0.24, MSK VIII)");
+    const trigger = "[SEISMIC_ZONE_IV] Regulatory Seismic Zone IV: High earthquake damage risk (Zone factor Z=0.24, MSK VIII; engineering/regulatory baseline)";
+    triggers.push(trigger);
+    hazardContributions.push({ hazard: "SEISMIC", score: 16, reason: "Regulatory Seismic Zone IV macro-zone baseline (BIS IS 1893:2016, Z=0.24)", trigger });
   }
 
   // 6. Extreme Rainfall Criteria
   if (rainfall.status === "CRITICAL") {
     score += 35;
-    triggers.push(`Critical Rainfall: IMD Extremely Heavy Rainfall recorded (${rainfall.currentRainfallMm} mm/day)`);
-    if (35 > maxHazardScore) { maxHazardScore = 35; primaryHazard = "EXTREME_RAINFALL"; }
+    const trigger = `Critical Rainfall: IMD Extremely Heavy Rainfall recorded (${rainfall.currentRainfallMm} mm/day)`;
+    triggers.push(trigger);
+    hazardContributions.push({ hazard: "EXTREME_RAINFALL", score: 35, reason: `IMD Extremely Heavy Rainfall (${rainfall.currentRainfallMm} mm/day)`, trigger });
   } else if (rainfall.status === "HIGH") {
     score += 20;
-    triggers.push(`Very Heavy Rainfall: ${rainfall.currentRainfallMm} mm/day recorded`);
+    const trigger = `Very Heavy Rainfall: ${rainfall.currentRainfallMm} mm/day recorded`;
+    triggers.push(trigger);
+    hazardContributions.push({ hazard: "EXTREME_RAINFALL", score: 20, reason: `Very Heavy Rainfall (${rainfall.currentRainfallMm} mm/day)`, trigger });
   }
 
   // 7. Extreme Heat Criteria
   if (heat.status === "CRITICAL") {
     score += 25;
-    triggers.push(`Severe Heatwave: Current temperature ${heat.currentTemperatureC}°C exceeds critical threshold`);
-    if (25 > maxHazardScore) { maxHazardScore = 25; primaryHazard = "EXTREME_HEAT"; }
+    const trigger = `Severe Heatwave: Current temperature ${heat.currentTemperatureC}°C exceeds critical threshold`;
+    triggers.push(trigger);
+    hazardContributions.push({ hazard: "EXTREME_HEAT", score: 25, reason: `Severe Heatwave (${heat.currentTemperatureC}°C)`, trigger });
   }
+
+  // Sort hazard contributions by score descending to deterministically choose primary & secondaries
+  hazardContributions.sort((a, b) => b.score - a.score);
+
+  const primaryEntry = hazardContributions[0];
+  const primaryHazard: HazardType = primaryEntry ? primaryEntry.hazard : "FLOOD";
+  const primaryDriverReason: string = primaryEntry
+    ? primaryEntry.reason
+    : "Standard baseline conditions with no critical multi-hazard thresholds triggered";
+
+  const secondaryEntries = hazardContributions.slice(1);
+  const secondaryHazards: HazardType[] = Array.from(new Set(secondaryEntries.map(e => e.hazard)));
+  const supportingEvidence: string[] = secondaryEntries.map(e => `${e.hazard}: ${e.reason}`);
 
   // Clamp final score
   const finalScore = Math.max(10, Math.min(100, score));
@@ -240,6 +270,9 @@ export function evaluateRedZone(
     score: finalScore,
     compositeScore: finalScore,
     primaryHazard,
+    secondaryHazards,
+    primaryDriverReason,
+    supportingEvidence,
     triggers,
     explanation: explainability,
     explainability,
@@ -247,6 +280,8 @@ export function evaluateRedZone(
     provenance: RED_ZONE_PROVENANCE,
     limitations: [
       "Red zone classification is deterministic multi-hazard screening based on verified spatial datasets.",
+      "Regulatory seismic zones represent engineering design standards, not an active earthquake rupture footprint.",
+      "Where fine-grained physical footprints are unavailable (e.g. cyclone surge, landslide micro-zones), assessments rely on authoritative historical buffers and station observations.",
       "It does not replace local emergency alerts or building structural safety assessments.",
     ],
   };
