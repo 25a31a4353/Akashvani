@@ -137,9 +137,9 @@ function applyLayers(map: MapLibreMap, layers: MapLayerState, opacity: number, b
     ["relocation-destination-label", "routes"], ["relocation-origin-marker", "routes"], ["relocation-origin-label", "routes"]
   ];
   layerMap.forEach(([id, key]) => setVisibility(map, id, key === "routes" ? (layers[key] !== false) : Boolean(layers[key])));
-  ["hazard-fill", "landslide-fill", "hazard-redzone-fill", "population-points"].forEach(id => {
+  ["hazard-fill", "landslide-fill", "hazard-redzone-fill", "hazard-floodplain-fill", "population-points"].forEach(id => {
     if (!map.getLayer(id)) return;
-    map.setPaintProperty(id, id.endsWith("fill") ? "fill-opacity" : "circle-opacity", (id === "hazard-redzone-fill" ? 0.12 : id.includes("hazard") || id.includes("landslide") ? 0.2 : 0.56) * opacity);
+    map.setPaintProperty(id, id.endsWith("fill") ? "fill-opacity" : "circle-opacity", (id === "hazard-redzone-fill" ? 0.12 : id === "hazard-floodplain-fill" ? 0.14 : id.includes("hazard") || id.includes("landslide") ? 0.2 : 0.56) * opacity);
   });
   if (map.getLayer("satellite")) {
     map.setLayoutProperty("satellite", "visibility", "visible");
@@ -329,11 +329,11 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
       map.addLayer({ id: "national-state-fill", type: "fill", source: "states", paint: { "fill-color": "#cf4c3f", "fill-opacity": 0.035 } });
       map.addLayer({ id: "national-state-line", type: "line", source: "states", paint: { "line-color": "#24485a", "line-width": 1.15 } });
       map.addLayer({ id: "national-state-label", type: "symbol", source: "states", layout: { "text-field": ["get", "stateName"], "text-size": 9 }, paint: { "text-color": "#153847", "text-halo-color": "#ffffff", "text-halo-width": 1.1 } });
-      map.addLayer({ id: "district-fill", type: "fill", source: "districts", paint: { "fill-color": "#4e96aa", "fill-opacity": 0.05 } });
-      map.addLayer({ id: "district-line", type: "line", source: "districts", paint: { "line-color": "#356b7c", "line-width": 1.05 } });
+      map.addLayer({ id: "district-fill", type: "fill", source: "districts", paint: { "fill-color": "transparent" } });
+      map.addLayer({ id: "district-line", type: "line", source: "districts", paint: { "line-color": "#64748b", "line-width": 0.85, "line-opacity": 0.45 } });
       map.addLayer({ id: "boundary-line", type: "line", source: "boundary", paint: { "line-color": "#a8d4b0", "line-width": 1.35, "line-dasharray": [3, 2] } });
-      map.addLayer({ id: "selected-location-fill", type: "fill", source: "selected-location", paint: { "fill-color": "#2f8aa0", "fill-opacity": 0.08 } });
-      map.addLayer({ id: "selected-location-line", type: "line", source: "selected-location", paint: { "line-color": "#155b75", "line-width": 1.8 } });
+      map.addLayer({ id: "selected-location-fill", type: "fill", source: "selected-location", paint: { "fill-color": "#0ea5e9", "fill-opacity": 0.08 } });
+      map.addLayer({ id: "selected-location-line", type: "line", source: "selected-location", paint: { "line-color": "#0284c7", "line-width": 2.2 } });
 
       // Group 2: Macro weather & Sensitivity overlays (underneath assessment zones)
       map.addLayer({ id: "national-weather-fill", type: "fill", source: "weather", paint: { "fill-color": ["interpolate", ["linear"], ["coalesce", ["get", "temperatureC"], 0], 10, "#5ba96a", 22, "#d1cf50", 30, "#f68f37", 38, "#c83f36"], "fill-opacity": 0.34 } });
@@ -341,8 +341,8 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
       map.addLayer({ id: "national-wind-symbol", type: "symbol", source: "weather", layout: { "text-field": "↟", "text-size": 13, "text-rotate": ["coalesce", ["get", "windDirectionDegrees"], 0] }, paint: { "text-color": "#133e59", "text-halo-color": "#ffffff", "text-halo-width": 1 } });
       (["earthquake", "landslide", "flood"] as const).forEach(kind => {
         const hazard = `${kind[0].toUpperCase()}${kind.slice(1)} sensitivity`;
-        const color = kind === "earthquake" ? "#8b3f72" : kind === "landslide" ? "#a76932" : "#267da0";
-        map.addLayer({ id: `national-sensitivity-${kind}-fill`, type: "fill", source: "sensitivity", filter: ["==", ["get", "hazard"], hazard], paint: { "fill-color": color, "fill-opacity": 0.19 } });
+        const color = kind === "earthquake" ? "#8b3f72" : kind === "landslide" ? "#a76932" : "#0ea5e9";
+        map.addLayer({ id: `national-sensitivity-${kind}-fill`, type: "fill", source: "sensitivity", filter: ["==", ["get", "hazard"], hazard], paint: { "fill-color": color, "fill-opacity": 0.12 } });
         map.addLayer({ id: `national-sensitivity-${kind}-line`, type: "line", source: "sensitivity", filter: ["==", ["get", "hazard"], hazard], paint: { "line-color": color, "line-width": 1.25, "line-dasharray": [3, 2] } });
       });
 
@@ -351,8 +351,9 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
       map.addLayer({ id: "hazard-seismic-line", type: "line", source: "hazard-seismic", paint: { "line-color": "#ab47bc", "line-width": 1.15 } });
       
       // Actual authoritative CWC / riverine flood inundation corridor (Real physical hazard footprint)
-      map.addLayer({ id: "hazard-floodplain-fill", type: "fill", source: "hazard-floodplains", paint: { "fill-color": "#0284c7", "fill-opacity": 0.38 } });
-      map.addLayer({ id: "hazard-floodplain-line", type: "line", source: "hazard-floodplains", paint: { "line-color": "#0369a1", "line-width": 2.0 } });
+      // Soft, refined aquatic blue with high transparency so satellite terrain remains clearly visible
+      map.addLayer({ id: "hazard-floodplain-fill", type: "fill", source: "hazard-floodplains", paint: { "fill-color": "#0284c7", "fill-opacity": 0.14 } });
+      map.addLayer({ id: "hazard-floodplain-line", type: "line", source: "hazard-floodplains", paint: { "line-color": "#0284c7", "line-width": 1.4, "line-opacity": 0.75, "line-dasharray": [4, 2] } });
       map.addLayer({ id: "hazard-fill", type: "fill", source: "hazards", layout: { "visibility": "none" }, filter: ["!=", ["get", "type"], "Landslide"], paint: { "fill-color": ["match", ["get", "level"], "Critical", "#d9534f", "High", "#e58b3a", "Moderate", "#edc856", "#e58b3a"], "fill-opacity": 0.2 } });
       map.addLayer({ id: "hazard-line", type: "line", source: "hazards", layout: { "visibility": "none" }, filter: ["!=", ["get", "type"], "Landslide"], paint: { "line-color": "#bc7041", "line-width": 1.2 } });
       map.addLayer({ id: "landslide-fill", type: "fill", source: "hazards", layout: { "visibility": "none" }, filter: ["==", ["get", "type"], "Landslide"], paint: { "fill-color": "#bd3034", "fill-opacity": 0.2 } });
