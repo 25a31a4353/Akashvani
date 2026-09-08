@@ -70,3 +70,46 @@ export function buildRelocationRoute(area: AssessmentArea, source: RouteSource, 
 export function buildLocationPlanningCorridor(location: IndiaLocation, source: RouteSource, preferredSiteName?: string): RelocationRoute {
   return buildPlanningCorridor(location, source, preferredSiteName);
 }
+
+export interface VerifiedEvacuationRoute {
+  coordinates: number[][];
+  destinationLabel: string;
+  originLabel: string;
+  distanceKm: number | null;
+  travelTimeMinutes: number | null;
+  isRoadRoute: boolean;
+  sourceNote: string;
+}
+
+/**
+ * Builds verified road evacuation route from OSRM driving geometry.
+ * Invariant: Never fabricates road geometry if OSRM is unreachable.
+ * If OSRM returned no geometry, returns null so no fake line is drawn.
+ */
+export function buildVerifiedRoadEvacuationRoute(
+  origin: { name: string; latitude: number; longitude: number },
+  destination: { name: string; latitude: number; longitude: number },
+  osrmResult?: {
+    coordinates: number[][];
+    routeDistanceKm: number | null;
+    travelTimeMinutes: number | null;
+    status: string;
+  } | null
+): VerifiedEvacuationRoute | null {
+  if (!origin || !destination || origin.latitude == null || destination.latitude == null) {
+    return null;
+  }
+  if (osrmResult && osrmResult.status === "OK" && osrmResult.coordinates && osrmResult.coordinates.length > 0) {
+    return {
+      coordinates: osrmResult.coordinates,
+      destinationLabel: destination.name,
+      originLabel: origin.name,
+      distanceKm: osrmResult.routeDistanceKm,
+      travelTimeMinutes: osrmResult.travelTimeMinutes,
+      isRoadRoute: true,
+      sourceNote: `Verified road route via OSRM: ${osrmResult.routeDistanceKm ?? "—"} km (~${osrmResult.travelTimeMinutes ?? "—"} mins). Follows verified road-network geometry.`,
+    };
+  }
+  return null;
+}
+

@@ -9,14 +9,92 @@ import { Crosshair, Expand, LocateFixed, Map as MapIcon, Minus, Plus, RotateCcw 
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
 type FeatureCollection = { type: "FeatureCollection"; features: ReadonlyArray<{ type: "Feature"; properties: Record<string, unknown>; geometry: { type: string; coordinates: unknown } }> };
-export type MapData = { center: [number, number]; areas: AssessmentArea[]; hazards: Array<{ id: string; label: string; type: string; level: string; coordinates: number[][] }>; roads: number[][][]; infrastructure: Array<{ id: string; type: string; name: string; longitude: number; latitude: number }>; relocationRoute?: { coordinates: number[][]; destinationLabel: string; distanceKm: number; isPlanningCorridor: true; sourceNote: string }; nearbyInfrastructure?: IndiaLocationContext["infrastructure"]["items"]; boundary: number[][]; districtBoundaries?: FeatureCollection; environment?: { latitude: number; longitude: number; temperatureC: number | null; precipitationMm: number | null; usAqi: number | null; status: string }; activeLocation?: IndiaLocationContext; nationwide?: { states: FeatureCollection; weather: FeatureCollection; geology: FeatureCollection; sensitivity: FeatureCollection; imageCoordinates: [[number, number], [number, number], [number, number], [number, number]]; populationImage: string; terrainImage: string; sources: Record<string, string>; statuses: Record<string, string>; hazardLayers?: { seismicZones: FeatureCollection; cwcGauges: FeatureCollection; landslideEvents: FeatureCollection; cycloneTracks: FeatureCollection; floodZones: FeatureCollection; erosionCorridors: FeatureCollection; habitations: FeatureCollection; facilities?: FeatureCollection; }; classificationLayer?: FeatureCollection; updatedAt: string } };
+export type MapData = {
+  center: [number, number];
+  areas: AssessmentArea[];
+  hazards: Array<{ id: string; label: string; type: string; level: string; coordinates: number[][] }>;
+  roads: number[][][];
+  infrastructure: Array<{ id: string; type: string; name: string; longitude: number; latitude: number }>;
+  relocationOrigin?: {
+    latitude: number;
+    longitude: number;
+    name: string;
+    exposureLevel?: string;
+    population?: number | null;
+    hazardType?: string;
+  };
+  relocationRoute?: {
+    coordinates: number[][];
+    destinationLabel: string;
+    originLabel?: string;
+    distanceKm: number | null;
+    travelTimeMinutes?: number | null;
+    isRoadRoute?: boolean;
+    isPlanningCorridor?: boolean;
+    sourceNote: string;
+  };
+  relocationDestination?: {
+    latitude: number;
+    longitude: number;
+    name: string;
+    role?: string;
+    suitability?: string;
+    capacityNote?: string;
+  };
+  nearbyInfrastructure?: IndiaLocationContext["infrastructure"]["items"];
+  boundary: number[][];
+  districtBoundaries?: FeatureCollection;
+  environment?: { latitude: number; longitude: number; temperatureC: number | null; precipitationMm: number | null; usAqi: number | null; status: string };
+  activeLocation?: IndiaLocationContext;
+  nationwide?: {
+    states: FeatureCollection;
+    weather: FeatureCollection;
+    geology: FeatureCollection;
+    sensitivity: FeatureCollection;
+    imageCoordinates: [[number, number], [number, number], [number, number], [number, number]];
+    populationImage: string;
+    terrainImage: string;
+    sources: Record<string, string>;
+    statuses: Record<string, string>;
+    hazardLayers?: {
+      seismicZones: FeatureCollection;
+      cwcGauges: FeatureCollection;
+      landslideEvents: FeatureCollection;
+      cycloneTracks: FeatureCollection;
+      floodZones: FeatureCollection;
+      erosionCorridors: FeatureCollection;
+      habitations: FeatureCollection;
+      facilities?: FeatureCollection;
+    };
+    classificationLayer?: FeatureCollection;
+    updatedAt: string;
+  };
+};
 type MapLayerState = Record<string, boolean>;
 const emptyCollection: FeatureCollection = { type: "FeatureCollection", features: [] };
 const satelliteTileUrl = import.meta.env.VITE_MAP_TILE_URL ?? "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
 const osmTileUrl = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 export const MAP_MAX_ZOOM = 18;
 export const clampMapZoom = (zoom: number) => Math.min(Math.max(zoom, 0), MAP_MAX_ZOOM);
-const mapStyle: maplibregl.StyleSpecification = { version: 8, sources: { osm: { type: "raster", tiles: [osmTileUrl], tileSize: 256, maxzoom: MAP_MAX_ZOOM, attribution: "© OpenStreetMap contributors" }, satellite: { type: "raster", tiles: [satelliteTileUrl], tileSize: 256, maxzoom: MAP_MAX_ZOOM, attribution: "Tiles © Esri" } }, layers: [{ id: "background", type: "background", paint: { "background-color": "#07141b" } }, { id: "osm", type: "raster", source: "osm", paint: { "raster-saturation": -0.5, "raster-contrast": 0.2, "raster-brightness-min": 0.02, "raster-brightness-max": 0.44, "raster-opacity": 0.96 } }, { id: "satellite", type: "raster", source: "satellite", paint: { "raster-saturation": 0.04, "raster-contrast": 0.14, "raster-brightness-min": 0.03, "raster-brightness-max": 0.64, "raster-opacity": 0.42 } }] };
+if (typeof window !== "undefined" && typeof (maplibregl as any).setWorkerUrl === "function") {
+  try {
+    (maplibregl as any).setWorkerUrl("/assets/maplibre-gl-worker.mjs");
+  } catch {
+    // ignore if already set
+  }
+}
+const mapStyle: maplibregl.StyleSpecification = {
+  version: 8,
+  sources: {
+    osm: { type: "raster", tiles: [osmTileUrl], tileSize: 256, maxzoom: MAP_MAX_ZOOM, attribution: "© OpenStreetMap contributors" },
+    satellite: { type: "raster", tiles: [satelliteTileUrl], tileSize: 256, maxzoom: MAP_MAX_ZOOM, attribution: "Tiles © Esri" }
+  },
+  layers: [
+    { id: "background", type: "background", paint: { "background-color": "#0a1926" } },
+    { id: "osm", type: "raster", source: "osm", layout: { "visibility": "none" }, paint: { "raster-opacity": 0.8 } },
+    { id: "satellite", type: "raster", source: "satellite", paint: { "raster-saturation": 0.08, "raster-contrast": 0.05, "raster-brightness-min": 0.0, "raster-brightness-max": 1.0, "raster-opacity": 1.0 } }
+  ]
+};
 const riskColor = (score: number) => score >= 85 ? "#bd3034" : score >= 70 ? "#e66e2d" : score >= 50 ? "#d3a52d" : "#31825d";
 const activeZoom = (location?: IndiaLocationContext["location"]) => location?.category === "Locality" ? 11 : location?.category === "City" ? 9.5 : location?.category === "District" ? 8.4 : location ? 7.1 : 6.65;
 
@@ -25,7 +103,8 @@ function safeSetData(map: MapLibreMap, sourceId: string, data: unknown) {
   try {
     const src = map.getSource(sourceId);
     if (src && src.type === "geojson") {
-      (src as maplibregl.GeoJSONSource).setData(data as GeoJSON.FeatureCollection | GeoJSON.Feature);
+      const geojson = (data && typeof data === "object") ? data : emptyCollection;
+      (src as maplibregl.GeoJSONSource).setData(geojson as any);
     }
   } catch {
     // source not yet added or map is being removed — ignore
@@ -49,15 +128,30 @@ function applyLayers(map: MapLibreMap, layers: MapLayerState, opacity: number, b
     ["hazard-cyclone-line", "cycloneTracks"], ["hazard-cyclone-label", "cycloneTracks"],
     ["hazard-habitation-circle", "exposedHabitations"], ["hazard-habitation-label", "exposedHabitations"],
     ["hazard-facility-circle", "facilities"], ["hazard-facility-label", "facilities"],
+    ["hazard-hospital-circle", "hospitals"], ["hazard-hospital-label", "hospitals"],
     ["national-sensitivity-earthquake-fill", "earthquakeSensitivity"], ["national-sensitivity-earthquake-line", "earthquakeSensitivity"],
     ["national-sensitivity-landslide-fill", "landslideSensitivity"], ["national-sensitivity-landslide-line", "landslideSensitivity"],
     ["national-sensitivity-flood-fill", "floodSensitivity"], ["national-sensitivity-flood-line", "floodSensitivity"],
     ["infrastructure-points", "infrastructure"],
-    ["relocation-route-glow", "routes"], ["relocation-route-line", "routes"], ["relocation-route-destination", "routes"]
+    ["relocation-route-glow", "routes"], ["relocation-route-line", "routes"], ["relocation-route-destination", "routes"],
+    ["relocation-destination-label", "routes"], ["relocation-origin-marker", "routes"], ["relocation-origin-label", "routes"]
   ];
-  layerMap.forEach(([id, key]) => setVisibility(map, id, Boolean(layers[key])));
-  ["hazard-fill", "landslide-fill", "hazard-redzone-fill", "population-points"].forEach(id => { if (!map.getLayer(id)) return; map.setPaintProperty(id, id.endsWith("fill") ? "fill-opacity" : "circle-opacity", (id === "hazard-redzone-fill" ? 0.38 : id.includes("hazard") || id.includes("landslide") ? 0.2 : 0.56) * opacity); });
-  if (map.getLayer("satellite")) { map.setPaintProperty("satellite", "raster-saturation", baseStyle === "terrain" ? 0 : -0.34); map.setPaintProperty("satellite", "raster-contrast", baseStyle === "terrain" ? 0.14 : 0.02); map.setPaintProperty("satellite", "raster-opacity", baseStyle === "terrain" ? 0.56 : 0.42); }
+  layerMap.forEach(([id, key]) => setVisibility(map, id, key === "routes" ? (layers[key] !== false) : Boolean(layers[key])));
+  ["hazard-fill", "landslide-fill", "hazard-redzone-fill", "population-points"].forEach(id => {
+    if (!map.getLayer(id)) return;
+    map.setPaintProperty(id, id.endsWith("fill") ? "fill-opacity" : "circle-opacity", (id === "hazard-redzone-fill" ? 0.12 : id.includes("hazard") || id.includes("landslide") ? 0.2 : 0.56) * opacity);
+  });
+  if (map.getLayer("satellite")) {
+    map.setLayoutProperty("satellite", "visibility", "visible");
+    map.setPaintProperty("satellite", "raster-saturation", 0.08);
+    map.setPaintProperty("satellite", "raster-contrast", 0.05);
+    map.setPaintProperty("satellite", "raster-opacity", 1.0);
+    map.setPaintProperty("satellite", "raster-brightness-max", 1.0);
+    map.setPaintProperty("satellite", "raster-brightness-min", 0.0);
+  }
+  if (map.getLayer("osm")) {
+    map.setLayoutProperty("osm", "visibility", "none");
+  }
 }
 
 export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle, className, showContextPanel = true, zoomOverride }: { data?: MapData; selectedId?: string; onSelect: (id: string) => void; layers: MapLayerState; opacity: number; baseStyle: "muted" | "terrain"; className?: string; showContextPanel?: boolean; zoomOverride?: number }) {
@@ -75,8 +169,71 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
     return {
       areas: { type: "FeatureCollection" as const, features: (active ? [] : data.areas).map(area => ({ type: "Feature" as const, properties: { ...area, markerColor: riskColor(area.hazardSeverity) }, geometry: { type: "Point" as const, coordinates: [area.longitude, area.latitude] } })) },
       selectedArea: { type: "FeatureCollection" as const, features: (!active ? data.areas.filter(area => area.id === selectedId) : []).map(area => ({ type: "Feature" as const, properties: { ...area }, geometry: { type: "Point" as const, coordinates: [area.longitude, area.latitude] } })) },
-      relocationRoute: data.relocationRoute ? { type: "FeatureCollection" as const, features: [{ type: "Feature" as const, properties: { destinationLabel: data.relocationRoute.destinationLabel, distanceKm: data.relocationRoute.distanceKm, isPlanningCorridor: data.relocationRoute.isPlanningCorridor, sourceNote: data.relocationRoute.sourceNote }, geometry: { type: "LineString" as const, coordinates: data.relocationRoute.coordinates } }] } : emptyCollection,
-      relocationDestination: data.relocationRoute ? { type: "FeatureCollection" as const, features: [{ type: "Feature" as const, properties: { destinationLabel: data.relocationRoute.destinationLabel, distanceKm: data.relocationRoute.distanceKm, isPlanningCorridor: data.relocationRoute.isPlanningCorridor, sourceNote: data.relocationRoute.sourceNote }, geometry: { type: "Point" as const, coordinates: data.relocationRoute.coordinates.at(-1) ?? data.center } }] } : emptyCollection,
+      relocationRoute: data.relocationRoute && data.relocationRoute.coordinates.length > 0 ? {
+        type: "FeatureCollection" as const,
+        features: [{
+          type: "Feature" as const,
+          properties: {
+            destinationLabel: data.relocationRoute.destinationLabel,
+            originLabel: data.relocationRoute.originLabel ?? "Vulnerable Habitation",
+            distanceKm: data.relocationRoute.distanceKm,
+            travelTimeMinutes: data.relocationRoute.travelTimeMinutes ?? null,
+            isRoadRoute: Boolean(data.relocationRoute.isRoadRoute),
+            sourceNote: data.relocationRoute.sourceNote,
+          },
+          geometry: { type: "LineString" as const, coordinates: data.relocationRoute.coordinates }
+        }]
+      } : emptyCollection,
+      relocationDestination: data.relocationDestination && data.relocationDestination.longitude && data.relocationDestination.latitude ? {
+        type: "FeatureCollection" as const,
+        features: [{
+          type: "Feature" as const,
+          properties: {
+            name: data.relocationDestination.name,
+            role: data.relocationDestination.role ?? "Relocation Destination",
+            suitability: data.relocationDestination.suitability ?? "PREFERRED",
+            capacityNote: data.relocationDestination.capacityNote ?? "UNAVAILABLE from OSM",
+          },
+          geometry: { type: "Point" as const, coordinates: [data.relocationDestination.longitude, data.relocationDestination.latitude] }
+        }]
+      } : (data.relocationRoute && data.relocationRoute.coordinates.length > 0 ? {
+        type: "FeatureCollection" as const,
+        features: [{
+          type: "Feature" as const,
+          properties: {
+            name: data.relocationRoute.destinationLabel,
+            role: "Relocation Destination",
+            suitability: "PREFERRED",
+            capacityNote: "UNAVAILABLE from OSM",
+          },
+          geometry: { type: "Point" as const, coordinates: data.relocationRoute.coordinates.at(-1) ?? data.center }
+        }]
+      } : emptyCollection),
+      relocationOrigin: data.relocationOrigin && data.relocationOrigin.longitude && data.relocationOrigin.latitude ? {
+        type: "FeatureCollection" as const,
+        features: [{
+          type: "Feature" as const,
+          properties: {
+            name: data.relocationOrigin.name,
+            exposureLevel: data.relocationOrigin.exposureLevel ?? "EXPOSED",
+            population: data.relocationOrigin.population ?? null,
+            hazardType: data.relocationOrigin.hazardType ?? "Hazard exposure",
+          },
+          geometry: { type: "Point" as const, coordinates: [data.relocationOrigin.longitude, data.relocationOrigin.latitude] }
+        }]
+      } : (data.relocationRoute && data.relocationRoute.coordinates.length > 0 ? {
+        type: "FeatureCollection" as const,
+        features: [{
+          type: "Feature" as const,
+          properties: {
+            name: data.relocationRoute.originLabel ?? "Vulnerable Habitation",
+            exposureLevel: "CRITICAL",
+            population: null,
+            hazardType: "Hazard exposure",
+          },
+          geometry: { type: "Point" as const, coordinates: data.relocationRoute.coordinates[0] }
+        }]
+      } : emptyCollection),
       activeMarker: active ? { type: "FeatureCollection" as const, features: [{ type: "Feature" as const, properties: { id: active.location.id, name: active.location.name, priority: active.screening.priority, riskScore: active.screening.riskScore }, geometry: { type: "Point" as const, coordinates: [active.location.longitude, active.location.latitude] } }] } : emptyCollection,
       hazards: { type: "FeatureCollection" as const, features: (active ? [] : data.hazards).map(hazard => ({ type: "Feature" as const, properties: hazard, geometry: { type: "Polygon" as const, coordinates: [hazard.coordinates] } })) },
       roads: { type: "FeatureCollection" as const, features: (active ? [] : data.roads).map((coordinates, index) => ({ type: "Feature" as const, properties: { id: `RD-${index}` }, geometry: { type: "LineString" as const, coordinates } })) },
@@ -117,6 +274,7 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
       attributionControl: false,
     });
     mapRef.current = map;
+    (window as any).__divaMap = map;
     mapReadyRef.current = false;
 
     const resize = () => map.resize();
@@ -127,14 +285,17 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
 
     map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
 
+    console.log("[DivaMap] initializing with center:", initialCenter, "hazardClassification features:", sources.hazardClassification.features.length);
     map.on("load", () => {
       if (!mapRef.current) return; // unmounted before load fired
+      console.log("[DivaMap] map loaded. Adding sources. hazard-redzones has:", sources.hazardClassification.features.length, "features");
 
       const add = (id: string, source: unknown) => map.addSource(id, { type: "geojson", data: source as GeoJSON.FeatureCollection | GeoJSON.Feature });
       add("areas", sources.areas);
       add("selected-area", sources.selectedArea);
       add("relocation-route", sources.relocationRoute);
       add("relocation-destination", sources.relocationDestination);
+      add("relocation-origin", sources.relocationOrigin);
       add("active-marker", sources.activeMarker);
       add("hazards", sources.hazards);
       add("roads", sources.roads);
@@ -164,28 +325,17 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
         map.addLayer({ id: "national-population", type: "raster", source: "national-population", paint: { "raster-opacity": 0.56 } });
       }
 
-      // national-geology removed — no toggle, always-on, low-value overlay
+      // Group 1: Base administrative boundaries and geographic context
       map.addLayer({ id: "national-state-fill", type: "fill", source: "states", paint: { "fill-color": "#cf4c3f", "fill-opacity": 0.035 } });
       map.addLayer({ id: "national-state-line", type: "line", source: "states", paint: { "line-color": "#24485a", "line-width": 1.15 } });
       map.addLayer({ id: "national-state-label", type: "symbol", source: "states", layout: { "text-field": ["get", "stateName"], "text-size": 9 }, paint: { "text-color": "#153847", "text-halo-color": "#ffffff", "text-halo-width": 1.1 } });
-      map.addLayer({ id: "hazard-redzone-fill", type: "fill", source: "hazard-redzones", paint: { "fill-color": ["match", ["get", "classification"], "RED", "#c62828", "ORANGE", "#e65100", "GREEN", "#2e7d32", "rgba(0,0,0,0)"], "fill-opacity": 0.38 } });
-      map.addLayer({ id: "hazard-redzone-line", type: "line", source: "hazard-redzones", paint: { "line-color": ["match", ["get", "classification"], "RED", "#b71c1c", "ORANGE", "#bf360c", "GREEN", "#1b5e20", "rgba(0,0,0,0)"], "line-width": 1.8 } });
-      map.addLayer({ id: "hazard-redzone-label", type: "symbol", source: "hazard-redzones", layout: { "text-field": ["concat", ["get", "areaName"], " [", ["get", "classification"], "]"], "text-size": 9.5, "text-offset": [0, 0], "text-anchor": "center" }, paint: { "text-color": ["match", ["get", "classification"], "RED", "#b71c1c", "ORANGE", "#bf360c", "GREEN", "#1b5e20", "#333333"], "text-halo-color": "#ffffff", "text-halo-width": 1.2 } });
-      map.addLayer({ id: "hazard-seismic-fill", type: "fill", source: "hazard-seismic", paint: { "fill-color": ["match", ["get", "zone"], "ZONE_V", "#9c27b0", "ZONE_IV", "#e91e63", "#ff9800"], "fill-opacity": 0.16 } });
-      map.addLayer({ id: "hazard-seismic-line", type: "line", source: "hazard-seismic", paint: { "line-color": "#ab47bc", "line-width": 1.15 } });
-      map.addLayer({ id: "hazard-floodplain-fill", type: "fill", source: "hazard-floodplains", paint: { "fill-color": "#1976d2", "fill-opacity": 0.22 } });
-      map.addLayer({ id: "hazard-floodplain-line", type: "line", source: "hazard-floodplains", paint: { "line-color": "#1565c0", "line-width": 1.4 } });
-      map.addLayer({ id: "hazard-erosion-line", type: "line", source: "hazard-erosion", paint: { "line-color": "#d81b60", "line-width": 2.2, "line-dasharray": [2, 2] } });
-      map.addLayer({ id: "hazard-cyclone-line", type: "line", source: "hazard-cyclones", paint: { "line-color": "#00897b", "line-width": 2.0, "line-dasharray": [3, 2] } });
-      map.addLayer({ id: "hazard-cyclone-label", type: "symbol", source: "hazard-cyclones", layout: { "text-field": ["get", "name"], "text-size": 9 }, paint: { "text-color": "#004d40", "text-halo-color": "#ffffff", "text-halo-width": 1 } });
-      map.addLayer({ id: "hazard-cwc-circle", type: "circle", source: "hazard-cwc", paint: { "circle-radius": 5.5, "circle-color": "#00acc1", "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.5 } });
-      map.addLayer({ id: "hazard-cwc-label", type: "symbol", source: "hazard-cwc", layout: { "text-field": ["get", "name"], "text-size": 9, "text-offset": [0, 1.2] }, paint: { "text-color": "#006064", "text-halo-color": "#ffffff", "text-halo-width": 1 } });
-      map.addLayer({ id: "hazard-landslide-circle", type: "circle", source: "hazard-landslides", paint: { "circle-radius": 6.5, "circle-color": "#e53935", "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.8 } });
-      map.addLayer({ id: "hazard-landslide-label", type: "symbol", source: "hazard-landslides", layout: { "text-field": ["get", "name"], "text-size": 9, "text-offset": [0, 1.2] }, paint: { "text-color": "#b71c1c", "text-halo-color": "#ffffff", "text-halo-width": 1 } });
-      map.addLayer({ id: "hazard-habitation-circle", type: "circle", source: "hazard-habitations", paint: { "circle-radius": 5, "circle-color": "#fb8c00", "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.2 } });
-      map.addLayer({ id: "hazard-habitation-label", type: "symbol", source: "hazard-habitations", layout: { "text-field": ["get", "name"], "text-size": 8.5, "text-offset": [0, 1.2] }, paint: { "text-color": "#e65100", "text-halo-color": "#ffffff", "text-halo-width": 1 } });
-      map.addLayer({ id: "hazard-facility-circle", type: "circle", source: "hazard-facilities", paint: { "circle-radius": 6.5, "circle-color": ["match", ["get", "suitability"], "PREFERRED", "#15803d", "CONDITIONAL", "#ea580c", "UNSUITABLE", "#b91c1c", "#475569"], "circle-stroke-color": "#ffffff", "circle-stroke-width": 2 } });
-      map.addLayer({ id: "hazard-facility-label", type: "symbol", source: "hazard-facilities", layout: { "text-field": ["get", "name"], "text-size": 8.5, "text-offset": [0, 1.25], "text-anchor": "top" }, paint: { "text-color": "#1e3a8a", "text-halo-color": "#ffffff", "text-halo-width": 1.4 } });
+      map.addLayer({ id: "district-fill", type: "fill", source: "districts", paint: { "fill-color": "#4e96aa", "fill-opacity": 0.05 } });
+      map.addLayer({ id: "district-line", type: "line", source: "districts", paint: { "line-color": "#356b7c", "line-width": 1.05 } });
+      map.addLayer({ id: "boundary-line", type: "line", source: "boundary", paint: { "line-color": "#a8d4b0", "line-width": 1.35, "line-dasharray": [3, 2] } });
+      map.addLayer({ id: "selected-location-fill", type: "fill", source: "selected-location", paint: { "fill-color": "#2f8aa0", "fill-opacity": 0.08 } });
+      map.addLayer({ id: "selected-location-line", type: "line", source: "selected-location", paint: { "line-color": "#155b75", "line-width": 1.8 } });
+
+      // Group 2: Macro weather & Sensitivity overlays (underneath assessment zones)
       map.addLayer({ id: "national-weather-fill", type: "fill", source: "weather", paint: { "fill-color": ["interpolate", ["linear"], ["coalesce", ["get", "temperatureC"], 0], 10, "#5ba96a", 22, "#d1cf50", 30, "#f68f37", 38, "#c83f36"], "fill-opacity": 0.34 } });
       map.addLayer({ id: "national-weather-line", type: "line", source: "weather", paint: { "line-color": "#ffffff", "line-opacity": 0.65, "line-width": 0.6 } });
       map.addLayer({ id: "national-wind-symbol", type: "symbol", source: "weather", layout: { "text-field": "↟", "text-size": 13, "text-rotate": ["coalesce", ["get", "windDirectionDegrees"], 0] }, paint: { "text-color": "#133e59", "text-halo-color": "#ffffff", "text-halo-width": 1 } });
@@ -195,28 +345,64 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
         map.addLayer({ id: `national-sensitivity-${kind}-fill`, type: "fill", source: "sensitivity", filter: ["==", ["get", "hazard"], hazard], paint: { "fill-color": color, "fill-opacity": 0.19 } });
         map.addLayer({ id: `national-sensitivity-${kind}-line`, type: "line", source: "sensitivity", filter: ["==", ["get", "hazard"], hazard], paint: { "line-color": color, "line-width": 1.25, "line-dasharray": [3, 2] } });
       });
-      // national-sensitivity-combined removed — redundant with individual earthquake/landslide/flood toggles
-      map.addLayer({ id: "roads", type: "line", source: "roads", layout: { "visibility": "none" }, paint: { "line-color": "#f3f7ef", "line-width": 1.35, "line-opacity": 0.82, "line-dasharray": [2.5, 2.5] } });
-      map.addLayer({ id: "relocation-route-glow", type: "line", source: "relocation-route", paint: { "line-color": "#ffffff", "line-width": 7, "line-opacity": 0.2, "line-blur": 1.4 } });
-      map.addLayer({ id: "relocation-route-line", type: "line", source: "relocation-route", paint: { "line-color": "#ffffff", "line-width": 2.2, "line-opacity": 0.96, "line-dasharray": [1.1, 1.25] } });
-      map.addLayer({ id: "relocation-route-destination", type: "circle", source: "relocation-destination", paint: { "circle-radius": 6, "circle-color": "#55d46b", "circle-stroke-color": "#ffffff", "circle-stroke-width": 2 } });
-      map.addLayer({ id: "boundary-line", type: "line", source: "boundary", paint: { "line-color": "#a8d4b0", "line-width": 1.35, "line-dasharray": [3, 2] } });
-      map.addLayer({ id: "district-fill", type: "fill", source: "districts", paint: { "fill-color": "#4e96aa", "fill-opacity": 0.05 } });
-      map.addLayer({ id: "district-line", type: "line", source: "districts", paint: { "line-color": "#356b7c", "line-width": 1.05 } });
-      map.addLayer({ id: "selected-location-fill", type: "fill", source: "selected-location", paint: { "fill-color": "#2f8aa0", "fill-opacity": 0.12 } });
-      map.addLayer({ id: "selected-location-line", type: "line", source: "selected-location", paint: { "line-color": "#155b75", "line-width": 2.2 } });
-      map.addLayer({ id: "active-marker", type: "circle", source: "active-marker", paint: { "circle-radius": 9, "circle-color": "#1d788d", "circle-stroke-color": "#ffffff", "circle-stroke-width": 2.3 } });
+
+      // Group 3: Macro authoritative hazard background fills
+      map.addLayer({ id: "hazard-seismic-fill", type: "fill", source: "hazard-seismic", paint: { "fill-color": ["match", ["get", "zone"], "ZONE_V", "#9c27b0", "ZONE_IV", "#e91e63", "#ff9800"], "fill-opacity": 0.16 } });
+      map.addLayer({ id: "hazard-seismic-line", type: "line", source: "hazard-seismic", paint: { "line-color": "#ab47bc", "line-width": 1.15 } });
+      
+      // Actual authoritative CWC / riverine flood inundation corridor (Real physical hazard footprint)
+      map.addLayer({ id: "hazard-floodplain-fill", type: "fill", source: "hazard-floodplains", paint: { "fill-color": "#0284c7", "fill-opacity": 0.38 } });
+      map.addLayer({ id: "hazard-floodplain-line", type: "line", source: "hazard-floodplains", paint: { "line-color": "#0369a1", "line-width": 2.0 } });
       map.addLayer({ id: "hazard-fill", type: "fill", source: "hazards", layout: { "visibility": "none" }, filter: ["!=", ["get", "type"], "Landslide"], paint: { "fill-color": ["match", ["get", "level"], "Critical", "#d9534f", "High", "#e58b3a", "Moderate", "#edc856", "#e58b3a"], "fill-opacity": 0.2 } });
       map.addLayer({ id: "hazard-line", type: "line", source: "hazards", layout: { "visibility": "none" }, filter: ["!=", ["get", "type"], "Landslide"], paint: { "line-color": "#bc7041", "line-width": 1.2 } });
       map.addLayer({ id: "landslide-fill", type: "fill", source: "hazards", layout: { "visibility": "none" }, filter: ["==", ["get", "type"], "Landslide"], paint: { "fill-color": "#bd3034", "fill-opacity": 0.2 } });
       map.addLayer({ id: "landslide-line", type: "line", source: "hazards", layout: { "visibility": "none" }, filter: ["==", ["get", "type"], "Landslide"], paint: { "line-color": "#984b2d", "line-width": 1.2 } });
+
+      // Group 4: PS191 ASSESSMENT ZONE DISTRICT POLYGONS (Administrative screening context)
+      // Subtle tint so satellite geography remains clearly visible underneath
+      map.addLayer({ id: "hazard-redzone-fill", type: "fill", source: "hazard-redzones", paint: { "fill-color": ["match", ["get", "classification"], "RED", "#dc2626", "ORANGE", "#ea580c", "GREEN", "#16a34a", "rgba(0,0,0,0)"], "fill-opacity": 0.12 } });
+      map.addLayer({ id: "hazard-redzone-line", type: "line", source: "hazard-redzones", paint: { "line-color": ["match", ["get", "classification"], "RED", "#dc2626", "ORANGE", "#ea580c", "GREEN", "#16a34a", "rgba(0,0,0,0)"], "line-width": 2.2 } });
+      map.addLayer({ id: "hazard-redzone-label", type: "symbol", source: "hazard-redzones", layout: { "text-field": ["concat", ["get", "areaName"], " [", ["get", "classification"], " SCREENING]"], "text-size": 10.5, "text-offset": [0, 0], "text-anchor": "center" }, paint: { "text-color": ["match", ["get", "classification"], "RED", "#ffffff", "ORANGE", "#ffffff", "GREEN", "#ffffff", "#333333"], "text-halo-color": ["match", ["get", "classification"], "RED", "#7f1d1d", "ORANGE", "#7c2d12", "GREEN", "#14532d", "#ffffff"], "text-halo-width": 2.4 } });
+
+      // Group 5: Linear hazards and background roads
+      map.addLayer({ id: "roads", type: "line", source: "roads", layout: { "visibility": "none" }, paint: { "line-color": "#f3f7ef", "line-width": 1.35, "line-opacity": 0.82, "line-dasharray": [2.5, 2.5] } });
+      map.addLayer({ id: "hazard-erosion-line", type: "line", source: "hazard-erosion", paint: { "line-color": "#d81b60", "line-width": 2.2, "line-dasharray": [2, 2] } });
+      map.addLayer({ id: "hazard-cyclone-line", type: "line", source: "hazard-cyclones", paint: { "line-color": "#00897b", "line-width": 2.0, "line-dasharray": [3, 2] } });
+      map.addLayer({ id: "hazard-cyclone-label", type: "symbol", source: "hazard-cyclones", layout: { "text-field": ["get", "name"], "text-size": 9 }, paint: { "text-color": "#004d40", "text-halo-color": "#ffffff", "text-halo-width": 1 } });
+
+      // Group 6: PS191 EVACUATION ROUTE (above polygons, below markers)
+      map.addLayer({ id: "relocation-route-glow", type: "line", source: "relocation-route", paint: { "line-color": "#0284c7", "line-width": 9, "line-opacity": 0.5, "line-blur": 1.5 } });
+      map.addLayer({ id: "relocation-route-line", type: "line", source: "relocation-route", paint: { "line-color": ["case", ["boolean", ["get", "isRoadRoute"], true], "#38bdf8", "#cbd5e1"], "line-width": 4.5, "line-opacity": 0.95 } });
+
+      // Group 7: Point features & facilities & infrastructure
+      map.addLayer({ id: "hazard-cwc-circle", type: "circle", source: "hazard-cwc", paint: { "circle-radius": 5.5, "circle-color": "#00acc1", "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.5 } });
+      map.addLayer({ id: "hazard-cwc-label", type: "symbol", source: "hazard-cwc", layout: { "text-field": ["get", "name"], "text-size": 9, "text-offset": [0, 1.2] }, paint: { "text-color": "#006064", "text-halo-color": "#ffffff", "text-halo-width": 1 } });
+      map.addLayer({ id: "hazard-landslide-circle", type: "circle", source: "hazard-landslides", paint: { "circle-radius": 6.5, "circle-color": "#e53935", "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.8 } });
+      map.addLayer({ id: "hazard-landslide-label", type: "symbol", source: "hazard-landslides", layout: { "text-field": ["get", "name"], "text-size": 9, "text-offset": [0, 1.2] }, paint: { "text-color": "#b71c1c", "text-halo-color": "#ffffff", "text-halo-width": 1 } });
+      map.addLayer({ id: "hazard-habitation-circle", type: "circle", source: "hazard-habitations", paint: { "circle-radius": 5.5, "circle-color": "#fb8c00", "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.2 } });
+      map.addLayer({ id: "hazard-habitation-label", type: "symbol", source: "hazard-habitations", layout: { "text-field": ["get", "name"], "text-size": 8.5, "text-offset": [0, 1.2] }, paint: { "text-color": "#e65100", "text-halo-color": "#ffffff", "text-halo-width": 1 } });
+      
+      // Evacuation Shelters & Relief Centres (excluding hospitals)
+      map.addLayer({ id: "hazard-facility-circle", type: "circle", source: "hazard-facilities", filter: ["!=", ["get", "role"], "HOSPITAL_MEDICAL_SUPPORT"], paint: { "circle-radius": 6.5, "circle-color": ["match", ["get", "suitability"], "PREFERRED", "#15803d", "CONDITIONAL", "#ea580c", "UNSUITABLE", "#b91c1c", "#475569"], "circle-stroke-color": "#ffffff", "circle-stroke-width": 2 } });
+      map.addLayer({ id: "hazard-facility-label", type: "symbol", source: "hazard-facilities", filter: ["!=", ["get", "role"], "HOSPITAL_MEDICAL_SUPPORT"], layout: { "text-field": ["get", "name"], "text-size": 8.5, "text-offset": [0, 1.25], "text-anchor": "top" }, paint: { "text-color": "#1e3a8a", "text-halo-color": "#ffffff", "text-halo-width": 1.4 } });
+
+      // Hospitals / Medical Support (controlled by layers.hospitals, default off)
+      map.addLayer({ id: "hazard-hospital-circle", type: "circle", source: "hazard-facilities", filter: ["==", ["get", "role"], "HOSPITAL_MEDICAL_SUPPORT"], paint: { "circle-radius": 6.0, "circle-color": "#0284c7", "circle-stroke-color": "#ffffff", "circle-stroke-width": 2 } });
+      map.addLayer({ id: "hazard-hospital-label", type: "symbol", source: "hazard-facilities", filter: ["==", ["get", "role"], "HOSPITAL_MEDICAL_SUPPORT"], layout: { "text-field": ["concat", "🏥 ", ["get", "name"]], "text-size": 8.5, "text-offset": [0, 1.25], "text-anchor": "top" }, paint: { "text-color": "#0369a1", "text-halo-color": "#ffffff", "text-halo-width": 1.4 } });
+
+      map.addLayer({ id: "infrastructure-points", type: "circle", source: "infrastructure", paint: { "circle-radius": 6, "circle-color": "#163e5b", "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.5 } });
       map.addLayer({ id: "population-points", type: "circle", source: "areas", paint: { "circle-radius": ["interpolate", ["linear"], ["get", "populationDensity"], 800, 5, 2200, 10, 5000, 17], "circle-color": ["get", "markerColor"], "circle-opacity": 0.78, "circle-stroke-color": "#f7fff5", "circle-stroke-width": 1.2 } });
       map.addLayer({ id: "selected-area-ring", type: "circle", source: "selected-area", paint: { "circle-radius": 15, "circle-color": "#ffffff", "circle-opacity": 0.18, "circle-stroke-color": "#ffffff", "circle-stroke-width": 2.2 } });
       map.addLayer({ id: "selected-area-core", type: "circle", source: "selected-area", paint: { "circle-radius": 7, "circle-color": "#ff4a4f", "circle-stroke-color": "#ffffff", "circle-stroke-width": 2.2 } });
       map.addLayer({ id: "assessment-labels", type: "symbol", source: "areas", layout: { "text-field": ["get", "name"], "text-size": 10, "text-offset": [0, 1.35], "text-anchor": "top" }, paint: { "text-color": "#ffffff", "text-halo-color": "#10232a", "text-halo-width": 1.4, "text-opacity": 0.92 } });
-      // vulnerable-points, rainfall-points, temperature-points, aqi-points removed
-      // — orphan layers with no toggle mapping, drawn from DIVA demo areas source (empty in India context mode)
-      map.addLayer({ id: "infrastructure-points", type: "circle", source: "infrastructure", paint: { "circle-radius": 6, "circle-color": "#163e5b", "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.5 } });
+      map.addLayer({ id: "active-marker", type: "circle", source: "active-marker", paint: { "circle-radius": 9, "circle-color": "#1d788d", "circle-stroke-color": "#ffffff", "circle-stroke-width": 2.3 } });
+
+      // Group 8: PS191 RELOCATION MARKERS (Vulnerable Origin 📍 & Safe Destination 🟢)
+      // Top Z-order: markers always visible and clickable above all fills and routes
+      map.addLayer({ id: "relocation-origin-marker", type: "circle", source: "relocation-origin", paint: { "circle-radius": 8.5, "circle-color": "#ea580c", "circle-stroke-color": "#ffffff", "circle-stroke-width": 2.5 } });
+      map.addLayer({ id: "relocation-origin-label", type: "symbol", source: "relocation-origin", layout: { "text-field": ["concat", "📍 ", ["get", "name"]], "text-size": 10.5, "text-offset": [0, -1.6], "text-anchor": "bottom" }, paint: { "text-color": "#c2410c", "text-halo-color": "#ffffff", "text-halo-width": 2.0 } });
+      map.addLayer({ id: "relocation-route-destination", type: "circle", source: "relocation-destination", paint: { "circle-radius": 9, "circle-color": "#16a34a", "circle-stroke-color": "#ffffff", "circle-stroke-width": 2.5 } });
+      map.addLayer({ id: "relocation-destination-label", type: "symbol", source: "relocation-destination", layout: { "text-field": ["concat", "🟢 ", ["get", "name"]], "text-size": 10.5, "text-offset": [0, 1.6], "text-anchor": "top" }, paint: { "text-color": "#15803d", "text-halo-color": "#ffffff", "text-halo-width": 2.0 } });
 
       // Click handlers
       map.on("click", "population-points", event => {
@@ -241,7 +427,7 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
         const evidence = String(p.evidenceStatus || "DERIVED");
         const limitations = String(p.limitations || "");
         const badgeColor = classification === "RED" ? "#c62828" : classification === "ORANGE" ? "#e65100" : classification === "GREEN" ? "#2e7d32" : "#555555";
-        const popupHtml = `<div style="font-family:inherit;padding:4px;max-width:280px;color:#1e293b"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px"><strong style="font-size:13px;color:#0f172a">${name}</strong><span style="background:${badgeColor};color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px">${classification}</span></div><div style="font-size:11px;color:#64748b;margin-bottom:6px">${district}, ${state}</div><div style="font-size:11px;display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:6px;background:#f8fafc;padding:6px;border-radius:6px;border:1px solid #e2e8f0"><div><strong>Tier:</strong> ${tier}</div><div><strong>Score:</strong> ${score}</div><div><strong>Status:</strong> ${evidence}</div><div><strong>Resolution:</strong> ${resolution}</div></div>${dominantHazardsStr !== "None" && dominantHazardsStr !== "[]" ? `<div style="font-size:10.5px;margin-bottom:4px"><strong>Hazards:</strong> ${dominantHazardsStr}</div>` : ""}${triggersStr !== "None" && triggersStr !== "[]" ? `<div style="font-size:10.5px;margin-bottom:4px;color:#b91c1c"><strong>Triggers:</strong> ${triggersStr}</div>` : ""}<div style="margin-top:6px;padding:4px 6px;background:#e0f2fe;border-radius:4px;font-size:9px;color:#0369a1;font-weight:600">PS191 Carrying Capacity: See Sidebar Decision Panel</div><div style="font-size:9px;color:#94a3b8;margin-top:6px;border-top:1px solid #e2e8f0;padding-top:4px"><em>Administrative Resolution: ${resolution}. ${limitations}</em></div></div>`;
+        const popupHtml = `<div style="font-family:inherit;padding:4px;max-width:280px;color:#1e293b"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px"><strong style="font-size:13px;color:#0f172a">${name}</strong><span style="background:${badgeColor};color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px">${classification}</span></div><div style="font-size:11px;color:#64748b;margin-bottom:6px">${district}, ${state}</div><div style="font-size:11px;display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:6px;background:#f8fafc;padding:6px;border-radius:6px;border:1px solid #e2e8f0"><div><strong>Tier:</strong> ${tier}</div><div><strong>Score:</strong> ${score}</div><div><strong>Status:</strong> ${evidence}</div><div><strong>Resolution:</strong> ${resolution}</div></div>${dominantHazardsStr !== "None" && dominantHazardsStr !== "[]" ? `<div style="font-size:10.5px;margin-bottom:4px"><strong>Hazards:</strong> ${dominantHazardsStr}</div>` : ""}${triggersStr !== "None" && triggersStr !== "[]" ? `<div style="font-size:10.5px;margin-bottom:4px;color:#b91c1c"><strong>Triggers:</strong> ${triggersStr}</div>` : ""}<div style="margin-top:6px;padding:4px 6px;background:#e0f2fe;border-radius:4px;font-size:9px;color:#0369a1;font-weight:600">PS191 Carrying Capacity: See Sidebar Decision Panel</div><div style="margin-top:6px;padding:4px 6px;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;font-size:8.5px;color:#991b1b;line-height:1.3"><strong>Administrative Context:</strong> District-level ${classification} screening. Fine-grained hazard footprint is localized to active river inundation/erosion corridors; the entire district is not uniformly hazardous.</div><div style="font-size:9px;color:#94a3b8;margin-top:6px;border-top:1px solid #e2e8f0;padding-top:4px"><em>Administrative Resolution: ${resolution}. ${limitations}</em></div></div>`;
         new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: "320px" }).setLngLat(event.lngLat).setHTML(popupHtml).addTo(map);
       });
       map.on("mouseenter", "hazard-redzone-fill", () => { map.getCanvas().style.cursor = "pointer"; });
@@ -263,6 +449,61 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
       });
       map.on("mouseenter", "hazard-facility-circle", () => { map.getCanvas().style.cursor = "pointer"; });
       map.on("mouseleave", "hazard-facility-circle", () => { map.getCanvas().style.cursor = ""; });
+
+      // Hospital Click Handler (Medical support only - not mass evacuation)
+      map.on("click", "hazard-hospital-circle", event => {
+        const feat = event.features?.[0];
+        if (!feat || !feat.properties) return;
+        const p = feat.properties as Record<string, unknown>;
+        const name = String(p.name || "Medical Facility");
+        const source = String(p.source || "OpenStreetMap");
+        const popupHtml = `<div style="font-family:inherit;padding:4px;max-width:280px;color:#1e293b"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px"><strong style="font-size:12px;color:#0f172a">🏥 ${name}</strong><span style="background:#0284c7;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px">MEDICAL SUPPORT</span></div><div style="font-size:10.5px;color:#475569;margin-bottom:6px">Role: <strong>Medical Support & Specialized Care</strong></div><div style="background:#fef2f2;border:1px solid #fecaca;padding:6px;border-radius:6px;margin-bottom:6px;font-size:10px;color:#991b1b;line-height:1.35"><strong>IMPORTANT:</strong> Specialized healthcare facility. <em>Not designated as a general mass-evacuation destination.</em></div><div style="font-size:8.5px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:4px">Source: ${source}</div></div>`;
+        new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: "300px" }).setLngLat(event.lngLat).setHTML(popupHtml).addTo(map);
+      });
+      map.on("mouseenter", "hazard-hospital-circle", () => { map.getCanvas().style.cursor = "pointer"; });
+      map.on("mouseleave", "hazard-hospital-circle", () => { map.getCanvas().style.cursor = ""; });
+
+      map.on("click", "relocation-origin-marker", event => {
+        const feat = event.features?.[0];
+        if (!feat || !feat.properties) return;
+        const p = feat.properties as Record<string, unknown>;
+        const name = String(p.name || "Vulnerable Habitation");
+        const exposureLevel = String(p.exposureLevel || "EXPOSED");
+        const pop = p.population !== null && p.population !== undefined ? Number(p.population).toLocaleString("en-IN") : "Unverified / Strictly null";
+        const hazardType = String(p.hazardType || "Hazard Exposure");
+        const popupHtml = `<div style="font-family:inherit;padding:4px;max-width:280px;color:#1e293b"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px"><strong style="font-size:12px;color:#0f172a">${name}</strong><span style="background:#ea580c;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px">VULNERABLE ORIGIN</span></div><div style="font-size:10.5px;color:#475569;margin-bottom:4px">Exposure: <strong style="color:#c2410c">${exposureLevel}</strong></div><div style="font-size:10px;background:#f8fafc;padding:5px;border-radius:6px;border:1px solid #e2e8f0;margin-bottom:6px"><div><strong>Population (Census 2011):</strong> ${pop}</div><div><strong>Hazard context:</strong> ${hazardType}</div></div><div style="font-size:8.5px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:4px">Origin coordinate verified via Census 2011 / SDMA</div></div>`;
+        new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: "300px" }).setLngLat(event.lngLat).setHTML(popupHtml).addTo(map);
+      });
+      map.on("mouseenter", "relocation-origin-marker", () => { map.getCanvas().style.cursor = "pointer"; });
+      map.on("mouseleave", "relocation-origin-marker", () => { map.getCanvas().style.cursor = ""; });
+
+      map.on("click", "relocation-route-destination", event => {
+        const feat = event.features?.[0];
+        if (!feat || !feat.properties) return;
+        const p = feat.properties as Record<string, unknown>;
+        const name = String(p.name || "Safe Relocation Facility");
+        const role = String(p.role || "Emergency Shelter").replace(/_/g, " ");
+        const suitability = String(p.suitability || "PREFERRED");
+        const badgeColor = suitability === "PREFERRED" ? "#16a34a" : "#ea580c";
+        const popupHtml = `<div style="font-family:inherit;padding:4px;max-width:280px;color:#1e293b"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px"><strong style="font-size:12px;color:#0f172a">${name}</strong><span style="background:${badgeColor};color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px">${suitability}</span></div><div style="font-size:10.5px;color:#475569;margin-bottom:4px">Role: <strong>${role}</strong></div><div style="font-size:10px;background:#f8fafc;padding:5px;border-radius:6px;border:1px solid #e2e8f0;margin-bottom:6px"><div><strong>Destination Status:</strong> Verified Safe Relocation Candidate</div><div><strong>Evacuation Capacity:</strong> <span style="color:#64748b">UNAVAILABLE from OSM</span></div></div><div style="font-size:8.5px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:4px">Source: OpenStreetMap verified coordinate</div></div>`;
+        new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: "300px" }).setLngLat(event.lngLat).setHTML(popupHtml).addTo(map);
+      });
+      map.on("mouseenter", "relocation-route-destination", () => { map.getCanvas().style.cursor = "pointer"; });
+      map.on("mouseleave", "relocation-route-destination", () => { map.getCanvas().style.cursor = ""; });
+
+      map.on("click", "relocation-route-line", event => {
+        const feat = event.features?.[0];
+        if (!feat || !feat.properties) return;
+        const p = feat.properties as Record<string, unknown>;
+        const dist = p.distanceKm !== null && p.distanceKm !== undefined ? `${p.distanceKm} km` : "Unavailable";
+        const mins = p.travelTimeMinutes !== null && p.travelTimeMinutes !== undefined ? `~${p.travelTimeMinutes} mins driving` : "Estimated driving time unavailable";
+        const isRoad = Boolean(p.isRoadRoute);
+        const note = String(p.sourceNote || "");
+        const popupHtml = `<div style="font-family:inherit;padding:4px;max-width:280px;color:#1e293b"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px"><strong style="font-size:12px;color:#0f172a">${isRoad ? "Road Evacuation Route" : "Planning Corridor"}</strong><span style="background:${isRoad ? "#0284c7" : "#64748b"};color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px">${isRoad ? "OSRM ROUTE" : "PROXY"}</span></div><div style="font-size:10.5px;color:#475569;margin-bottom:4px">Road Distance: <strong>${dist}</strong> · Travel Time: <strong>${mins}</strong></div><div style="font-size:9.5px;color:#334155;line-height:1.3;margin-bottom:4px">${note}</div><div style="font-size:8.5px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:4px">Routing Provider: Project OSRM / OpenStreetMap</div></div>`;
+        new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: "300px" }).setLngLat(event.lngLat).setHTML(popupHtml).addTo(map);
+      });
+      map.on("mouseenter", "relocation-route-line", () => { map.getCanvas().style.cursor = "pointer"; });
+      map.on("mouseleave", "relocation-route-line", () => { map.getCanvas().style.cursor = ""; });
 
       // Apply initial layer visibility and fly to active location if any
       applyLayers(map, layers, opacity, baseStyle);
@@ -289,10 +530,12 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
     const map = mapRef.current;
     if (!map || !sources) return;
     const doUpdate = () => {
+      console.log("[DivaMap] doUpdate: setting hazard-redzones with", sources.hazardClassification.features.length, "features, route:", sources.relocationRoute.features.length, "origin:", sources.relocationOrigin.features.length, "dest:", sources.relocationDestination.features.length);
       safeSetData(map, "areas", sources.areas);
       safeSetData(map, "selected-area", sources.selectedArea);
       safeSetData(map, "relocation-route", sources.relocationRoute);
       safeSetData(map, "relocation-destination", sources.relocationDestination);
+      safeSetData(map, "relocation-origin", sources.relocationOrigin);
       safeSetData(map, "active-marker", sources.activeMarker);
       safeSetData(map, "hazards", sources.hazards);
       safeSetData(map, "roads", sources.roads);
@@ -314,13 +557,14 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
       safeSetData(map, "hazard-habitations", sources.hazardHabitations);
       safeSetData(map, "hazard-facilities", sources.hazardFacilities);
       safeSetData(map, "hazard-redzones", sources.hazardClassification);
+      applyLayers(map, layers, opacity, baseStyle);
     };
     if (map.isStyleLoaded()) {
       doUpdate();
     } else {
       map.once("load", doUpdate);
     }
-  }, [sources]);
+  }, [sources, layers, opacity, baseStyle]);
 
   // ── Update layer visibility / opacity / base style ────────────────────────
   useEffect(() => {
@@ -395,7 +639,19 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
       <div className="pointer-events-none absolute bottom-4 right-4 z-10 flex items-center gap-1.5 rounded-lg border border-[#415c67] bg-[#081720]/90 px-2.5 py-1.5 text-[10px] font-medium text-[#b4c9ce] shadow-lg backdrop-blur"><MapIcon className="h-3.5 w-3.5 text-[#77cc81]" /> Satellite imagery · Esri</div>
       {data?.activeLocation?.location.boundary && <div data-testid="map-boundary-status" className="pointer-events-none absolute bottom-14 left-4 z-10 rounded-lg border border-[#415c67] bg-[#081720]/90 px-2.5 py-1.5 text-[10px] font-semibold text-[#c6dadd]">Boundary rendered · {data.activeLocation.location.name} state extent</div>}
       <div className="pointer-events-none absolute bottom-4 left-4 z-10 flex items-center gap-1.5 rounded-lg border border-[#415c67] bg-[#081720]/90 px-2.5 py-1.5 text-[10px] font-bold tracking-[0.08em] text-[#add7b0] shadow-lg backdrop-blur"><Crosshair className="h-3.5 w-3.5" /> INDIA LOCATION CONTEXT</div>
-      {data?.relocationRoute && <div className="pointer-events-none absolute bottom-14 left-4 z-10 max-w-[270px] rounded-lg border border-[#415c67] bg-[#081720]/90 px-2.5 py-1.5 text-[9px] font-medium text-[#c6dadd] shadow-lg backdrop-blur"><span className="font-bold text-white">Planning corridor</span> · {data.relocationRoute.distanceKm} km · destination coordinates pending verification</div>}
+      {data?.relocationRoute && (
+        <div className="pointer-events-none absolute bottom-14 left-4 z-10 max-w-[320px] rounded-lg border border-[#415c67] bg-[#081720]/90 px-2.5 py-1.5 text-[9px] font-medium text-[#c6dadd] shadow-lg backdrop-blur">
+          {data.relocationRoute.isRoadRoute ? (
+            <span>
+              <span className="font-bold text-[#38bdf8]">Road-network route</span> · {data.relocationRoute.distanceKm ?? "—"} km {data.relocationRoute.travelTimeMinutes ? `· ~${data.relocationRoute.travelTimeMinutes} min` : ""} · Project OSRM
+            </span>
+          ) : (
+            <span>
+              <span className="font-bold text-white">Planning corridor</span> · {data.relocationRoute.distanceKm ?? "—"} km · road routing unavailable
+            </span>
+          )}
+        </div>
+      )}
       {data?.nationwide ? <IndiaOverviewProvenance sources={data.nationwide.sources} statuses={data.nationwide.statuses} updatedAt={data.nationwide.updatedAt} /> : <div className="pointer-events-none absolute bottom-14 right-4 z-10 hidden items-center gap-1.5 rounded-lg bg-white/90 px-2 py-1 text-[10px] text-[#547080] lg:flex"><LocateFixed className="h-3 w-3" /> Coordinates WGS84</div>}
     </div>
   );

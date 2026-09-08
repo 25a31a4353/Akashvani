@@ -7,7 +7,7 @@ import { nationwideLayerControls } from "@/components/diva/nationwideLayerConfig
 import { IndiaLocationSearch } from "@/components/diva/IndiaLocationSearch";
 import { HistoricalLab } from "@/components/diva/HistoricalLab";
 import { ReportArchiveList } from "@/components/diva/ReportArchiveList";
-import { IndiaContextSidebar, IndiaLocationSummaryStrip, SelectedLocationForecast, SelectedLocationForecastDetails, SelectedLocationPriorityDecisionTable, SelectedLocationPriorityQueue, SelectedLocationReportAction } from "@/components/diva/SelectedLocationDecisionPanels";
+import { IndiaContextSidebar, IndiaLocationSummaryStrip, SelectedLocationForecast, SelectedLocationForecastDetails, SelectedLocationPriorityDecisionTable, SelectedLocationPriorityQueue, SelectedLocationReportAction, lookupRealDistrict } from "@/components/diva/SelectedLocationDecisionPanels";
 import { AssamDisasterHistory } from "@/components/diva/AssamDisasterHistory";
 import { AssamStateProfile } from "@/components/diva/AssamStateProfile";
 import { MetricCard } from "@/components/diva/MetricCard";
@@ -44,23 +44,25 @@ const secondaryNavigation = navigation.slice(4);
 const initialLayers: Record<string, boolean> = {
   nationalStates: true,
   boundaries: true,
-  population: true,
+  population: false,
   terrain: true,
   redZones: true,
-  exposedHabitations: false,
+  routes: true,
+  exposedHabitations: true,
   facilities: true,
+  hospitals: false,
   seismicOfficial: false,
   cwcGauges: false,
-  floodPlains: false,
-  erosionCorridors: false,
-  landslideEvents: false,
+  floodPlains: true,
+  erosionCorridors: true,
+  landslideEvents: true,
   cycloneTracks: false,
-  liveWeather: true,
-  wind: true,
-  earthquakeSensitivity: true,
-  landslideSensitivity: true,
-  floodSensitivity: true,
-  infrastructure: true,
+  liveWeather: false,
+  wind: false,
+  earthquakeSensitivity: false,
+  landslideSensitivity: false,
+  floodSensitivity: false,
+  infrastructure: false,
 };
 
 
@@ -114,7 +116,99 @@ export default function Home() {
   }, [allAreas, selectedId]);
   const environmentQuery = trpc.diva.environment.useQuery(selectedCoordinates, { staleTime: 10 * 60 * 1000 });
   const indiaContextRequest = trpc.diva.india.context.useQuery(indiaLocation, { staleTime: 10 * 60 * 1000, retry: 1, retryDelay: 500 });
-  const nationwideMapQuery = trpc.diva.india.nationwideMap.useQuery(undefined, { enabled: indiaLocation.id === "india-overview", staleTime: 5 * 60 * 1000, refetchInterval: 5 * 60 * 1000, retry: 1 });
+  const nationwideMapQuery = trpc.diva.india.nationwideMap.useQuery(undefined, { staleTime: 5 * 60 * 1000, refetchInterval: 5 * 60 * 1000, retry: 1 });
+  const realDistrict = lookupRealDistrict(indiaLocation.name, indiaLocation.address?.district ?? indiaLocation.address?.city);
+
+  const habitationsQuery = trpc.diva.hazards.habitations.useQuery(
+    {
+      latitude: indiaLocation.latitude,
+      longitude: indiaLocation.longitude,
+      district: realDistrict?.name,
+      stateCode: realDistrict?.stateCode,
+      radiusKm: 35,
+    },
+    { enabled: Boolean(indiaLocation), staleTime: 10 * 60 * 1000 }
+  );
+  const habitationsList = habitationsQuery.data ?? [];
+  const districtHabitations = realDistrict
+    ? habitationsList.filter((h: any) =>
+        h.district?.toLowerCase() === realDistrict.name?.toLowerCase() &&
+        h.latitude != null && h.longitude != null
+      )
+    : [];
+  const districtExposed = districtHabitations.filter((h: any) => h.insideHazardZone);
+  const exposedHabitations = habitationsList.filter((h: any) => h.insideHazardZone && h.latitude != null && h.longitude != null);
+  const selectedVulnerableHabitation =
+    districtExposed[0] ??
+    districtHabitations[0] ??
+    exposedHabitations[0] ??
+    habitationsList.find((h: any) => h.latitude != null && h.longitude != null) ??
+    null;
+
+  const relocationQuery = trpc.diva.hazards.relocation.useQuery(
+    {
+      districtId: realDistrict?.id ?? "DIST-AS-DIB",
+      stateCode: realDistrict?.stateCode,
+      radiusKm: 35,
+      originLat: selectedVulnerableHabitation?.latitude,
+      originLon: selectedVulnerableHabitation?.longitude,
+    },
+    { enabled: Boolean(realDistrict), staleTime: 10 * 60 * 1000 }
+  );
+
+  const relRec = relocationQuery.data;
+  const destinationCandidate = relRec?.bestCandidate ?? (relRec?.conditionalAlternatives ?? []).find((f: any) => f.latitude != null && f.longitude != null) ?? null;
+
+  const routeQuery = trpc.diva.hazards.evacuationRoute.useQuery(
+    {
+      originLat: selectedVulnerableHabitation?.latitude ?? 0,
+      originLon: selectedVulnerableHabitation?.longitude ?? 0,
+      destinationLat: destinationCandidate?.latitude ?? 0,
+      destinationLon: destinationCandidate?.longitude ?? 0,
+      originName: selectedVulnerableHabitation?.name,
+      destinationName: destinationCandidate?.name,
+    },
+    {
+      enabled: Boolean(
+        selectedVulnerableHabitation &&
+        destinationCandidate &&
+        selectedVulnerableHabitation.latitude != null &&
+        selectedVulnerableHabitation.longitude != null &&
+        destinationCandidate.latitude != null &&
+        destinationCandidate.longitude != null
+      ),
+      staleTime: 15 * 60 * 1000,
+    }
+  );
+
+  const verifiedRoadRoute = routeQuery.data && routeQuery.data.status === "OK" && routeQuery.data.coordinates.length > 0 ? {
+    coordinates: routeQuery.data.coordinates,
+    destinationLabel: destinationCandidate?.name ?? "Relocation Destination",
+    originLabel: selectedVulnerableHabitation?.name ?? "Vulnerable Habitation",
+    distanceKm: routeQuery.data.routeDistanceKm,
+    travelTimeMinutes: routeQuery.data.travelTimeMinutes,
+    isRoadRoute: true,
+    sourceNote: routeQuery.data.note,
+  } : undefined;
+
+  const relocationOrigin = selectedVulnerableHabitation ? {
+    latitude: selectedVulnerableHabitation.latitude,
+    longitude: selectedVulnerableHabitation.longitude,
+    name: selectedVulnerableHabitation.name,
+    exposureLevel: selectedVulnerableHabitation.exposureLevel,
+    population: selectedVulnerableHabitation.population,
+    hazardType: selectedVulnerableHabitation.hazardType,
+  } : undefined;
+
+  const relocationDestination = destinationCandidate ? {
+    latitude: destinationCandidate.latitude,
+    longitude: destinationCandidate.longitude,
+    name: destinationCandidate.name,
+    role: destinationCandidate.facilityRole,
+    suitability: destinationCandidate.relocationSuitability,
+    capacityNote: destinationCandidate.capacity ? `${destinationCandidate.capacity} capacity` : "UNAVAILABLE from OSM",
+  } : undefined;
+
   const mapLocationContext = useMemo(() => indiaContextRequest.data ?? (indiaContextRequest.isError || indiaLocation.id === "india-assam" ? {
     location: indiaLocation,
     environment: { temperatureC: null, precipitationMm: null, usAqi: null, pm25: null, observedAt: null, forecast: [], source: indiaContextRequest.isError ? "Selected-location context could not be refreshed. Existing Assam map location remains available." : "Live Assam weather context is still being retrieved; no current value is substituted.", status: indiaContextRequest.isError ? "LOCATION CONTEXT UNAVAILABLE" : "ASSAM LIVE CONTEXT LOADING" },
@@ -130,7 +224,15 @@ export default function Home() {
   const [headerSearchActiveIndex, setHeaderSearchActiveIndex] = useState(-1);
   const indiaHeaderSearch = trpc.diva.india.search.useQuery({ query: search }, { enabled: search.trim().length >= 2, staleTime: 15 * 60 * 1000 });
   const mapData = useMemo(() => mapQuery.data ? { ...mapQuery.data, center: [indiaLocation.longitude, indiaLocation.latitude] as [number, number], areas: mappedAreas, nationwide: nationwideMapQuery.data } : undefined, [indiaLocation.latitude, indiaLocation.longitude, mapQuery.data, mappedAreas, nationwideMapQuery.data]);
-  const divaMapData = useMemo(() => mapData ? { ...mapData, activeLocation: mapLocationContext, nearbyInfrastructure: mapLocationContext?.infrastructure.items, environment: mapLocationContext ? { latitude: mapLocationContext.location.latitude, longitude: mapLocationContext.location.longitude, temperatureC: mapLocationContext.environment.temperatureC, precipitationMm: mapLocationContext.environment.precipitationMm, usAqi: mapLocationContext.environment.usAqi, status: mapLocationContext.environment.status } : environmentQuery.data ? { latitude: selectedCoordinates.latitude, longitude: selectedCoordinates.longitude, temperatureC: environmentQuery.data.temperatureC, precipitationMm: environmentQuery.data.precipitationMm, usAqi: environmentQuery.data.usAqi, status: environmentQuery.data.status } : undefined } : undefined, [environmentQuery.data, mapData, mapLocationContext, selectedCoordinates.latitude, selectedCoordinates.longitude]);
+  const divaMapData = useMemo(() => mapData ? {
+    ...mapData,
+    activeLocation: mapLocationContext,
+    nearbyInfrastructure: mapLocationContext?.infrastructure.items,
+    relocationOrigin,
+    relocationDestination,
+    relocationRoute: verifiedRoadRoute,
+    environment: mapLocationContext ? { latitude: mapLocationContext.location.latitude, longitude: mapLocationContext.location.longitude, temperatureC: mapLocationContext.environment.temperatureC, precipitationMm: mapLocationContext.environment.precipitationMm, usAqi: mapLocationContext.environment.usAqi, status: mapLocationContext.environment.status } : environmentQuery.data ? { latitude: selectedCoordinates.latitude, longitude: selectedCoordinates.longitude, temperatureC: environmentQuery.data.temperatureC, precipitationMm: environmentQuery.data.precipitationMm, usAqi: environmentQuery.data.usAqi, status: environmentQuery.data.status } : undefined
+  } : undefined, [destinationCandidate, environmentQuery.data, mapData, mapLocationContext, relocationDestination, relocationOrigin, selectedCoordinates.latitude, selectedCoordinates.longitude, verifiedRoadRoute]);
 
   useEffect(() => { setNarrative(null); }, [selectedId]);
   useEffect(() => {

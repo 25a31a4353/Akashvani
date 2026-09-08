@@ -3,8 +3,9 @@ import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 import type { AssessmentAnalysis, AssessmentArea } from "@shared/diva";
 import type { IndiaLocation, IndiaLocationContext } from "@shared/india";
-import { ArrowRight, Bot, Building2, Check, ChevronDown, CircleAlert, CloudSun, Crosshair, Download, Expand, Layers3, MapPin, Menu, Minus, MoreHorizontal, PanelRightOpen, Plus, RotateCcw, ShieldAlert, Sparkles, Users, Wind, X } from "lucide-react";
+import { ArrowRight, Bot, Building2, Check, ChevronDown, CircleAlert, CloudSun, Crosshair, Download, Expand, Layers3, Loader2, MapPin, Menu, Minus, MoreHorizontal, PanelRightOpen, Plus, RotateCcw, ShieldAlert, Sparkles, Users, Wind, X } from "lucide-react";
 import { useState } from "react";
+import { trpc } from "@/lib/trpc";
 import { DivaMap, type MapData } from "./DivaMap";
 import { IndiaLocationSearch } from "./IndiaLocationSearch";
 import { buildLocationPlanningCorridor, buildRelocationRoute, buildSelectedLocationSummary, formatMapMetric, getRecommendedSite, mapRiskColor } from "./mapCommandUi";
@@ -41,12 +42,103 @@ export function MapCommandWorkspace({ data, selectedId, area, analysis, indiaLoc
   const panelLocationKind = selectedContext ? selectedLocation.category : "Assessment area";
   const priorityLabel = selectedContext?.screening.priority ?? analysis.relocationPriority;
   const actionLabel = selectedContext?.screening.hazardContext ?? analysis.recommendedAction;
-  const commandLayers: Record<string, boolean> = { ...layers, routes: true };
-  const commandData: MapData = selectedContext
-    ? { ...data, center: [selectedLocation.longitude, selectedLocation.latitude], activeLocation: selectedContext, nationwide: undefined, relocationRoute: buildLocationPlanningCorridor(selectedLocation, { infrastructure: [], nearbyInfrastructure: selectedContext.infrastructure.items }, undefined) }
-    : { ...data, center: [area.longitude, area.latitude], activeLocation: undefined, nationwide: undefined, relocationRoute: buildRelocationRoute(area, data, recommendedSite?.name) };
 
   const realDistrict = lookupRealDistrict(selectedLocation.name, selectedLocation.address?.district ?? selectedLocation.address?.city ?? area.district);
+
+  // Habitations query for the selected district/coords
+  const habitationsQuery = trpc.diva.hazards.habitations.useQuery(
+    {
+      latitude: selectedLocation.latitude,
+      longitude: selectedLocation.longitude,
+      district: realDistrict?.name,
+      stateCode: realDistrict?.stateCode,
+      radiusKm: 35,
+    },
+    { enabled: Boolean(selectedLocation), staleTime: 10 * 60 * 1000 }
+  );
+
+  // Relocation recommendation query for the selected district
+  const relocationQuery = trpc.diva.hazards.relocation.useQuery(
+    {
+      districtId: realDistrict?.id ?? "DIST-AS-DIB",
+      stateCode: realDistrict?.stateCode,
+      radiusKm: 35,
+    },
+    { enabled: Boolean(realDistrict), staleTime: 10 * 60 * 1000 }
+  );
+
+  // Identify highest priority exposed habitation with valid coordinates
+  const habitationsList = habitationsQuery.data ?? [];
+  const exposedHabitations = habitationsList.filter((h: any) => h.insideHazardZone && h.latitude != null && h.longitude != null);
+  const selectedVulnerableHabitation = exposedHabitations[0] ?? habitationsList.find((h: any) => h.latitude != null && h.longitude != null) ?? null;
+
+  // Identify recommended relocation destination facility (preferred or conditional, strictly NOT unsuitable and NOT hospital)
+  const relRec = relocationQuery.data;
+  const destinationCandidate = relRec?.bestCandidate ?? (relRec?.conditionalAlternatives ?? []).find((f: any) => f.latitude != null && f.longitude != null) ?? null;
+
+  // Fetch verified OSRM evacuation road route
+  const routeQuery = trpc.diva.hazards.evacuationRoute.useQuery(
+    {
+      originLat: selectedVulnerableHabitation?.latitude ?? 0,
+      originLon: selectedVulnerableHabitation?.longitude ?? 0,
+      destinationLat: destinationCandidate?.latitude ?? 0,
+      destinationLon: destinationCandidate?.longitude ?? 0,
+      originName: selectedVulnerableHabitation?.name,
+      destinationName: destinationCandidate?.name,
+    },
+    {
+      enabled: Boolean(
+        selectedVulnerableHabitation &&
+        destinationCandidate &&
+        selectedVulnerableHabitation.latitude != null &&
+        selectedVulnerableHabitation.longitude != null &&
+        destinationCandidate.latitude != null &&
+        destinationCandidate.longitude != null
+      ),
+      staleTime: 15 * 60 * 1000,
+    }
+  );
+
+  const verifiedRoadRoute = routeQuery.data && routeQuery.data.status === "OK" && routeQuery.data.coordinates.length > 0 ? {
+    coordinates: routeQuery.data.coordinates,
+    destinationLabel: destinationCandidate?.name ?? "Relocation Destination",
+    originLabel: selectedVulnerableHabitation?.name ?? "Vulnerable Habitation",
+    distanceKm: routeQuery.data.routeDistanceKm,
+    travelTimeMinutes: routeQuery.data.travelTimeMinutes,
+    isRoadRoute: true,
+    sourceNote: routeQuery.data.note,
+  } : undefined;
+
+  const relocationOrigin = selectedVulnerableHabitation ? {
+    latitude: selectedVulnerableHabitation.latitude,
+    longitude: selectedVulnerableHabitation.longitude,
+    name: selectedVulnerableHabitation.name,
+    exposureLevel: selectedVulnerableHabitation.exposureLevel,
+    population: selectedVulnerableHabitation.population,
+    hazardType: selectedVulnerableHabitation.hazardType,
+  } : undefined;
+
+  const relocationDestination = destinationCandidate ? {
+    latitude: destinationCandidate.latitude,
+    longitude: destinationCandidate.longitude,
+    name: destinationCandidate.name,
+    role: destinationCandidate.facilityRole,
+    suitability: destinationCandidate.relocationSuitability,
+    capacityNote: destinationCandidate.capacity ? `${destinationCandidate.capacity} capacity` : "UNAVAILABLE from OSM",
+  } : undefined;
+
+  const commandLayers: Record<string, boolean> = { ...layers, routes: true, redZones: true };
+  const commandData: MapData = {
+    ...data,
+    center: [selectedLocation.longitude, selectedLocation.latitude],
+    activeLocation: selectedContext ?? data.activeLocation,
+    nationwide: data.nationwide, // Preserve nationwide classification polygons
+    relocationOrigin,
+    relocationDestination,
+    relocationRoute: verifiedRoadRoute ?? (selectedContext
+      ? undefined
+      : buildRelocationRoute(area, data, recommendedSite?.name)),
+  };
 
   return <div data-testid="map-command-workspace" className="map-command-workspace min-h-screen overflow-hidden bg-[#06121a] text-[#edf7f3]">{locationNotice && <div role="status" className="absolute left-4 right-4 top-4 z-50 rounded-xl border border-[#8c6b26] bg-[#3a2c0d]/95 px-3 py-2 text-[11px] font-medium text-[#f6dfa1] shadow-2xl backdrop-blur-md lg:left-[206px] lg:right-[302px]"><span className="font-bold">Location fallback:</span> {locationNotice}</div>}
     <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[190px_minmax(0,1fr)_286px]">
@@ -56,10 +148,9 @@ export function MapCommandWorkspace({ data, selectedId, area, analysis, indiaLoc
           <section><PanelHeading icon={MapPin}>Selected location</PanelHeading><div className="mt-3 rounded-lg border border-[#2c4855] bg-[#0d202a] px-3 py-2.5"><p className="text-[13px] font-semibold text-white">{panelLocationName}</p><p className="mt-1 text-[10px] text-[#9bb1b6]">{panelLocationKind} · {panelDistrict} · {panelState}</p><p className="mt-2 text-[9px] leading-relaxed text-[#78939b]">Use the search box above to change the location.</p></div></section>
           <div className="h-px bg-[#203742]" />
 
-          <div className="h-px bg-[#203742]" />
           <section><PanelHeading icon={ShieldAlert}>Risk level</PanelHeading><div className="mt-3 space-y-2.5">{["High", "Medium", "Low"].map((label, index) => <div key={label} className="flex items-center gap-2 text-[12px] text-[#c8d7db]"><span className="h-3.5 w-3.5 rounded-full" style={{ background: index === 0 ? "#ff3339" : index === 1 ? "#ff8b17" : "#36c64c" }} />{label}</div>)}</div></section>
           <div className="h-px bg-[#203742]" />
-          <section><div className="space-y-3 text-[10px] text-[#aac0c5]"><div className="flex items-center gap-2"><span className="text-[#f6f8f2]">⌂</span> Vulnerable habitations</div><div className="flex items-center gap-2"><ArrowRight className="h-3.5 w-3.5 text-[#e7f4ed]" /> Planning corridors</div><div className="flex items-center gap-2"><MapPin className="h-3.5 w-3.5 text-[#65d378]" /> Safe relocation zones</div><div className="flex items-center gap-2"><CircleAlert className="h-3.5 w-3.5 text-[#ff4b54]" /> Emergency facilities</div></div></section>
+          <section><div className="space-y-3 text-[10px] text-[#aac0c5]"><div className="flex items-center gap-2"><span className="text-[#ea580c]">📍</span> Vulnerable habitations</div><div className="flex items-center gap-2"><span className="text-[#38bdf8]">══</span> Road evacuation route</div><div className="flex items-center gap-2"><span className="text-[#16a34a]">🟢</span> Safe relocation zones</div><div className="flex items-center gap-2"><CircleAlert className="h-3.5 w-3.5 text-[#ff4b54]" /> Emergency facilities</div></div></section>
         </div>
         <div className="mt-auto border-t border-[#203742] px-3.5 py-3 text-[9px] leading-relaxed text-[#718a92]">DIVA decision-support demonstration. Not an authoritative warning system.</div>
       </aside>
@@ -69,7 +160,7 @@ export function MapCommandWorkspace({ data, selectedId, area, analysis, indiaLoc
         <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-3 p-4 sm:p-5"><div className="pointer-events-auto flex min-w-0 flex-1 items-center gap-2"><div className="w-full max-w-[295px]"><IndiaLocationSearch tone="dark" onSelect={onSelectLocation} /></div><div className="hidden items-center gap-1.5 rounded-lg border border-[#49646c] bg-[#0b1e27]/85 px-2.5 py-2 text-[10px] font-semibold text-[#c4d8dc] shadow-xl backdrop-blur-md sm:flex"><Crosshair className="h-3.5 w-3.5 text-[#75c987]" />{indiaLocation.name}</div></div><div className="pointer-events-auto flex items-center gap-1.5"><Button variant="ghost" size="icon" onClick={onOpenDashboard} className="h-9 w-9 rounded-lg border border-[#405a63] bg-[#0b1e27]/90 text-[#d7e5e8] shadow-xl backdrop-blur-md hover:bg-[#173541]" aria-label="Open dashboard"><MoreHorizontal className="h-4 w-4" /></Button><Button variant="ghost" size="icon" onClick={() => setIsMobileMenuOpen(true)} className="h-9 w-9 rounded-lg border border-[#405a63] bg-[#0b1e27]/90 text-[#d7e5e8] shadow-xl backdrop-blur-md hover:bg-[#173541] lg:hidden" aria-label="Open map menu"><Menu className="h-4 w-4" /></Button></div></div>
         <div className="absolute left-1/2 top-[76px] z-20 flex -translate-x-1/2 items-center gap-1 rounded-lg border border-[#405a63] bg-[#0b1e27]/90 p-1 shadow-2xl backdrop-blur-md"><Button variant="ghost" size="sm" onClick={() => setIsLayersOpen(value => !value)} className={cn("h-8 rounded-md px-2.5 text-[11px] font-semibold text-[#e1ecee] hover:bg-[#1b3c46]", isLayersOpen && "bg-[#193d45] text-[#8be090]")}><Layers3 className="mr-1.5 h-3.5 w-3.5" />Layers</Button><Button variant="ghost" size="sm" onClick={() => setIsLegendOpen(value => !value)} className={cn("h-8 rounded-md px-2.5 text-[11px] font-semibold text-[#e1ecee] hover:bg-[#1b3c46]", isLegendOpen && "bg-[#193d45] text-[#8be090]")}><span className="mr-1.5 grid grid-cols-2 gap-0.5"><span className="h-1.5 w-1.5 bg-[#7fc58e]" /><span className="h-1.5 w-1.5 bg-[#f2be55]" /></span>Legend</Button><Button variant="ghost" size="icon" onClick={() => document.querySelector<HTMLElement>('[data-testid="india-gis-map"]')?.requestFullscreen()} className="h-8 w-8 rounded-md text-[#e1ecee] hover:bg-[#1b3c46]" aria-label="Toggle fullscreen map"><Expand className="h-3.5 w-3.5" /></Button></div>
         {isLayersOpen && <div className="absolute left-1/2 top-[124px] z-30 w-[268px] max-h-[460px] overflow-y-auto -translate-x-1/2 rounded-xl border border-[#3e5c65] bg-[#0b1d26]/96 p-3 shadow-2xl backdrop-blur-md"><div className="flex items-center justify-between"><p className="text-[11px] font-bold text-[#e6f3ef]">Map layers</p><span className="rounded bg-[#173d3d] px-1.5 py-0.5 text-[9px] font-bold uppercase text-[#84d58d]">Live view</span></div><div className="mt-2 [&_label]:text-[#bdd0d4] [&_label:hover]:text-white [&_div]:text-[#6c8c96]"><IndiaOverviewLayerControls layers={commandLayers} onChange={(id, enabled) => onLayerChange(id, enabled)} /></div><div className="mt-2 border-t border-[#25404a] pt-2"><div className="grid grid-cols-2 gap-1 rounded-md bg-[#102832] p-1"><button onClick={() => onBaseStyleChange("muted")} className={cn("rounded px-2 py-1 text-[9px] font-semibold", baseStyle === "muted" ? "bg-[#315159] text-white" : "text-[#8fa9af]")}>Muted</button><button onClick={() => onBaseStyleChange("terrain")} className={cn("rounded px-2 py-1 text-[9px] font-semibold", baseStyle === "terrain" ? "bg-[#315159] text-white" : "text-[#8fa9af]")}>Terrain</button></div><div className="mt-2 flex items-center justify-between text-[9px] text-[#8fa9af]"><span>Overlay opacity</span><span>{Math.round(opacity * 100)}%</span></div><Slider value={[opacity * 100]} min={25} max={100} step={5} onValueChange={values => onOpacityChange((values[0] ?? 90) / 100)} className="mt-2" aria-label="Map overlay opacity" /></div></div>}
-        {isLegendOpen && <div className="absolute left-1/2 top-[124px] z-30 w-[228px] -translate-x-1/2 rounded-xl border border-[#3e5c65] bg-[#0b1d26]/96 p-3 shadow-2xl backdrop-blur-md"><p className="text-[11px] font-bold text-[#e6f3ef]">Active legend</p><div className="mt-2 space-y-2 text-[10px] text-[#bdd0d4]"><div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#ff3d43]" />High hazard exposure</div><div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#ff941e]" />Medium hazard exposure</div><div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#50cf64]" />Low hazard / safe zone</div><div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full border border-white bg-transparent" />Selected assessment area</div></div></div>}
+        {isLegendOpen && <div className="absolute left-1/2 top-[124px] z-30 w-[228px] -translate-x-1/2 rounded-xl border border-[#3e5c65] bg-[#0b1d26]/96 p-3 shadow-2xl backdrop-blur-md"><p className="text-[11px] font-bold text-[#e6f3ef]">Active legend</p><div className="mt-2 space-y-2 text-[10px] text-[#bdd0d4]"><div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#c62828]" />RED (Critical red zone)</div><div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#e65100]" />ORANGE (Attention required)</div><div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#2e7d32]" />GREEN (Low assessed risk)</div><div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#ea580c]" />📍 Vulnerable habitation</div><div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#16a34a]" />🟢 Safe destination</div></div></div>}
         <div className="pointer-events-none absolute bottom-4 left-4 z-20 hidden rounded-lg border border-[#405a63] bg-[#0b1e27]/88 px-2.5 py-2 text-[10px] text-[#c9d9dc] shadow-xl backdrop-blur-md sm:block"><div className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-[#ff3d43]" />{isSearchContext ? "Screening risk" : `${riskLabel} analytical risk`} <strong className="text-white">{selectedSummary?.risk ?? `${risk}/100`}</strong></div><div className="mt-1 text-[9px] text-[#8da6ad]">{isSearchContext ? `${selectedLocation.category} · ${selectedLocation.population == null ? "Population unavailable" : `${formatMapMetric(selectedLocation.population)} population reported`}` : `${area.primaryHazard} · ${formatMapMetric(area.population)} people in assessment extent`}</div></div>
       </main>
 
@@ -77,6 +168,66 @@ export function MapCommandWorkspace({ data, selectedId, area, analysis, indiaLoc
         <div className="flex h-full flex-col"><div className="border-b border-[#203742] p-4 sm:p-5"><div className="flex items-start gap-2.5"><div className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-[#352873] text-[#c6b9ff]"><Bot className="h-4 w-4" /></div><div><p className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#b8a8ff]">{isSearchContext ? "Location summary" : "Relocation plan"}</p></div></div><h1 className="mt-6 text-[21px] font-semibold tracking-tight text-white">{selectedSummary?.title ?? `Village: ${area.name}`}</h1><p className="mt-1 text-[11px] text-[#8ea8af]">{selectedSummary?.subtitle ?? `${panelDistrict} · ${panelState} · DIVA-${selectedId}`}</p></div>
           <div className="p-4 sm:p-5"><div className="rounded-lg border border-[#1f3741] bg-[#091b25] px-3"><MetricRow icon={ShieldAlert} label={isSearchContext ? "Screening risk" : "Risk"} value={selectedSummary?.risk ?? `${risk}/100`} tone={risk >= 70 ? "red" : risk >= 50 ? "orange" : "green"} />{isSearchContext ? <><MetricRow icon={Users} label="Population" value={selectedSummary?.population ?? formatMapMetric(area.population)} /><MetricRow icon={CloudSun} label="Current weather" value={selectedSummary?.temperature ?? "Unavailable"} /><MetricRow icon={Sparkles} label="Air quality" value={selectedSummary?.airQuality ?? "Unavailable"} /></> : <><MetricRow icon={Users} label="Population" value={formatMapMetric(area.population)} /><MetricRow icon={Users} label="Vulnerable" value={formatMapMetric(area.vulnerablePopulation)} tone="orange" /></>}</div>
             {isSearchContext ? <div className="mt-4 rounded-lg border border-[#1f3741] bg-[#091b25] px-3"><MetricRow icon={MapPin} label="Selected place" value={selectedLocation.category} /><MetricRow icon={CloudSun} label="Current precipitation" value={selectedSummary?.precipitation ?? "Unavailable"} /><MetricRow icon={Wind} label="Next-day forecast" value={selectedSummary?.nextForecast ?? "Unavailable"} /><MetricRow icon={Building2} label="Mapped facilities" value={selectedSummary?.facilityCount ?? "Unavailable"} /></div> : <div className="mt-4 rounded-lg border border-[#1f3741] bg-[#091b25] px-3"><MetricRow icon={MapPin} label="Recommended site" value={recommendedSite?.name ?? "Pending"} tone="green" /><MetricRow icon={Building2} label="Available capacity" value={recommendedSite ? formatMapMetric(recommendedSite.availableCapacity) : "—"} /><MetricRow icon={ArrowRight} label="Service access" value={recommendedSite ? `${recommendedSite.serviceAccess}/100` : "—"} /><MetricRow icon={Check} label="Suitability" value={recommendedSite ? `${recommendedSite.suitability}%` : "—"} tone="green" /></div>}
+            
+            {/* Visual Evacuation Decision Flow Card */}
+            <div className="mt-4 rounded-lg border border-[#1f3741] bg-[#091b25] p-3.5">
+              <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#38bdf8]">
+                PS191 Evacuation Decision Flow
+              </p>
+              <div className="mt-2.5 space-y-2 text-xs">
+                <div className="flex items-start gap-2">
+                  <span className="text-[#ea580c]">📍</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-white truncate">
+                      {selectedVulnerableHabitation?.name ?? "Vulnerable Habitation"}
+                    </p>
+                    <p className="text-[10px] text-[#8ea8af]">
+                      {selectedVulnerableHabitation?.population != null
+                        ? `Census 2011: ${selectedVulnerableHabitation.population.toLocaleString("en-IN")} people`
+                        : "Census population unverified"} · {selectedVulnerableHabitation?.exposureLevel ?? "Exposed"}
+                    </p>
+                  </div>
+                </div>
+                <div className="ml-2 pl-2 border-l border-[#203742] py-0.5 text-[10px] text-[#6d8a94]">
+                  Assessed Risk Zone: <strong className={cn(risk >= 70 ? "text-[#f87171]" : risk >= 40 ? "text-[#fb923c]" : "text-[#4ade80]")}>{risk >= 70 ? "RED (Critical)" : risk >= 40 ? "ORANGE (Attention required)" : "GREEN (Low assessed concern)"}</strong>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="text-[#16a34a]">🟢</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-white truncate">
+                      {destinationCandidate?.name ?? (relRec?.candidateStatus === "NO_CANDIDATE" ? "No verified candidate" : "Searching candidates…")}
+                    </p>
+                    <p className="text-[10px] text-[#8ea8af]">
+                      {destinationCandidate ? `${destinationCandidate.facilityRole.replace(/_/g, " ")} · ${destinationCandidate.relocationSuitability}` : "No verified safe shelter in range"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-3 border-t border-[#1f3741] pt-2.5">
+                {routeQuery.isLoading ? (
+                  <div className="flex items-center gap-2 text-[10px] text-[#94a3b8]">
+                    <Loader2 className="h-3 w-3 animate-spin text-[#38bdf8]" />
+                    Calculating OSRM road route…
+                  </div>
+                ) : verifiedRoadRoute?.isRoadRoute ? (
+                  <div className="rounded-md bg-[#0c2a38] p-2 border border-[#164e63]">
+                    <div className="flex items-center justify-between text-[11px] font-semibold text-[#38bdf8]">
+                      <span>🛣️ Road-Network Route</span>
+                      <span>{verifiedRoadRoute.distanceKm} km</span>
+                    </div>
+                    <p className="mt-1 text-[10px] text-[#7dd3fc]">
+                      Est. travel time: ~{verifiedRoadRoute.travelTimeMinutes} mins driving via OSRM
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-[9px] text-[#78939b]">
+                    {destinationCandidate ? "Road-network routing service unavailable/timed out — travel time not fabricated." : "No safe candidate available for road routing."}
+                  </p>
+                )}
+              </div>
+            </div>
+
             <div className="mt-4 rounded-lg border border-[#1f3741] bg-[#091b25] px-3 py-3"><div className="flex items-center justify-between"><span className="text-[11px] text-[#b6c8cd]">Relocation priority</span><span className={cn("rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em]", priorityLabel === "Immediate" || priorityLabel === "High" ? "bg-[#54242a] text-[#ff7b7d]" : priorityLabel === "Moderate" ? "bg-[#514321] text-[#ffd36a]" : "bg-[#183d2e] text-[#65d378]")}>{selectedSummary?.priority ?? priorityLabel}</span></div><div className="mt-3 flex items-center gap-2 text-[10px] text-[#8ea8af]"><span className="h-2 w-2 rounded-full" style={{ background: mapRiskColor(riskLabel) }} />{selectedSummary?.action ?? actionLabel}</div><p className="mt-3 border-t border-[#1f3741] pt-3 text-[9px] leading-relaxed text-[#78939b]">{commandData.relocationRoute?.sourceNote}</p></div>
             {realDistrict && (
               <div className="mt-4">

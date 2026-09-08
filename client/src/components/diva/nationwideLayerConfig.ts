@@ -28,7 +28,9 @@ export const authoritativeHazardLayerControls = [
   ["landslideEvents", "[OBSERVED] Landslide Events (ISRO/GSI)"],
   ["cycloneTracks", "[OBSERVED] Cyclone Tracks (IBTrACS/IMD)"],
   ["redZones", "[PS191] Red / Orange / Green Classification"],
-  ["facilities", "[PS191] Evacuation Facilities (OSM)"],
+  ["facilities", "[PS191] Shelters & Relief Centres (OSM)"],
+  ["hospitals", "[SUPPORT] Hospitals / Medical Support"],
+  ["routes", "[PS191] Evacuation Road Route (OSRM)"],
   ["exposedHabitations", "[DERIVED] Exposed Habitations"],
 ] as const;
 
@@ -41,6 +43,8 @@ export const authoritativeHazardMapLayerVisibility = {
   cycloneTracks: ["hazard-cyclone-line", "hazard-cyclone-label"],
   redZones: ["hazard-redzone-fill", "hazard-redzone-line", "hazard-redzone-label"],
   facilities: ["hazard-facility-circle", "hazard-facility-label"],
+  hospitals: ["hazard-hospital-circle", "hazard-hospital-label"],
+  routes: ["relocation-route-glow", "relocation-route-line", "relocation-origin-marker", "relocation-origin-label", "relocation-route-destination", "relocation-destination-label"],
   exposedHabitations: ["hazard-habitation-circle", "hazard-habitation-label"],
   boundaries: ["boundary-line", "district-fill", "district-line", "selected-location-fill", "selected-location-line"],
   infrastructure: ["infrastructure-points"],
@@ -61,7 +65,9 @@ export const auditedLayerGroups = [
     items: [
       ["redZones", "Red / Orange / Green classification"],
       ["exposedHabitations", "Exposed habitations"],
-      ["facilities", "Evacuation facilities (OSM)"],
+      ["facilities", "Shelters & relief centres"],
+      ["routes", "Evacuation route (OSRM)"],
+      ["hospitals", "Hospitals / Medical support (optional)"],
     ] as const,
   },
   {

@@ -595,6 +595,7 @@ export function buildRelocationRecommendation(
     nearestFacilities: facilities.slice(0, 5),
     // Candidate fields
     candidateStatus,
+    bestCandidate: bestCandidate ?? null,
     candidateDestination: bestCandidate?.name ?? null,
     candidateDestinationType: (bestCandidate?.facilityRole ?? null) as FacilityRole | null,
     candidateLatitude: bestCandidate?.latitude ?? null,

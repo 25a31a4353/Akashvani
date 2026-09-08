@@ -79,6 +79,11 @@ describe("Akashvani Phase 3.1 Multi-State Real Data Foundation", () => {
 
   // 4. NormalizedLocationContext normalizes location data correctly
   it("normalizes location data into a complete NormalizedLocationContext", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ elevation: [55] }),
+    } as any)));
+
     const loc: IndiaLocation = {
       id: "test-location-1",
       name: "Guwahati",
@@ -108,6 +113,11 @@ describe("Akashvani Phase 3.1 Multi-State Real Data Foundation", () => {
 
   // 5. Missing population is strictly null, never 0
   it("preserves missing population as strictly null, never defaulting to 0", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ elevation: [350] }),
+    } as any)));
+
     const loc: IndiaLocation = {
       id: "test-missing-pop",
       name: "Unknown Hamlet",

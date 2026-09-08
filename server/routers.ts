@@ -28,7 +28,7 @@ import {
 } from "./diva/hazards/engine";
 import { getClassificationLayer } from "./diva/hazards/classification";
 import { buildCarryingCapacityAssessment } from "./diva/hazards/capacity";
-import { discoverFacilities, discoverFacilitiesSync } from "./diva/hazards/facilityDiscovery";
+import { discoverFacilities, discoverFacilitiesSync, fetchRoadRouteWithGeometry } from "./diva/hazards/facilityDiscovery";
 import { buildRelocationRecommendation } from "./diva/hazards/relocation";
 import { findRealDistrict, ALL_REAL_DISTRICTS } from "./diva/hazards/data/realDistricts";
 
@@ -179,6 +179,8 @@ export const appRouter = router({
         districtId: z.string().min(1),
         stateCode: z.string().min(2).max(10).optional(),
         radiusKm: z.number().min(5).max(100).default(30),
+        originLat: z.number().min(5).max(38).optional(),
+        originLon: z.number().min(68).max(98).optional(),
       })).query(async ({ input }) => {
         const normId = input.districtId.trim().toLowerCase();
         const district = ALL_REAL_DISTRICTS.find(
@@ -190,9 +192,11 @@ export const appRouter = router({
         if (!district) {
           throw new Error(`District '${input.districtId}' not found. Use a valid realDistricts id (e.g. DIST-AS-DIB).`);
         }
+        const centerLat = (input.originLat !== undefined && !isNaN(input.originLat)) ? input.originLat : district.latitude;
+        const centerLon = (input.originLon !== undefined && !isNaN(input.originLon)) ? input.originLon : district.longitude;
         const { facilities } = await discoverFacilities(
-          district.latitude,
-          district.longitude,
+          centerLat,
+          centerLon,
           input.radiusKm,
           district.stateCode
         );
@@ -212,6 +216,23 @@ export const appRouter = router({
           input.stateCode
         );
         return { facilities, source, fromCache, count: facilities.length };
+      }),
+      evacuationRoute: publicProcedure.input(z.object({
+        originLat: z.number().min(5).max(38),
+        originLon: z.number().min(68).max(98),
+        destinationLat: z.number().min(5).max(38),
+        destinationLon: z.number().min(68).max(98),
+        originName: z.string().optional(),
+        destinationName: z.string().optional(),
+      })).query(async ({ input }) => {
+        return fetchRoadRouteWithGeometry(
+          input.originLat,
+          input.originLon,
+          input.destinationLat,
+          input.destinationLon,
+          input.originName,
+          input.destinationName
+        );
       }),
     }),
     riskAnalyze: publicProcedure.input(z.object({ id: z.string().min(1) })).mutation(async ({ input }) => {

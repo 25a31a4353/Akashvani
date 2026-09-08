@@ -28,7 +28,7 @@ describe("India overview layer controls", () => {
   });
 
   it("renders the India overview provenance and unavailable-geology status for route-level UI evidence", () => {
-    const markup = renderToStaticMarkup(createElement(IndiaOverviewProvenance, { sources: { sensitivity: "ISRO/NRSC Bhuvan disaster service context" }, statuses: { states: "NATIONWIDE REFERENCE BOUNDARIES", terrain: "NATIONWIDE TERRAIN REFERENCE", geology: "UNAVAILABLE — NO PROVISIONAL GEOLOGY GEOMETRY IS DISPLAYED", weather: "LIVE MODELLED WEATHER + WIND COVERAGE GRID", sensitivity: "BROAD ANALYTICAL SENSITIVITY EXTENTS" }, updatedAt: "2026-08-23T17:00:00.000Z" }));
+    const markup = renderToStaticMarkup(createElement(IndiaOverviewProvenance, { initialOpen: true, sources: { sensitivity: "ISRO/NRSC Bhuvan disaster service context" }, statuses: { states: "NATIONWIDE REFERENCE BOUNDARIES", terrain: "NATIONWIDE TERRAIN REFERENCE", geology: "UNAVAILABLE — NO PROVISIONAL GEOLOGY GEOMETRY IS DISPLAYED", weather: "LIVE MODELLED WEATHER + WIND COVERAGE GRID", sensitivity: "BROAD ANALYTICAL SENSITIVITY EXTENTS" }, updatedAt: "2026-08-23T17:00:00.000Z" }));
     expect(markup).toContain("India layer provenance");
     expect(markup).toContain("WorldPop 1 km density raster");
     expect(markup).toContain("reference years 2000–2020");

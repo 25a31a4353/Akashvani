@@ -97,6 +97,9 @@ export const indiaDeepLinks: Record<string, IndiaLocation> = {
   nizamabad: { ...andhraPradeshDefault, id: "india-nizamabad", name: "Nizamabad", displayName: "Nizamabad, Telangana, India", category: "City", latitude: 18.6725, longitude: 78.0941, boundingBox: null, address: { state: "Telangana", city: "Nizamabad" }, source: "Shareable DIVA India location link; boundary retrieved on context load" },
   assam: assamDefault,
   "banjara-hills": { ...andhraPradeshDefault, id: "india-banjara-hills", name: "Banjara Hills", displayName: "Banjara Hills, Hyderabad, Telangana, India", category: "Locality", latitude: 17.4156, longitude: 78.4347, boundingBox: null, address: { state: "Telangana", city: "Hyderabad", locality: "Banjara Hills" }, source: "Shareable DIVA India location link; boundary retrieved on context load" },
+  dibrugarh: { ...assamDefault, id: "DIST-AS-DIB", name: "Dibrugarh", displayName: "Dibrugarh, Assam, India", category: "District", latitude: 27.4728, longitude: 94.9120, population: 1326338, populationSource: "Census of India 2011 / geoBoundaries ADM2", boundingBox: [27.09, 94.75, 27.65, 95.45], boundary: null, address: { state: "Assam", district: "Dibrugarh" }, source: "geoBoundaries ADM2 / Census 2011 reference district" },
+  wayanad: { ...andhraPradeshDefault, id: "DIST-KL-WAY", name: "Wayanad", displayName: "Wayanad, Kerala, India", category: "District", latitude: 11.6854, longitude: 76.1320, population: 817420, populationSource: "Census of India 2011 / geoBoundaries ADM2", boundingBox: [11.45, 75.85, 11.95, 76.45], boundary: null, address: { state: "Kerala", district: "Wayanad" }, source: "geoBoundaries ADM2 / Census 2011 reference district" },
+  jodhpur: { ...andhraPradeshDefault, id: "DIST-RJ-JOD", name: "Jodhpur", displayName: "Jodhpur, Rajasthan, India", category: "District", latitude: 26.2389, longitude: 73.0243, population: 3687002, populationSource: "Census of India 2011 / geoBoundaries ADM2", boundingBox: [25.80, 72.20, 27.20, 73.80], boundary: null, address: { state: "Rajasthan", district: "Jodhpur" }, source: "geoBoundaries ADM2 / Census 2011 reference district" },
   ...Object.fromEntries(
     Object.values(STATE_CONFIGURATIONS).flatMap(config => [
       [config.code.toLowerCase(), stateConfigToLocation(config)],
@@ -132,7 +135,13 @@ function isIndiaLocation(value: unknown): value is IndiaLocation {
 
 function resolveKnownLocation(value: string | null) {
   if (!value) return undefined;
-  const entry = Object.entries(indiaDeepLinks).find(([slug, location]) => slug === value || location.id === value);
+  const normalized = value.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const entry = Object.entries(indiaDeepLinks).find(([slug, location]) => {
+    const slugNorm = slug.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const idNorm = location.id.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const nameNorm = location.name.toLowerCase().replace(/[^a-z0-9]/g, "");
+    return slugNorm === normalized || idNorm === normalized || nameNorm === normalized || slug === value || location.id === value;
+  });
   return entry?.[1];
 }
 

@@ -505,6 +505,7 @@ export interface RelocationRecommendation {
   nearestFacilities: EvacuationFacility[];
   // ─── Candidate fields ──────────────────────────────────────────────────────
   candidateStatus: CandidateStatus;       // Status of best candidate selection
+  bestCandidate?: EvacuationFacility | null;
   candidateDestination: string | null;    // null when no PREFERRED candidate exists
   candidateDestinationType: FacilityRole | null;
   candidateLatitude: number | null;
