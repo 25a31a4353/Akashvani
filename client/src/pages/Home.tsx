@@ -138,26 +138,35 @@ export default function Home() {
     : [];
   const districtExposed = districtHabitations.filter((h: any) => h.insideHazardZone);
   const exposedHabitations = habitationsList.filter((h: any) => h.insideHazardZone && h.latitude != null && h.longitude != null);
-  const selectedVulnerableHabitation =
-    districtExposed[0] ??
-    districtHabitations[0] ??
-    exposedHabitations[0] ??
-    habitationsList.find((h: any) => h.latitude != null && h.longitude != null) ??
-    null;
 
   const relocationQuery = trpc.diva.hazards.relocation.useQuery(
     {
-      districtId: realDistrict?.id ?? "DIST-AS-DIB",
+      districtId: realDistrict?.id || "",
       stateCode: realDistrict?.stateCode,
       radiusKm: 35,
-      originLat: selectedVulnerableHabitation?.latitude,
-      originLon: selectedVulnerableHabitation?.longitude,
+      originLat: (districtExposed[0] ?? districtHabitations[0])?.latitude,
+      originLon: (districtExposed[0] ?? districtHabitations[0])?.longitude,
     },
-    { enabled: Boolean(realDistrict), staleTime: 10 * 60 * 1000 }
+    { enabled: Boolean(realDistrict?.id), staleTime: 10 * 60 * 1000 }
   );
 
   const relRec = relocationQuery.data;
-  const destinationCandidate = relRec?.bestCandidate ?? (relRec?.conditionalAlternatives ?? []).find((f: any) => f.latitude != null && f.longitude != null) ?? null;
+  const isRelRecFresh = Boolean(relRec && realDistrict && relRec.sourceAreaId === realDistrict.id);
+  const isRelocationRequired = Boolean(
+    realDistrict &&
+    relRec &&
+    isRelRecFresh &&
+    relRec.sourceHazardLevel !== "GREEN" &&
+    (districtExposed.length > 0 || (districtHabitations.length > 0 && (relRec.sourceHazardLevel === "RED" || relRec.sourceHazardLevel === "ORANGE")))
+  );
+
+  const selectedVulnerableHabitation = isRelocationRequired
+    ? (districtExposed[0] ?? districtHabitations[0] ?? null)
+    : null;
+
+  const destinationCandidate = (isRelocationRequired && relRec)
+    ? (relRec.bestCandidate ?? (relRec.conditionalAlternatives ?? []).find((f: any) => f.latitude != null && f.longitude != null) ?? null)
+    : null;
 
   const routeQuery = trpc.diva.hazards.evacuationRoute.useQuery(
     {
@@ -170,6 +179,7 @@ export default function Home() {
     },
     {
       enabled: Boolean(
+        isRelocationRequired &&
         selectedVulnerableHabitation &&
         destinationCandidate &&
         selectedVulnerableHabitation.latitude != null &&
@@ -181,7 +191,18 @@ export default function Home() {
     }
   );
 
-  const verifiedRoadRoute = routeQuery.data && routeQuery.data.status === "OK" && routeQuery.data.coordinates.length > 0 ? {
+  const isRouteMatchingCurrentLocations = Boolean(
+    isRelocationRequired &&
+    routeQuery.data &&
+    routeQuery.data.status === "OK" &&
+    routeQuery.data.coordinates.length > 0 &&
+    selectedVulnerableHabitation &&
+    destinationCandidate &&
+    Math.abs(routeQuery.data.coordinates[0][1] - selectedVulnerableHabitation.latitude) < 0.15 &&
+    Math.abs(routeQuery.data.coordinates[0][0] - selectedVulnerableHabitation.longitude) < 0.15
+  );
+
+  const verifiedRoadRoute = isRouteMatchingCurrentLocations && routeQuery.data ? {
     coordinates: routeQuery.data.coordinates,
     destinationLabel: destinationCandidate?.name ?? "Relocation Destination",
     originLabel: selectedVulnerableHabitation?.name ?? "Vulnerable Habitation",
@@ -191,7 +212,7 @@ export default function Home() {
     sourceNote: routeQuery.data.note,
   } : undefined;
 
-  const relocationOrigin = selectedVulnerableHabitation ? {
+  const relocationOrigin = (isRelocationRequired && selectedVulnerableHabitation) ? {
     latitude: selectedVulnerableHabitation.latitude,
     longitude: selectedVulnerableHabitation.longitude,
     name: selectedVulnerableHabitation.name,
@@ -200,7 +221,7 @@ export default function Home() {
     hazardType: selectedVulnerableHabitation.hazardType,
   } : undefined;
 
-  const relocationDestination = destinationCandidate ? {
+  const relocationDestination = (isRelocationRequired && destinationCandidate) ? {
     latitude: destinationCandidate.latitude,
     longitude: destinationCandidate.longitude,
     name: destinationCandidate.name,
@@ -209,12 +230,20 @@ export default function Home() {
     capacityNote: destinationCandidate.capacity ? `${destinationCandidate.capacity} capacity` : "UNAVAILABLE from OSM",
   } : undefined;
 
-  const mapLocationContext = useMemo(() => indiaContextRequest.data ?? (indiaContextRequest.isError || indiaLocation.id === "india-assam" ? {
-    location: indiaLocation,
-    environment: { temperatureC: null, precipitationMm: null, usAqi: null, pm25: null, observedAt: null, forecast: [], source: indiaContextRequest.isError ? "Selected-location context could not be refreshed. Existing Assam map location remains available." : "Live Assam weather context is still being retrieved; no current value is substituted.", status: indiaContextRequest.isError ? "LOCATION CONTEXT UNAVAILABLE" : "ASSAM LIVE CONTEXT LOADING" },
-    infrastructure: { items: [], source: indiaContextRequest.isError ? "Nearby facility context is unavailable while the selected-location request is retried." : "Nearby Assam facilities are being retrieved from the live source.", status: "UNAVAILABLE" as const, observedAt: null },
-    screening: { riskScore: null, riskLevel: "Unavailable" as const, priority: "Unavailable" as const, hazardContext: "Selected-location context is not yet available. No official warning is implied.", populationContext: "Population context is not yet available from the selected-location provider.", status: indiaContextRequest.isError ? "LOCATION CONTEXT UNAVAILABLE" : "ASSAM LIVE CONTEXT LOADING" },
-  } : undefined), [indiaContextRequest.data, indiaContextRequest.isError, indiaLocation]);
+  const mapLocationContext = useMemo(() => {
+    if (indiaContextRequest.data && (indiaContextRequest.data.location.id === indiaLocation.id || indiaContextRequest.data.location.name.toLowerCase() === indiaLocation.name.toLowerCase())) {
+      return indiaContextRequest.data;
+    }
+    if (indiaContextRequest.isError || (!indiaContextRequest.data && indiaLocation.id === "india-assam")) {
+      return {
+        location: indiaLocation,
+        environment: { temperatureC: null, precipitationMm: null, usAqi: null, pm25: null, observedAt: null, forecast: [], source: indiaContextRequest.isError ? "Selected-location context could not be refreshed. Existing Assam map location remains available." : "Live Assam weather context is still being retrieved; no current value is substituted.", status: indiaContextRequest.isError ? "LOCATION CONTEXT UNAVAILABLE" : "ASSAM LIVE CONTEXT LOADING" },
+        infrastructure: { items: [], source: indiaContextRequest.isError ? "Nearby facility context is unavailable while the selected-location request is retried." : "Nearby Assam facilities are being retrieved from the live source.", status: "UNAVAILABLE" as const, observedAt: null },
+        screening: { riskScore: null, riskLevel: "Unavailable" as const, priority: "Unavailable" as const, hazardContext: "Selected-location context is not yet available. No official warning is implied.", populationContext: "Population context is not yet available from the selected-location provider.", status: indiaContextRequest.isError ? "LOCATION CONTEXT UNAVAILABLE" : "ASSAM LIVE CONTEXT LOADING" },
+      };
+    }
+    return undefined;
+  }, [indiaContextRequest.data, indiaContextRequest.isError, indiaLocation]);
   const indiaContextQuery = { ...indiaContextRequest, data: mapLocationContext };
   const selectedContextLoading = Boolean(initialIndiaLocation.requested) && (indiaContextRequest.isLoading || (indiaContextRequest.isFetching && indiaContextRequest.data?.location.id !== indiaLocation.id));
   const mappedAreas = useMemo(() => filteredQuery.data ? filteredQuery.data.map(item => item.area) : allAreas, [allAreas, filteredQuery.data]);

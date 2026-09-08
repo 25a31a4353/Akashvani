@@ -249,18 +249,26 @@ describe("Phase 4: Multi-Hazard Decision Intelligence & Real-Data Strengthening"
 
   // ── 13. No fake route fallback ────────────────────────────────────────────
   it("13. When routing fails, empty coordinates are returned and distanceType is UNAVAILABLE", async () => {
-    // Query invalid unreachable coordinate
-    const route = await fetchRoadRouteWithGeometry(
-      0.0,
-      0.0,
-      0.001,
-      0.001
-    );
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = vi.fn().mockRejectedValueOnce(new Error("Network timeout or unreachable"));
 
-    // Must never return straight-line coordinates disguised as road route
-    if (route.status !== "OK") {
+      // Query unreachable coordinate
+      const route = await fetchRoadRouteWithGeometry(
+        0.0,
+        0.0,
+        0.001,
+        0.001
+      );
+
+      // Must never return straight-line coordinates disguised as road route
+      expect(route.status).toBe("UNAVAILABLE");
       expect(route.coordinates).toHaveLength(0);
       expect(route.distanceType).toBe("UNAVAILABLE");
+      expect(route.routeDistanceKm).toBeNull();
+      expect(route.travelTimeMinutes).toBeNull();
+    } finally {
+      globalThis.fetch = originalFetch;
     }
   });
 

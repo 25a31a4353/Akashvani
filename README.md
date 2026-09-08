@@ -1,45 +1,53 @@
 # Akashvani
 
-## Disaster Intelligence & Vulnerability Assessment Platform for India
+## Smart India Hackathon (SIH) — Problem Statement 191
+**"Intelligent Identification of Hazard-Based Red Zones, Carrying Capacity Assessment, and Immediate Relocation Needs for Vulnerable Habitations"**
 
-Akashvani is a GIS-based decision-support platform for disaster intelligence, vulnerability assessment, carrying-capacity analysis, relocation planning, and historical disaster replay across India. The application retains the **DIVA** full form—**Disaster Intelligence & Vulnerability Assessment**—as its domain and methodology terminology; **Akashvani** is the product name.
+Akashvani is an evidence-driven, deterministic GIS decision-intelligence platform built for SIH Problem Statement 191. It provides multi-hazard red zone identification, carrying-capacity assessment, vulnerable habitation exposure analysis, safe facility screening, and road-network evacuation routing across India.
 
-The platform is designed for India-wide location search and analysis. Assam is the current demonstration and regression-test case because it provides a representative combination of flood exposure, riverine geography, live environmental context, administrative boundaries, and a documented ten-year disaster-history window. Assam is not the limit of the platform’s geographic scope: users can search Indian states, districts, cities, and major localities through the same location-aware workflow.
+### Core Decision Workflow
+```
+AUTHORITATIVE HAZARD EVIDENCE (CWC / ISRO / IMD / BIS)
+        ↓
+PHYSICAL HAZARD FOOTPRINT / CORRIDOR
+        ↓
+VULNERABLE HABITATIONS (Census 2011)
+        ↓
+POPULATION EXPOSURE & VULNERABILITY
+        ↓
+DETERMINISTIC RELOCATION PRIORITY (0–100)
+        ↓
+SUITABLE RELOCATION FACILITY DISCOVERY (OSM)
+        ↓
+VERIFIED ROAD ROUTE (OSRM Road Network)
+        ↓
+EXPLAINABLE RELOCATION DECISION & REASON CODES
+```
 
-> **Important:** Akashvani is a decision-support demonstration and analytical platform. It is not an authoritative warning system, emergency-dispatch service, or substitute for official government advisories.
+> **Important:** Akashvani is a decision-support demonstration and analytical platform. All risk scores, rankings, and priority formulas are deterministic and traceable to authoritative inputs (CWC floodplains, ISRO landslide atlas, IMD storm tracks, BIS IS 1893:2016 seismic zoning). No machine-learning or LLM hallucinations are used in risk calculations.
 
-## Capabilities
+## Primary Demonstration Cases
 
-| Workspace                   | What it provides                                                                                                                                                                                                                                                                                                                     |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| India location intelligence | Search for Indian states, districts, cities, and major localities; retrieve coordinates, available boundaries, population context, infrastructure context, environmental conditions, and a selected-location screening summary.                                                                                                      |
-| Interactive GIS             | Real MapLibre rendering with OpenStreetMap and Esri imagery, location-driven framing, administrative boundaries, population-density and terrain references, live weather coverage, wind context, hazard screening extents, infrastructure, relocation corridors, legends, opacity, base-style, zoom, reset, and fullscreen controls. |
-| Hazard and risk assessment  | Interpretable risk scores, severity classifications, indicator contributions, hazard context, trend information, and analyst-reviewable decision-support explanations.                                                                                                                                                               |
-| Carrying capacity           | Capacity, access, suitability, constraints, and candidate-site comparison for relocation planning.                                                                                                                                                                                                                                   |
-| Relocation prioritization   | Explainable priority ranking, recommended actions, planning corridors, and selected-location decision tables.                                                                                                                                                                                                                        |
-| Live environmental context  | Current temperature, precipitation, weather code, forecast conditions, wind speed and gusts, and air-quality indicators from modelled provider responses with timestamps and status disclosures.                                                                                                                                     |
-| Assam test case             | Source-labelled Assam state profile, environmental and hazard context, and a 2016–2025 disaster-history panel with unavailable-data handling.                                                                                                                                                                                        |
-| Dataset Lab                 | Upload metadata, source-column mapping, geospatial validation, WGS84 readiness checks, duplicate and missing-coordinate diagnostics, parsed geometry persistence, case-study management, replay, comparison, and what-if workflow foundations.                                                                                       |
-| Historical replay           | Pre-event and ground-truth separation, predicted-versus-actual comparison modes, timeline comparison, uploaded-data-driven accuracy metrics, and historical analysis reporting.                                                                                                                                                      |
-| Reports                     | Downloadable assessment and historical-analysis PDF records with a unified report archive and persisted storage references.                                                                                                                                                                                                          |
-| Analyst review              | Grounded narrative generation that uses supplied analysis outputs and falls back to deterministic, reviewable text when the optional LLM provider is unavailable.                                                                                                                                                                    |
+| Case | Location | Hazard Type | Key Capabilities Demonstrated |
+| :--- | :--- | :--- | :--- |
+| **Case A** | **Dibrugarh, Assam** | **Flood + Seismic** | Brahmaputra riverine corridor footprint, Census 2011 exposed habitations, Zone V regulatory baseline, safe relief shelter discovery, verified OSRM road route (7.2 km, ~18 min). |
+| **Case B** | **Wayanad, Kerala** | **Landslide** | ISRO Landslide Atlas Rank #13/147, Chooralmala vulnerable settlement origin, Wayanad District Collectorate safe destination, verified OSRM road route (19.5 km, ~34 min). |
+| **Case C** | **Puri, Odisha** | **Cyclone / Coastal** | IMD/IBTrACS coastal storm track buffer (3.59 km proximity), Pentakata fishermen village origin, Puri Cyclone Shelter destination, verified OSRM road route (3.9 km, ~4 min). |
+| **Case D** | **Jodhpur, Rajasthan** | **Low / Baseline** | Genuine GREEN classification (20/100), arid baseline, relocation not required, 0 unnecessary evacuation routes, 0 fake destinations. |
 
-## Geographic and data scope
+## 13 Target States
+The platform supports a unified architecture across 13 Indian states:
+**Assam (AS), Andhra Pradesh (AP), Maharashtra (MH), Karnataka (KA), Bihar (BR), Jharkhand (JH), Mizoram (MZ), Odisha (OD), Chhattisgarh (CT), Uttar Pradesh (UP), Rajasthan (RJ), Tamil Nadu (TN), and Kerala (KL)**.
 
-The default dashboard view is currently Assam for demonstration continuity, while the core location contract and map workflow are India-wide. The map can move to a selected state, district, city, or locality and displays the available boundary, population, environment, infrastructure, hazard-screening, and risk context for that selection.
+## Workspaces & Capabilities
 
-| Data or layer                    | Current source or provider                                                                                                                                                                                                                                                                                                                                                               | Interpretation and limitations                                                                                                                                         |
-| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Indian administrative boundaries | [geoBoundaries India ADM1](https://www.geoboundaries.org/) [1] and [geoBoundaries India ADM2 API](https://www.geoboundaries.org/api/current/gbOpen/IND/ADM2/) [2]                                                                                                                                                                                                                        | Reference boundaries for map framing and geographic context; boundary currency and resolution are disclosed in the interface.                                          |
-| Basemap imagery                  | [OpenStreetMap](https://www.openstreetmap.org/) [3] and [Esri World Imagery](https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer) [4]                                                                                                                                                                                                                         | Interactive basemap context. Attribution is shown in the map. Availability depends on the upstream tile services.                                                      |
-| Population density               | [WorldPop population-density service](https://worldpop.arcgis.com/) [5]                                                                                                                                                                                                                                                                                                                  | Nationwide raster context, not a current state-total or census replacement. Resolution, reference year, and coverage status are disclosed in the provenance panel.     |
-| Physical terrain                 | [ArcGIS World Elevation Terrain service](https://utility.arcgis.com/usrsvcs/servers/6ff9b2ff0b2940c3bd5febf68a643a50/rest/services/WorldElevation/Terrain/ImageServer) [6]                                                                                                                                                                                                               | Terrain reference surface for geographic interpretation, not a geological survey or engineering assessment.                                                            |
-| Live weather and forecast        | [Open-Meteo forecast API](https://open-meteo.com/en/docs) [7]                                                                                                                                                                                                                                                                                                                            | Modelled current and forecast environmental context. It is time-stamped and explicitly not an official warning.                                                        |
-| Air quality                      | [Open-Meteo air-quality API](https://open-meteo.com/en/docs/air-quality-api) [8]                                                                                                                                                                                                                                                                                                         | Modelled air-quality context including US AQI and PM2.5 where available. Missing provider values remain unavailable rather than fabricated.                            |
-| Indian place search and context  | [Nominatim](https://nominatim.openstreetmap.org/) [9] and [Overpass API](https://overpass-api.de/) [10]                                                                                                                                                                                                                                                                                  | Search, reverse-geographic context, nearby infrastructure, and available feature enrichment. Provider responses are treated as external data and validated before use. |
-| Assam official context           | [Government of Assam state profile](https://des.assam.gov.in/information-services/state-profile-of-assam) [11], [Assam State Portal](https://assam.gov.in/about-us/393) [12], [Assam disaster-management reports](https://asdma.assam.gov.in/documents/reports-0) [13], and [Assam Water Resources Department](https://waterresources.assam.gov.in/portlets/flood-erosion-problems) [14] | Source-labelled reference context used by the Assam demonstration panels. Source year differences are retained and shown where relevant.                               |
-
-The geology layer is intentionally labelled unavailable until a verified nationwide geology service is integrated. Screening extents for earthquake, landslide, flood, and combined multi-hazard context are analytical references and are not official hazard declarations.
+| Workspace | What it provides |
+| :--- | :--- |
+| **Decision Map (PS191)** | Real MapLibre satellite GIS with Esri World Imagery, administrative ADM2 boundaries, physical hazard footprints, Census 2011 habitations, safe facilities, OSRM evacuation routes, and compact data provenance. |
+| **Hazard & Red-Zone Engine** | Deterministic multi-hazard evaluation identifying Primary Hazard Driver, Causal Reasoning, Secondary Hazards, and Authoritative Verified Triggers. |
+| **Carrying Capacity** | Strict capacity semantics: displays verified capacity when known, displays `Capacity: Unavailable` when absent; rejects fake occupancy estimates. |
+| **Relocation Planning** | Proximity-aware candidate screening: `EMERGENCY_SHELTER` > `RELIEF_CENTRE` > `SCHOOL_EVACUATION_SUPPORT`. Hospitals excluded from mass evacuation. |
+| **Data Provenance** | Clear 7-tier classification: `OFFICIAL`, `OBSERVED`, `LIVE_API`, `MODELLED`, `DERIVED`, `FIXTURE`, `UNAVAILABLE`. |
 
 ## Technical architecture
 
