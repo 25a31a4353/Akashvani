@@ -615,11 +615,17 @@ export function IndiaContextSidebar({ context, onOpenKeralaAssessment }: { conte
                     <span className="block text-[8.5px] text-[#6f858f]">Shelters</span>
                   </div>
                 </div>
+                <p className="mt-2 text-[8.5px] leading-relaxed italic text-[#6f858f]">
+                  Evacuation capacity is unavailable from open mapping sources (strictly null — never fabricated). See Relocation Intelligence below for full PS191 carrying capacity evaluation.
+                </p>
               </div>
             ) : (
               <div className="rounded-lg bg-[#f8fafb] p-2.5 text-[10px] text-[#6f858f]">
                 <p>Nearby facility count: <strong>{context.infrastructure.items.length}</strong> mapped facilities.</p>
                 <p className="mt-1 text-[9px] text-[#8ea0a8]">Detailed occupancy & carrying capacity is evaluated at district resolution.</p>
+                <p className="mt-1.5 text-[8.5px] leading-relaxed italic text-[#78909c]">
+                  Evacuation capacity is unavailable from open mapping sources (strictly null). See Relocation Intelligence below for full PS191 evaluation.
+                </p>
               </div>
             )}
           </div>

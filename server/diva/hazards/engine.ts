@@ -413,7 +413,17 @@ export function buildMultiHazardProfile(options: {
   };
 
   // Find exposed habitations within proximity (e.g. within 35 km)
-  const exposedHabitations = findExposedHabitations(latitude, longitude, 35, stateCode, district ?? undefined);
+  const hazardClass: "RED" | "ORANGE" | "GREEN" =
+    redZone.status === "RED" ? "RED" : (redZone.status === "ORANGE" || redZone.status === "YELLOW") ? "ORANGE" : "GREEN";
+  const exposedHabitations = findExposedHabitations(
+    latitude,
+    longitude,
+    35,
+    stateCode,
+    district ?? undefined,
+    hazardClass,
+    redZone.primaryHazard
+  );
 
 
   // Calculate data completeness

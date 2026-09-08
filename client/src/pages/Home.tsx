@@ -127,6 +127,7 @@ export default function Home() {
   const searchResults = useMemo(() => search.trim().length > 1 ? allAreas.filter(area => `${area.name} ${area.district} ${area.id}`.toLowerCase().includes(search.toLowerCase())).slice(0, 6) : [], [allAreas, search]);
   const headerSearchRef = useRef<HTMLDivElement>(null);
   const [isHeaderSearchOpen, setIsHeaderSearchOpen] = useState(false);
+  const [headerSearchActiveIndex, setHeaderSearchActiveIndex] = useState(-1);
   const indiaHeaderSearch = trpc.diva.india.search.useQuery({ query: search }, { enabled: search.trim().length >= 2, staleTime: 15 * 60 * 1000 });
   const mapData = useMemo(() => mapQuery.data ? { ...mapQuery.data, center: [indiaLocation.longitude, indiaLocation.latitude] as [number, number], areas: mappedAreas, nationwide: nationwideMapQuery.data } : undefined, [indiaLocation.latitude, indiaLocation.longitude, mapQuery.data, mappedAreas, nationwideMapQuery.data]);
   const divaMapData = useMemo(() => mapData ? { ...mapData, activeLocation: mapLocationContext, nearbyInfrastructure: mapLocationContext?.infrastructure.items, environment: mapLocationContext ? { latitude: mapLocationContext.location.latitude, longitude: mapLocationContext.location.longitude, temperatureC: mapLocationContext.environment.temperatureC, precipitationMm: mapLocationContext.environment.precipitationMm, usAqi: mapLocationContext.environment.usAqi, status: mapLocationContext.environment.status } : environmentQuery.data ? { latitude: selectedCoordinates.latitude, longitude: selectedCoordinates.longitude, temperatureC: environmentQuery.data.temperatureC, precipitationMm: environmentQuery.data.precipitationMm, usAqi: environmentQuery.data.usAqi, status: environmentQuery.data.status } : undefined } : undefined, [environmentQuery.data, mapData, mapLocationContext, selectedCoordinates.latitude, selectedCoordinates.longitude]);
@@ -189,27 +190,45 @@ export default function Home() {
             onChange={event => {
               setSearch(event.target.value);
               setIsHeaderSearchOpen(true);
+              setHeaderSearchActiveIndex(-1);
             }}
             onFocus={() => {
               if (search.trim().length > 0) setIsHeaderSearchOpen(true);
             }}
             onKeyDown={event => {
-              if (event.key === "Enter") {
+              const indianItems = indiaHeaderSearch.data ?? [];
+              if (event.key === "ArrowDown") {
                 event.preventDefault();
-                if (indiaHeaderSearch.data && indiaHeaderSearch.data.length > 0) {
-                  const loc = indiaHeaderSearch.data[0];
+                setIsHeaderSearchOpen(true);
+                if (indianItems.length > 0) {
+                  setHeaderSearchActiveIndex(prev => (prev < indianItems.length - 1 ? prev + 1 : 0));
+                }
+              } else if (event.key === "ArrowUp") {
+                event.preventDefault();
+                if (indianItems.length > 0) {
+                  setHeaderSearchActiveIndex(prev => (prev > 0 ? prev - 1 : indianItems.length - 1));
+                }
+              } else if (event.key === "Enter") {
+                event.preventDefault();
+                if (indianItems.length > 0) {
+                  const loc = headerSearchActiveIndex >= 0 && headerSearchActiveIndex < indianItems.length
+                    ? indianItems[headerSearchActiveIndex]
+                    : indianItems[0];
                   setIndiaLocation(loc);
                   setLocationNotice(null);
                   window.history.replaceState(null, "", buildIndiaLocationSearch(loc));
                   setSearch("");
                   setIsHeaderSearchOpen(false);
+                  setHeaderSearchActiveIndex(-1);
                 } else if (searchResults.length > 0) {
                   selectArea(searchResults[0].id);
                   setSearch("");
                   setIsHeaderSearchOpen(false);
+                  setHeaderSearchActiveIndex(-1);
                 }
               } else if (event.key === "Escape") {
                 setIsHeaderSearchOpen(false);
+                setHeaderSearchActiveIndex(-1);
               }
             }}
             placeholder="Search India: state, district, city, or area"
@@ -222,6 +241,7 @@ export default function Home() {
               onClick={() => {
                 setSearch("");
                 setIsHeaderSearchOpen(false);
+                setHeaderSearchActiveIndex(-1);
               }}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-[#84949d] hover:text-black"
               aria-label="Clear search"
@@ -235,7 +255,7 @@ export default function Home() {
               {indiaHeaderSearch.data && indiaHeaderSearch.data.length > 0 && (
                 <div className="mb-1">
                   <p className="px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.1em] text-[#1f788d]">Indian Locations & Districts</p>
-                  {indiaHeaderSearch.data.map(item => (
+                  {indiaHeaderSearch.data.map((item, idx) => (
                     <button
                       key={item.id}
                       onClick={() => {
@@ -244,8 +264,13 @@ export default function Home() {
                         window.history.replaceState(null, "", buildIndiaLocationSearch(item));
                         setSearch("");
                         setIsHeaderSearchOpen(false);
+                        setHeaderSearchActiveIndex(-1);
                       }}
-                      className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left hover:bg-[#eff7f8]"
+                      onMouseEnter={() => setHeaderSearchActiveIndex(idx)}
+                      className={cn(
+                        "flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left transition-colors",
+                        idx === headerSearchActiveIndex ? "bg-[#e2f1f4] text-[#134958]" : "hover:bg-[#eff7f8]"
+                      )}
                     >
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-xs font-semibold text-[#274a60]">{item.name}</span>

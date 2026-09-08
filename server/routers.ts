@@ -131,8 +131,18 @@ export const appRouter = router({
         radiusKm: z.number().min(5).max(200).default(50),
         stateCode: z.string().optional(),
         district: z.string().optional(),
+        hazardClassification: z.enum(["RED", "ORANGE", "GREEN", "UNAVAILABLE"]).optional(),
+        primaryHazardHint: z.string().optional(),
       })).query(({ input }) => {
-        return findExposedHabitations(input.latitude, input.longitude, input.radiusKm, input.stateCode, input.district);
+        return findExposedHabitations(
+          input.latitude,
+          input.longitude,
+          input.radiusKm,
+          input.stateCode,
+          input.district,
+          input.hazardClassification,
+          input.primaryHazardHint
+        );
       }),
       layers: publicProcedure.query(() => {
         return getHazardMapLayers();
@@ -145,7 +155,13 @@ export const appRouter = router({
         stateCode: z.string().min(2).max(10).optional(),
         radiusKm: z.number().min(5).max(100).default(30),
       })).query(async ({ input }) => {
-        const district = ALL_REAL_DISTRICTS.find((d) => d.id === input.districtId);
+        const normId = input.districtId.trim().toLowerCase();
+        const district = ALL_REAL_DISTRICTS.find(
+          (d) =>
+            d.id.toLowerCase() === normId ||
+            (normId === "dist-kl-way" && d.id === "KER-WAY") ||
+            d.district.toLowerCase() === normId
+        );
         if (!district) {
           throw new Error(`District '${input.districtId}' not found. Use a valid realDistricts id (e.g. DIST-AS-DIB).`);
         }
@@ -156,7 +172,7 @@ export const appRouter = router({
           input.radiusKm,
           district.stateCode
         );
-        const assessment = buildCarryingCapacityAssessment(input.districtId, facilities, input.radiusKm);
+        const assessment = buildCarryingCapacityAssessment(district.id, facilities, input.radiusKm);
         return { ...assessment, facilitySource: source };
       }),
       relocation: publicProcedure.input(z.object({
@@ -164,7 +180,13 @@ export const appRouter = router({
         stateCode: z.string().min(2).max(10).optional(),
         radiusKm: z.number().min(5).max(100).default(30),
       })).query(async ({ input }) => {
-        const district = ALL_REAL_DISTRICTS.find((d) => d.id === input.districtId);
+        const normId = input.districtId.trim().toLowerCase();
+        const district = ALL_REAL_DISTRICTS.find(
+          (d) =>
+            d.id.toLowerCase() === normId ||
+            (normId === "dist-kl-way" && d.id === "KER-WAY") ||
+            d.district.toLowerCase() === normId
+        );
         if (!district) {
           throw new Error(`District '${input.districtId}' not found. Use a valid realDistricts id (e.g. DIST-AS-DIB).`);
         }
@@ -174,7 +196,7 @@ export const appRouter = router({
           input.radiusKm,
           district.stateCode
         );
-        const assessment = buildCarryingCapacityAssessment(input.districtId, facilities, input.radiusKm);
+        const assessment = buildCarryingCapacityAssessment(district.id, facilities, input.radiusKm);
         return buildRelocationRecommendation(assessment);
       }),
       facilities: publicProcedure.input(z.object({
