@@ -35,7 +35,7 @@ describe("Phase 5: SIH Demonstration & Nationwide Operational Readiness", () => 
       const dist = findRealDistrict(d.name, d.state);
       expect(dist, `Missing district ${d.name} in ${d.state}`).toBeDefined();
       expect(dist?.geometry.type).toMatch(/Polygon|MultiPolygon/);
-      expect(dist?.geometry.coordinates.length).toBeGreaterThan(0);
+      expect((dist?.geometry.coordinates as unknown[]).length).toBeGreaterThan(0);
     }
   });
 
@@ -91,7 +91,7 @@ describe("Phase 5: SIH Demonstration & Nationwide Operational Readiness", () => 
     expect(redZone.primaryHazard).toBe("FLOOD");
     expect(redZone.secondaryHazards).toContain("SEISMIC");
     expect(redZone.primaryDriverReason).toContain("riverine flood inundation corridor");
-    expect(redZone.supportingEvidence.some(e => e.includes("SEISMIC"))).toBe(true);
+    expect(redZone.supportingEvidence?.some(e => e.includes("SEISMIC"))).toBe(true);
   });
 
   // ── 7. Map Layer Configuration Integrity (16 Groups, 0 Dead Toggles) ─────

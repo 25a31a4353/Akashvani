@@ -167,6 +167,8 @@ describe("Akashvani Phase 3.1 Multi-State Real Data Foundation", () => {
 
   // 8. Kerala search/context resolves with reference validation metadata
   it("resolves Kerala location context with reference validation metadata and West Flowing Rivers basin", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ elevation: [120] }), { status: 200 })));
+
     const keralaLoc = stateConfigToLocation(STATE_CONFIGURATIONS.KL);
     expect(keralaLoc.name).toBe("Kerala");
 
@@ -181,6 +183,8 @@ describe("Akashvani Phase 3.1 Multi-State Real Data Foundation", () => {
 
   // 9. Assam search/context resolves with Brahmaputra valley characteristics
   it("resolves Assam location context with Brahmaputra valley characteristics", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ elevation: [50] }), { status: 200 })));
+
     const assamLoc = stateConfigToLocation(STATE_CONFIGURATIONS.AS);
     expect(assamLoc.name).toBe("Assam");
 
