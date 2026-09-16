@@ -157,7 +157,7 @@ function applyLayers(map: MapLibreMap, layers: MapLayerState, opacity: number, b
   }
 }
 
-export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle, className, showContextPanel = true, zoomOverride }: { data?: MapData; selectedId?: string; onSelect: (id: string) => void; layers: MapLayerState; opacity: number; baseStyle: "muted" | "terrain"; className?: string; showContextPanel?: boolean; zoomOverride?: number }) {
+export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle, className, zoomOverride }: { data?: MapData; selectedId?: string; onSelect: (id: string) => void; layers: MapLayerState; opacity: number; baseStyle: "muted" | "terrain"; className?: string; zoomOverride?: number }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const mapReadyRef = useRef(false);
@@ -787,25 +787,6 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
         style={{ position: "absolute", inset: 0 }}
         aria-label="Interactive India GIS map"
       />
-
-      {/* Location decision context panel */}
-      {showContextPanel && data?.activeLocation && (
-        <div data-testid="map-location-decision-context" className="pointer-events-none absolute right-16 top-16 z-10 w-[244px] rounded-xl border border-[#476571] bg-[#081720]/95 p-3 text-[#dcebf0] shadow-2xl backdrop-blur">
-          <p className="text-[9px] font-bold uppercase tracking-[.12em] text-[#1d788d]">Location decision context</p>
-          <p className="mt-1 text-xs font-bold">{data.activeLocation.location.name}</p>
-          <p className="mt-0.5 text-[10px] text-[#6d838d]">{data.activeLocation.location.category} · {data.activeLocation.location.address.state ?? "India"}</p>
-          <div className="mt-2 grid grid-cols-2 gap-1.5 text-[10px]">
-            <span className="rounded bg-[#0f2e3a] px-2 py-1 text-[#c8dde4]">Population: {data.activeLocation.location.population?.toLocaleString("en-IN") ?? "Unavailable"}</span>
-            <span className="rounded bg-[#0f2e3a] px-2 py-1 text-[#c8dde4]">Priority: {data.activeLocation.screening.priority}</span>
-            <span className="rounded bg-[#12303e] px-2 py-1 text-[#c8dde4]">{data.activeLocation.environment.temperatureC ?? "—"}°C</span>
-            <span className="rounded bg-[#12303e] px-2 py-1 text-[#c8dde4]">Rain: {data.activeLocation.environment.precipitationMm ?? "—"} mm</span>
-            <span className="rounded bg-[#12303e] px-2 py-1 text-[#c8dde4]">Next max: {data.activeLocation.environment.forecast[0]?.temperatureMaxC ?? "—"}°C</span>
-            <span className="rounded bg-[#12303e] px-2 py-1 text-[#c8dde4]">Wind: {data.activeLocation.environment.forecast[0]?.windSpeedMaxKph ?? "—"} km/h</span>
-          </div>
-          <p className="mt-2 text-[9px] font-semibold leading-snug text-[#52717e]">Modelled forecast updated {data.activeLocation.environment.observedAt ? new Date(data.activeLocation.environment.observedAt).toLocaleString("en-IN") : "unavailable"}</p>
-          <p className="mt-2 text-[9px] leading-snug text-[#6a808a]">{data.activeLocation.screening.hazardContext}</p>
-        </div>
-      )}
 
       {/* Zoom controls */}
       <div className="absolute right-4 top-4 z-20 flex flex-col overflow-hidden rounded-xl border border-[#395460] bg-[#0b202a]/90 shadow-2xl backdrop-blur">
