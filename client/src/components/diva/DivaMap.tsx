@@ -134,7 +134,7 @@ function applyLayers(map: MapLibreMap, layers: MapLayerState, opacity: number, b
     ["national-sensitivity-flood-fill", "floodSensitivity"], ["national-sensitivity-flood-line", "floodSensitivity"],
     ["infrastructure-points", "infrastructure"],
     ["relocation-route-glow", "routes"], ["relocation-route-casing", "routes"], ["relocation-route-line", "routes"],
-    ["relocation-route-dash", "routes"],
+    ["relocation-route-pulse", "routes"],
     ["relocation-origin-halo", "routes"], ["relocation-origin-marker", "routes"], ["relocation-origin-label", "routes"],
     ["relocation-destination-halo", "routes"], ["relocation-route-destination", "routes"], ["relocation-destination-label", "routes"],
     ["relocation-sim-halo", "routes"], ["relocation-sim-vehicle", "routes"], ["relocation-sim-label", "routes"]
@@ -166,7 +166,6 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
 
   const [isSimulating, setIsSimulating] = useState(false);
   const [simIndex, setSimIndex] = useState(0);
-  const [isNavExpanded, setIsNavExpanded] = useState(false);
 
   const zoom = zoomOverride ?? activeZoom(data?.activeLocation?.location);
 
@@ -444,12 +443,12 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
         paint: { "line-color": "#38bdf8", "line-width": 5.2, "line-opacity": 1.0 }
       });
       map.addLayer({
-        id: "relocation-route-dash",
+        id: "relocation-route-pulse",
         type: "line",
         source: "relocation-route",
         filter: ["==", ["get", "isRoadRoute"], true],
         layout: { "line-join": "round", "line-cap": "round" },
-        paint: { "line-color": "#ffffff", "line-width": 2.2, "line-dasharray": [1.2, 2.8], "line-opacity": 0.9 }
+        paint: { "line-color": "#93c5fd", "line-width": 2.2, "line-dasharray": [1.0, 3.0], "line-opacity": 0.92 }
       });
 
       // ── Group 8: RED ZONE ORIGIN & GREEN ZONE SAFE DESTINATION MARKERS ─────────
@@ -802,16 +801,24 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
 
       {/* ── GOOGLE MAPS STYLE NAVIGATION HUD OVERLAY ───────────────────────── */}
       {route && route.coordinates.length > 0 && (
-        <div data-testid="evacuation-route-badge" className="absolute bottom-14 left-4 z-20 w-[310px] max-w-[calc(100vw-32px)] overflow-hidden rounded-2xl border border-[#38bdf8]/40 bg-[#081726]/95 text-[#e2e8f0] shadow-[0_20px_50px_rgba(0,0,0,0.6)] backdrop-blur-xl transition-all">
-          {/* Top navigation header bar with Google Maps style green / cyan accent */}
-          <div className="flex items-center justify-between border-b border-[#1e3a5f] bg-gradient-to-r from-[#0369a1] via-[#0284c7] to-[#0ea5e9] px-3.5 py-2 text-white shadow-sm">
+        <div data-testid="evacuation-route-badge" className="absolute bottom-14 left-4 z-20 w-[318px] max-w-[calc(100vw-32px)] overflow-hidden rounded-2xl border border-[#38bdf8]/40 bg-[#081726]/96 text-[#e2e8f0] shadow-[0_20px_60px_rgba(0,0,0,0.65)] backdrop-blur-xl transition-all">
+          {/* Top navigation header bar — Google Maps navigation blue gradient */}
+          <div className="flex items-center justify-between border-b border-[#1e3a5f] bg-gradient-to-r from-[#0369a1] via-[#0284c7] to-[#0ea5e9] px-3.5 py-2.5 text-white shadow-sm">
             <div className="flex items-center gap-2">
               <Navigation className="h-4 w-4 animate-pulse text-white" />
               <span className="text-[11px] font-extrabold tracking-wider uppercase">Road Navigation</span>
             </div>
-            <span className="rounded bg-black/30 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#e0f2fe]">
-              {route.isRoadRoute ? "OSRM Live Route" : "Planning Corridor"}
-            </span>
+            <div className="flex items-center gap-1.5">
+              {route.isRoadRoute && (
+                <span className="flex items-center gap-1 rounded bg-[#16a34a]/90 px-1.5 py-0.5 text-[8.5px] font-black uppercase tracking-wider text-white">
+                  <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
+                  LIVE
+                </span>
+              )}
+              <span className="rounded bg-black/30 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#e0f2fe]">
+                {route.isRoadRoute ? "OSRM" : "Corridor"}
+              </span>
+            </div>
           </div>
 
           <div className="p-3">
@@ -822,52 +829,63 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
                   {route.travelTimeMinutes ? `~${route.travelTimeMinutes} min` : "Driving"}
                 </span>
                 <span className="ml-2 text-xs font-bold text-[#38bdf8]">
-                  ({route.distanceKm ?? "—"} km)
+                  ({route.distanceKm != null ? `${route.distanceKm} km` : "— km"})
                 </span>
               </div>
               <span className="rounded-full bg-[#10b981]/20 px-2.5 py-1 text-[10px] font-bold text-[#34d399] border border-[#10b981]/40">
-                Fastest Road Route
+                {route.isRoadRoute ? "Road Network" : "Fastest Route"}
               </span>
             </div>
 
             {/* Origin & Destination visual flow */}
             <div className="mt-2.5 space-y-1.5 text-xs">
               <div className="flex items-center gap-2">
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#dc2626] text-[10px] font-black text-white shadow">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#dc2626] text-[10px] font-black text-white shadow-md">
                   📍
                 </span>
-                <div className="min-w-0 flex-1 truncate">
-                  <span className="font-semibold text-white">{route.originLabel ?? "Red Zone Origin"}</span>
-                  <span className="ml-1.5 text-[10px] font-bold text-[#f87171]">[RED ZONE]</span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-white truncate">{route.originLabel ?? "Red Zone Origin"}</p>
+                  <p className="text-[9.5px] font-bold text-[#f87171] leading-tight">RED ZONE ORIGIN</p>
                 </div>
               </div>
 
-              <div className="ml-2.5 border-l-2 border-dashed border-[#38bdf8]/60 pl-4 py-0.5">
-                <span className="text-[10px] font-medium text-[#94a3b8] flex items-center gap-1">
-                  🛣️ Exact Roadway Line via State/National Highway
+              <div className="ml-2.5 flex items-center gap-1.5 border-l-2 border-dashed border-[#38bdf8]/55 pl-3.5 py-0.5">
+                <ArrowRight className="h-3 w-3 shrink-0 text-[#38bdf8]" />
+                <span className="text-[9.5px] font-medium text-[#7dd3fc]">
+                  {route.isRoadRoute ? "Verified road geometry via OSM / OSRM" : "Planning corridor (straight-line proxy)"}
                 </span>
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#16a34a] text-[10px] font-black text-white shadow">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#16a34a] text-[10px] font-black text-white shadow-md">
                   🏁
                 </span>
-                <div className="min-w-0 flex-1 truncate">
-                  <span className="font-semibold text-white">{route.destinationLabel}</span>
-                  <span className="ml-1.5 text-[10px] font-bold text-[#4ade80]">[GREEN ZONE]</span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-white truncate">{route.destinationLabel}</p>
+                  <p className="text-[9.5px] font-bold text-[#4ade80] leading-tight">GREEN ZONE SAFE HAVEN</p>
                 </div>
               </div>
             </div>
 
+            {/* Simulation progress indicator */}
+            {isSimulating && (
+              <div className="mt-2 flex items-center gap-2 rounded-lg bg-[#0c2a38] px-2.5 py-1.5 border border-[#164e63]">
+                <span className="h-2 w-2 rounded-full bg-[#38bdf8] animate-ping" />
+                <span className="text-[10px] font-semibold text-[#7dd3fc]">
+                  Evacuation simulation: {Math.round(((simIndex + 1) / Math.max(route.coordinates.length, 1)) * 100)}% complete
+                </span>
+              </div>
+            )}
+
             {/* Interactive Navigation Action Buttons */}
-            <div className="mt-3 flex items-center gap-2 pt-2 border-t border-[#1e293b]">
+            <div className="mt-3 flex items-center gap-2 pt-2.5 border-t border-[#1e293b]">
               <Button
                 onClick={fitNavigationRoute}
                 size="sm"
-                className="h-8 flex-1 rounded-xl bg-[#0284c7] hover:bg-[#0369a1] text-white text-[11px] font-bold shadow-md gap-1.5"
+                className="h-8 flex-1 rounded-xl bg-[#0284c7] hover:bg-[#0369a1] text-white text-[11px] font-bold shadow-md gap-1.5 transition-colors"
               >
                 <Compass className="h-3.5 w-3.5" />
-                Fit Route View
+                Fit Navigation Route
               </Button>
               <Button
                 onClick={() => {
@@ -888,7 +906,7 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
                 )}
               >
                 {isSimulating ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-                {isSimulating ? "Pause" : "Simulate"}
+                {isSimulating ? "Stop" : "Simulate"}
               </Button>
             </div>
           </div>

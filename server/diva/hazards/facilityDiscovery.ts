@@ -329,6 +329,20 @@ const CURATED_BASELINE: BaselineFacility[] = [
   // Nilgiris, Tamil Nadu (Landslide / Hill context)
   { id: "OSM-TN-NIL-H1", name: "District Headquarters Hospital Udhagamandalam", role: "HOSPITAL_MEDICAL_SUPPORT", lat: 11.4102, lon: 76.7032, stateCode: "TN" },
   { id: "OSM-TN-NIL-S1", name: "Government Higher Secondary School Ooty", role: "SCHOOL_EVACUATION_SUPPORT", lat: 11.4080, lon: 76.6980, stateCode: "TN" },
+  { id: "OSM-TN-NIL-R1", name: "Nilgiris District Collectorate Relief Shelter", role: "RELIEF_CENTRE", lat: 11.4110, lon: 76.7010, stateCode: "TN" },
+
+  // Chamoli (Joshimath), Uttarakhand — Landslide / Subsidence (SIH key demo)
+  { id: "OSM-UK-CHA-H1", name: "District Hospital Gopeshwar Chamoli", role: "HOSPITAL_MEDICAL_SUPPORT", lat: 30.4078, lon: 79.3140, stateCode: "UK" },
+  { id: "OSM-UK-CHA-S1", name: "Government Inter College Gopeshwar", role: "SCHOOL_EVACUATION_SUPPORT", lat: 30.4085, lon: 79.3148, stateCode: "UK" },
+  { id: "OSM-UK-CHA-R1", name: "ITBP Base Camp Joshimath (Emergency Shelter)", role: "EMERGENCY_SHELTER", lat: 30.5558, lon: 79.5642, stateCode: "UK" },
+  { id: "OSM-UK-CHA-R2", name: "Chamoli District Relief Camp Karnaprayag", role: "RELIEF_CENTRE", lat: 30.2558, lon: 79.2390, stateCode: "UK" },
+
+  // Idukki (Munnar), Kerala — Hill district flood / landslide (SIH key demo)
+  { id: "OSM-KL-IDK-H1", name: "Government Medical College Idukki", role: "HOSPITAL_MEDICAL_SUPPORT", lat: 9.8514, lon: 76.9657, stateCode: "KL" },
+  { id: "OSM-KL-IDK-H2", name: "Thodupuzha District Hospital", role: "HOSPITAL_MEDICAL_SUPPORT", lat: 9.8918, lon: 76.7159, stateCode: "KL" },
+  { id: "OSM-KL-IDK-S1", name: "Government Higher Secondary School Munnar", role: "SCHOOL_EVACUATION_SUPPORT", lat: 10.0889, lon: 77.0595, stateCode: "KL" },
+  { id: "OSM-KL-IDK-R1", name: "Munnar Town Panchayat Community Hall (Relief)", role: "COMMUNITY_FACILITY", lat: 10.0892, lon: 77.0599, stateCode: "KL" },
+  { id: "OSM-KL-IDK-R2", name: "Idukki District Collectorate Emergency Centre", role: "RELIEF_CENTRE", lat: 9.8516, lon: 76.9660, stateCode: "KL" },
 ];
 
 function buildFacilityFromBaseline(
