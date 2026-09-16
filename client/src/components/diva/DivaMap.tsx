@@ -5,8 +5,8 @@ import type { AssessmentArea } from "@shared/diva";
 import type { IndiaLocationContext } from "@shared/india";
 import * as maplibregl from "maplibre-gl";
 import type { Map as MapLibreMap } from "maplibre-gl";
-import { Crosshair, Expand, LocateFixed, Map as MapIcon, Minus, Plus, RotateCcw } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { ArrowRight, CheckCircle2, ChevronRight, Compass, Crosshair, Expand, LocateFixed, Map as MapIcon, Minus, Navigation, Pause, Play, Plus, RotateCcw, ShieldCheck, Sparkles } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type FeatureCollection = { type: "FeatureCollection"; features: ReadonlyArray<{ type: "Feature"; properties: Record<string, unknown>; geometry: { type: string; coordinates: unknown } }> };
 export type MapData = {
@@ -134,8 +134,10 @@ function applyLayers(map: MapLibreMap, layers: MapLayerState, opacity: number, b
     ["national-sensitivity-flood-fill", "floodSensitivity"], ["national-sensitivity-flood-line", "floodSensitivity"],
     ["infrastructure-points", "infrastructure"],
     ["relocation-route-glow", "routes"], ["relocation-route-casing", "routes"], ["relocation-route-line", "routes"],
-    ["relocation-route-destination", "routes"], ["relocation-destination-label", "routes"],
-    ["relocation-origin-marker", "routes"], ["relocation-origin-label", "routes"]
+    ["relocation-route-dash", "routes"],
+    ["relocation-origin-halo", "routes"], ["relocation-origin-marker", "routes"], ["relocation-origin-label", "routes"],
+    ["relocation-destination-halo", "routes"], ["relocation-route-destination", "routes"], ["relocation-destination-label", "routes"],
+    ["relocation-sim-halo", "routes"], ["relocation-sim-vehicle", "routes"], ["relocation-sim-label", "routes"]
   ];
   layerMap.forEach(([id, key]) => setVisibility(map, id, key === "routes" ? (layers[key] !== false) : Boolean(layers[key])));
   ["hazard-fill", "landslide-fill", "hazard-redzone-fill", "hazard-floodplain-fill", "population-points"].forEach(id => {
@@ -162,7 +164,23 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
 
+  const [isSimulating, setIsSimulating] = useState(false);
+  const [simIndex, setSimIndex] = useState(0);
+  const [isNavExpanded, setIsNavExpanded] = useState(false);
+
   const zoom = zoomOverride ?? activeZoom(data?.activeLocation?.location);
+
+  const simPoint = useMemo(() => {
+    if (!data?.relocationRoute?.coordinates || data.relocationRoute.coordinates.length === 0) return null;
+    const coords = data.relocationRoute.coordinates;
+    const idx = Math.min(Math.max(0, simIndex), coords.length - 1);
+    const curr = coords[idx];
+    return {
+      type: "Feature" as const,
+      properties: { progress: `${Math.round(((idx + 1) / coords.length) * 100)}%` },
+      geometry: { type: "Point" as const, coordinates: curr },
+    };
+  }, [data?.relocationRoute?.coordinates, simIndex]);
 
   const sources = useMemo(() => {
     if (!data) return null;
@@ -235,6 +253,10 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
           geometry: { type: "Point" as const, coordinates: data.relocationRoute.coordinates[0] }
         }]
       } : emptyCollection),
+      relocationSim: simPoint ? {
+        type: "FeatureCollection" as const,
+        features: [simPoint],
+      } : emptyCollection,
       activeMarker: active ? { type: "FeatureCollection" as const, features: [{ type: "Feature" as const, properties: { id: active.location.id, name: active.location.name, priority: active.screening.priority, riskScore: active.screening.riskScore }, geometry: { type: "Point" as const, coordinates: [active.location.longitude, active.location.latitude] } }] } : emptyCollection,
       hazards: { type: "FeatureCollection" as const, features: (active ? [] : data.hazards).map(hazard => ({ type: "Feature" as const, properties: hazard, geometry: { type: "Polygon" as const, coordinates: [hazard.coordinates] } })) },
       roads: { type: "FeatureCollection" as const, features: (active ? [] : data.roads).map((coordinates, index) => ({ type: "Feature" as const, properties: { id: `RD-${index}` }, geometry: { type: "LineString" as const, coordinates } })) },
@@ -257,7 +279,7 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
       hazardFacilities: data.nationwide?.hazardLayers?.facilities ?? emptyCollection,
       hazardClassification: data.nationwide?.classificationLayer ?? emptyCollection,
     };
-  }, [data, selectedId]);
+  }, [data, selectedId, simPoint]);
 
   // ── Map initialization — runs ONCE per mount ──────────────────────────────
   useEffect(() => {
@@ -297,6 +319,7 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
       add("relocation-route", sources.relocationRoute);
       add("relocation-destination", sources.relocationDestination);
       add("relocation-origin", sources.relocationOrigin);
+      add("relocation-sim", sources.relocationSim);
       add("active-marker", sources.activeMarker);
       add("hazards", sources.hazards);
       add("roads", sources.roads);
@@ -395,15 +418,14 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
       map.addLayer({ id: "assessment-labels", type: "symbol", source: "areas", layout: { "text-field": ["get", "name"], "text-size": 10, "text-offset": [0, 1.35], "text-anchor": "top" }, paint: { "text-color": "#ffffff", "text-halo-color": "#10232a", "text-halo-width": 1.4, "text-opacity": 0.92 } });
       map.addLayer({ id: "active-marker", type: "circle", source: "active-marker", paint: { "circle-radius": 9, "circle-color": "#1d788d", "circle-stroke-color": "#ffffff", "circle-stroke-width": 2.3 } });
 
-      // Group 7: PS191 EVACUATION ROUTE (above facility layers, below origin/destination markers)
-      // Visual treatment: Dark blue/cyan casing (7-8px) + Bright cyan/blue inner route (3-4px)
-      // Displayed ONLY when real OSRM road geometry is available
+      // ── Group 7: GOOGLE MAPS NAVIGATION ROAD LINE (RED ZONE ➔ GREEN ZONE) ───────
+      // Multi-layer high-fidelity road rendering: ambient glow + deep casing + vibrant navigation blue core + animated dashes
       map.addLayer({
         id: "relocation-route-glow",
         type: "line",
         source: "relocation-route",
         filter: ["==", ["get", "isRoadRoute"], true],
-        paint: { "line-color": "#0284c7", "line-width": 12, "line-opacity": 0.35, "line-blur": 2.5 }
+        paint: { "line-color": "#2563eb", "line-width": 15, "line-opacity": 0.45, "line-blur": 3.5 }
       });
       map.addLayer({
         id: "relocation-route-casing",
@@ -411,7 +433,7 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
         source: "relocation-route",
         filter: ["==", ["get", "isRoadRoute"], true],
         layout: { "line-join": "round", "line-cap": "round" },
-        paint: { "line-color": "#0c4a6e", "line-width": 7.5, "line-opacity": 0.95 }
+        paint: { "line-color": "#0c4a6e", "line-width": 8.5, "line-opacity": 0.98 }
       });
       map.addLayer({
         id: "relocation-route-line",
@@ -419,68 +441,98 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
         source: "relocation-route",
         filter: ["==", ["get", "isRoadRoute"], true],
         layout: { "line-join": "round", "line-cap": "round" },
-        paint: { "line-color": "#38bdf8", "line-width": 3.8, "line-opacity": 1.0 }
+        paint: { "line-color": "#38bdf8", "line-width": 5.2, "line-opacity": 1.0 }
+      });
+      map.addLayer({
+        id: "relocation-route-dash",
+        type: "line",
+        source: "relocation-route",
+        filter: ["==", ["get", "isRoadRoute"], true],
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": "#ffffff", "line-width": 2.2, "line-dasharray": [1.2, 2.8], "line-opacity": 0.9 }
       });
 
-      // Group 8: PS191 RELOCATION MARKERS (Vulnerable Origin 📍 & Safe Destination 🟢)
-      // Top Z-order: markers always visible, prominent, and clickable above all fills and routes
+      // ── Group 8: RED ZONE ORIGIN & GREEN ZONE SAFE DESTINATION MARKERS ─────────
+      // Red Zone Origin Radar Halo & Marker
+      map.addLayer({
+        id: "relocation-origin-halo",
+        type: "circle",
+        source: "relocation-origin",
+        paint: { "circle-radius": 19, "circle-color": "#ef4444", "circle-opacity": 0.28, "circle-stroke-color": "#dc2626", "circle-stroke-width": 2.0 }
+      });
       map.addLayer({
         id: "relocation-origin-marker",
         type: "circle",
         source: "relocation-origin",
-        paint: {
-          "circle-radius": 9.5,
-          "circle-color": "#dc2626",
-          "circle-stroke-color": "#ffffff",
-          "circle-stroke-width": 3.0
-        }
+        paint: { "circle-radius": 11, "circle-color": "#dc2626", "circle-stroke-color": "#ffffff", "circle-stroke-width": 3.2 }
       });
       map.addLayer({
         id: "relocation-origin-label",
         type: "symbol",
         source: "relocation-origin",
         layout: {
-          "text-field": ["concat", "📍 ", ["get", "name"], "\n", "Exposure: ", ["get", "exposureLevel"]],
-          "text-size": 10.5,
-          "text-offset": [0, -1.8],
+          "text-field": ["concat", "📍 RED ZONE ORIGIN\n", ["get", "name"], "\n[", ["get", "exposureLevel"], " EXPOSURE]"],
+          "text-size": 11,
+          "text-offset": [0, -2.0],
           "text-anchor": "bottom",
           "text-justify": "center",
           "text-line-height": 1.25
         },
-        paint: {
-          "text-color": "#ffffff",
-          "text-halo-color": "#7f1d1d",
-          "text-halo-width": 2.8
-        }
+        paint: { "text-color": "#ffffff", "text-halo-color": "#7f1d1d", "text-halo-width": 3.2 }
+      });
+
+      // Green Zone Safe Destination Radar Halo & Marker
+      map.addLayer({
+        id: "relocation-destination-halo",
+        type: "circle",
+        source: "relocation-destination",
+        paint: { "circle-radius": 20, "circle-color": "#22c55e", "circle-opacity": 0.28, "circle-stroke-color": "#16a34a", "circle-stroke-width": 2.0 }
       });
       map.addLayer({
         id: "relocation-route-destination",
         type: "circle",
         source: "relocation-destination",
-        paint: {
-          "circle-radius": 10.5,
-          "circle-color": "#16a34a",
-          "circle-stroke-color": "#ffffff",
-          "circle-stroke-width": 3.0
-        }
+        paint: { "circle-radius": 12, "circle-color": "#16a34a", "circle-stroke-color": "#ffffff", "circle-stroke-width": 3.5 }
       });
       map.addLayer({
         id: "relocation-destination-label",
         type: "symbol",
         source: "relocation-destination",
         layout: {
-          "text-field": ["concat", "🟢 ", ["get", "name"], "\n", "Recommended Safe Destination"],
-          "text-size": 10.5,
-          "text-offset": [0, 1.8],
+          "text-field": ["concat", "🟢 GREEN ZONE SAFE HAVEN\n", ["get", "name"], "\n[Safe Relocation Center]"],
+          "text-size": 11,
+          "text-offset": [0, 2.0],
           "text-anchor": "top",
           "text-justify": "center",
           "text-line-height": 1.25
         },
-        paint: {
-          "text-color": "#ffffff",
-          "text-halo-color": "#14532d",
-          "text-halo-width": 2.8
-        }
+        paint: { "text-color": "#ffffff", "text-halo-color": "#14532d", "text-halo-width": 3.2 }
+      });
+
+      // Simulation moving vehicle layers
+      map.addLayer({
+        id: "relocation-sim-halo",
+        type: "circle",
+        source: "relocation-sim",
+        paint: { "circle-radius": 17, "circle-color": "#38bdf8", "circle-opacity": 0.4, "circle-stroke-color": "#0284c7", "circle-stroke-width": 2.0 }
+      });
+      map.addLayer({
+        id: "relocation-sim-vehicle",
+        type: "circle",
+        source: "relocation-sim",
+        paint: { "circle-radius": 9.5, "circle-color": "#0284c7", "circle-stroke-color": "#ffffff", "circle-stroke-width": 3.0 }
+      });
+      map.addLayer({
+        id: "relocation-sim-label",
+        type: "symbol",
+        source: "relocation-sim",
+        layout: {
+          "text-field": ["concat", "🚗 EVACUATION • ", ["get", "progress"]],
+          "text-size": 9.5,
+          "text-offset": [0, -1.8],
+          "text-anchor": "bottom"
+        },
+        paint: { "text-color": "#ffffff", "text-halo-color": "#0369a1", "text-halo-width": 2.6 }
       });
 
       // Click handlers
@@ -549,7 +601,7 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
         const name = String(p.name || "Vulnerable Habitation");
         const exposureLevel = String(p.exposureLevel || "HIGH");
         const pop = p.population !== null && p.population !== undefined && Number(p.population) > 0 ? Number(p.population).toLocaleString("en-IN") : "Census 2011 / SDMA";
-        const popupHtml = `<div style="font-family:inherit;padding:4px 2px;max-width:260px;color:#0f172a"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px"><strong style="font-size:13px;color:#0f172a;font-weight:700">📍 ${name}</strong><span style="background:#dc2626;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;letter-spacing:0.04em">ORIGIN</span></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:6px 8px;font-size:11px;margin-bottom:6px;display:grid;gap:4px"><div><span style="color:#64748b">Population:</span> <strong style="color:#1e293b">${pop}</strong></div><div><span style="color:#64748b">Exposure:</span> <strong style="color:#dc2626">${exposureLevel}</strong></div></div><div style="font-size:10px;font-weight:600;color:#991b1b;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;padding:4px 6px">⚠️ Vulnerable Habitation / Origin</div></div>`;
+        const popupHtml = `<div style="font-family:inherit;padding:4px 2px;max-width:270px;color:#0f172a"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px"><strong style="font-size:13px;color:#0f172a;font-weight:700">📍 ${name}</strong><span style="background:#dc2626;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;letter-spacing:0.04em">RED ZONE ORIGIN</span></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:6px 8px;font-size:11px;margin-bottom:6px;display:grid;gap:4px"><div><span style="color:#64748b">Population:</span> <strong style="color:#1e293b">${pop}</strong></div><div><span style="color:#64748b">Exposure:</span> <strong style="color:#dc2626">${exposureLevel}</strong></div></div><div style="font-size:10px;font-weight:600;color:#991b1b;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;padding:4px 6px">⚠️ Critical Hazard Vulnerability — Evacuation Required</div></div>`;
         new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: "300px" }).setLngLat(event.lngLat).setHTML(popupHtml).addTo(map);
       };
       map.on("click", "relocation-origin-marker", showOriginPopup);
@@ -566,7 +618,7 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
         const suitability = String(p.suitability || "PREFERRED");
         const cap = String(p.capacityNote || "");
         const capacityText = cap && !cap.includes("UNAVAILABLE") ? cap : "Available from local administration";
-        const popupHtml = `<div style="font-family:inherit;padding:4px 2px;max-width:275px;color:#0f172a"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px"><strong style="font-size:13px;color:#0f172a;font-weight:700">🟢 ${name}</strong><span style="background:#16a34a;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;letter-spacing:0.04em">${suitability}</span></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:6px 8px;font-size:11px;margin-bottom:6px;display:grid;gap:4px"><div><span style="color:#64748b">Role:</span> <strong style="color:#1e293b">${role}</strong></div><div><span style="color:#64748b">Suitability:</span> <strong style="color:#16a34a">${suitability === "PREFERRED" ? "Verified Suitable" : suitability}</strong></div><div><span style="color:#64748b">Capacity:</span> <strong style="color:#1e293b">${capacityText}</strong></div></div><div style="font-size:10px;font-weight:600;color:#166534;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:4px;padding:4px 6px">✓ Recommended Safe Destination</div></div>`;
+        const popupHtml = `<div style="font-family:inherit;padding:4px 2px;max-width:280px;color:#0f172a"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px"><strong style="font-size:13px;color:#0f172a;font-weight:700">🟢 ${name}</strong><span style="background:#16a34a;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;letter-spacing:0.04em">GREEN ZONE SAFE HAVEN</span></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:6px 8px;font-size:11px;margin-bottom:6px;display:grid;gap:4px"><div><span style="color:#64748b">Role:</span> <strong style="color:#1e293b">${role}</strong></div><div><span style="color:#64748b">Suitability:</span> <strong style="color:#16a34a">${suitability === "PREFERRED" ? "Verified Suitable" : suitability}</strong></div><div><span style="color:#64748b">Capacity:</span> <strong style="color:#1e293b">${capacityText}</strong></div></div><div style="font-size:10px;font-weight:600;color:#166534;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:4px;padding:4px 6px">✓ Recommended Safe Evacuation Destination</div></div>`;
         new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: "300px" }).setLngLat(event.lngLat).setHTML(popupHtml).addTo(map);
       };
       map.on("click", "relocation-route-destination", showDestPopup);
@@ -580,7 +632,7 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
         const p = feat.properties as Record<string, unknown>;
         const dist = p.distanceKm !== null && p.distanceKm !== undefined ? `${p.distanceKm} km` : "Unavailable";
         const mins = p.travelTimeMinutes !== null && p.travelTimeMinutes !== undefined ? `~${p.travelTimeMinutes} min` : "Estimated driving time unavailable";
-        const popupHtml = `<div style="font-family:inherit;padding:4px 2px;max-width:240px;color:#0f172a"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px"><strong style="font-size:12px;color:#0f172a;font-weight:700">🚗 EVACUATION ROUTE</strong><span style="background:#0284c7;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px">OSRM</span></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:6px 8px;font-size:11px;display:grid;gap:4px"><div><span style="color:#64748b">Road distance:</span> <strong style="color:#0f172a">${dist}</strong></div><div><span style="color:#64748b">Estimated travel time:</span> <strong style="color:#0f172a">${mins}</strong></div></div><div style="font-size:9px;color:#64748b;margin-top:6px;padding-top:4px;border-top:1px solid #e2e8f0">Source: OSRM road network</div></div>`;
+        const popupHtml = `<div style="font-family:inherit;padding:4px 2px;max-width:260px;color:#0f172a"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px"><strong style="font-size:12px;color:#0f172a;font-weight:700">🛣️ ROADWAY NAVIGATION</strong><span style="background:#0284c7;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px">OSRM</span></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:6px 8px;font-size:11px;display:grid;gap:4px"><div><span style="color:#64748b">Route:</span> <strong style="color:#0f172a">Red Zone ➔ Green Zone</strong></div><div><span style="color:#64748b">Driving distance:</span> <strong style="color:#0f172a">${dist}</strong></div><div><span style="color:#64748b">Estimated travel time:</span> <strong style="color:#0284c7">${mins}</strong></div></div><div style="font-size:9px;color:#64748b;margin-top:6px;padding-top:4px;border-top:1px solid #e2e8f0">Exact roadway connectivity line via OpenStreetMap / OSRM</div></div>`;
         new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: "300px" }).setLngLat(event.lngLat).setHTML(popupHtml).addTo(map);
       };
       map.on("click", "relocation-route-line", showRoutePopup);
@@ -615,12 +667,12 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
     const map = mapRef.current;
     if (!map || !sources) return;
     const doUpdate = () => {
-      console.log("[DivaMap] doUpdate: setting hazard-redzones with", sources.hazardClassification.features.length, "features, route:", sources.relocationRoute.features.length, "origin:", sources.relocationOrigin.features.length, "dest:", sources.relocationDestination.features.length);
       safeSetData(map, "areas", sources.areas);
       safeSetData(map, "selected-area", sources.selectedArea);
       safeSetData(map, "relocation-route", sources.relocationRoute);
       safeSetData(map, "relocation-destination", sources.relocationDestination);
       safeSetData(map, "relocation-origin", sources.relocationOrigin);
+      safeSetData(map, "relocation-sim", sources.relocationSim);
       safeSetData(map, "active-marker", sources.activeMarker);
       safeSetData(map, "hazards", sources.hazards);
       safeSetData(map, "roads", sources.roads);
@@ -679,10 +731,49 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
     }
   }, [data?.activeLocation]);
 
+  // ── Simulation animation loop ─────────────────────────────────────────────
+  useEffect(() => {
+    if (!isSimulating || !data?.relocationRoute?.coordinates || data.relocationRoute.coordinates.length < 2) {
+      return;
+    }
+    const coords = data.relocationRoute.coordinates;
+    const interval = setInterval(() => {
+      setSimIndex((prev) => {
+        const next = prev + 1;
+        if (next >= coords.length) {
+          setIsSimulating(false);
+          return 0;
+        }
+        return next;
+      });
+    }, 220);
+    return () => clearInterval(interval);
+  }, [isSimulating, data?.relocationRoute?.coordinates]);
+
+  const fitNavigationRoute = useCallback(() => {
+    const map = mapRef.current;
+    if (!map || !data?.relocationRoute || data.relocationRoute.coordinates.length < 2) return;
+    const coords = data.relocationRoute.coordinates;
+    let minLon = coords[0][0], maxLon = coords[0][0];
+    let minLat = coords[0][1], maxLat = coords[0][1];
+    for (const [lon, lat] of coords) {
+      minLon = Math.min(minLon, lon);
+      maxLon = Math.max(maxLon, lon);
+      minLat = Math.min(minLat, lat);
+      maxLat = Math.max(maxLat, lat);
+    }
+    map.fitBounds([[minLon, minLat], [maxLon, maxLat]], {
+      padding: { top: 90, bottom: 90, left: 90, right: 90 },
+      duration: 850,
+    });
+  }, [data?.relocationRoute]);
+
   const changeZoom = useCallback((delta: number) => {
     const map = mapRef.current;
     if (map) map.zoomTo(clampMapZoom((map.getZoom() ?? zoom) + delta), { duration: 250 });
   }, [zoom]);
+
+  const route = data?.relocationRoute;
 
   return (
     <div className={cn("relative overflow-hidden bg-[#07141b]", className)}>
@@ -696,7 +787,8 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
         style={{ position: "absolute", inset: 0 }}
         aria-label="Interactive India GIS map"
       />
-      {/* Location decision context panel — fixed text colors for dark background */}
+
+      {/* Location decision context panel */}
       {showContextPanel && data?.activeLocation && (
         <div data-testid="map-location-decision-context" className="pointer-events-none absolute right-16 top-16 z-10 w-[244px] rounded-xl border border-[#476571] bg-[#081720]/95 p-3 text-[#dcebf0] shadow-2xl backdrop-blur">
           <p className="text-[9px] font-bold uppercase tracking-[.12em] text-[#1d788d]">Location decision context</p>
@@ -714,6 +806,7 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
           <p className="mt-2 text-[9px] leading-snug text-[#6a808a]">{data.activeLocation.screening.hazardContext}</p>
         </div>
       )}
+
       {/* Zoom controls */}
       <div className="absolute right-4 top-4 z-20 flex flex-col overflow-hidden rounded-xl border border-[#395460] bg-[#0b202a]/90 shadow-2xl backdrop-blur">
         <Button variant="ghost" size="icon" className="h-9 w-9 rounded-none border-b border-[#2b4651] text-[#d8e9ed] hover:bg-[#153440] hover:text-white" aria-label="Zoom in" onClick={() => changeZoom(1)}><Plus className="h-4 w-4" /></Button>
@@ -721,29 +814,106 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
         <Button variant="ghost" size="icon" className="h-9 w-9 rounded-none border-b border-[#2b4651] text-[#d8e9ed] hover:bg-[#153440] hover:text-white" aria-label="Reset map view" onClick={() => mapRef.current?.flyTo({ center: data?.center, zoom: clampMapZoom(zoom), duration: 650 })}><RotateCcw className="h-4 w-4" /></Button>
         <Button variant="ghost" size="icon" className="h-9 w-9 rounded-none text-[#d8e9ed] hover:bg-[#153440] hover:text-white" aria-label="Toggle fullscreen map" onClick={() => containerRef.current?.requestFullscreen()}><Expand className="h-4 w-4" /></Button>
       </div>
+
       <div className="pointer-events-none absolute bottom-4 right-4 z-10 flex items-center gap-1.5 rounded-lg border border-[#415c67] bg-[#081720]/90 px-2.5 py-1.5 text-[10px] font-medium text-[#b4c9ce] shadow-lg backdrop-blur"><MapIcon className="h-3.5 w-3.5 text-[#77cc81]" /> Satellite imagery · Esri</div>
       {data?.activeLocation?.location.boundary && <div data-testid="map-boundary-status" className="pointer-events-none absolute bottom-14 left-4 z-10 rounded-lg border border-[#415c67] bg-[#081720]/90 px-2.5 py-1.5 text-[10px] font-semibold text-[#c6dadd]">Boundary rendered · {data.activeLocation.location.name} state extent</div>}
       <div className="pointer-events-none absolute bottom-4 left-4 z-10 flex items-center gap-1.5 rounded-lg border border-[#415c67] bg-[#081720]/90 px-2.5 py-1.5 text-[10px] font-bold tracking-[0.08em] text-[#add7b0] shadow-lg backdrop-blur"><Crosshair className="h-3.5 w-3.5" /> INDIA LOCATION CONTEXT</div>
-      {data?.relocationRoute && (
-        <div data-testid="evacuation-route-badge" className="pointer-events-none absolute bottom-14 left-4 z-10 w-[230px] rounded-xl border border-white/20 bg-[#0b1726]/95 p-2.5 text-[#e2e8f0] shadow-2xl backdrop-blur-md">
-          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[#38bdf8]">
-            <span>🚗</span> EVACUATION ROUTE
+
+      {/* ── GOOGLE MAPS STYLE NAVIGATION HUD OVERLAY ───────────────────────── */}
+      {route && route.coordinates.length > 0 && (
+        <div data-testid="evacuation-route-badge" className="absolute bottom-14 left-4 z-20 w-[310px] max-w-[calc(100vw-32px)] overflow-hidden rounded-2xl border border-[#38bdf8]/40 bg-[#081726]/95 text-[#e2e8f0] shadow-[0_20px_50px_rgba(0,0,0,0.6)] backdrop-blur-xl transition-all">
+          {/* Top navigation header bar with Google Maps style green / cyan accent */}
+          <div className="flex items-center justify-between border-b border-[#1e3a5f] bg-gradient-to-r from-[#0369a1] via-[#0284c7] to-[#0ea5e9] px-3.5 py-2 text-white shadow-sm">
+            <div className="flex items-center gap-2">
+              <Navigation className="h-4 w-4 animate-pulse text-white" />
+              <span className="text-[11px] font-extrabold tracking-wider uppercase">Road Navigation</span>
+            </div>
+            <span className="rounded bg-black/30 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#e0f2fe]">
+              {route.isRoadRoute ? "OSRM Live Route" : "Planning Corridor"}
+            </span>
           </div>
-          {data.relocationRoute.isRoadRoute ? (
-            <>
-              <div className="mt-1 text-xs font-extrabold text-white">
-                {data.relocationRoute.distanceKm ?? "—"} km <span className="font-normal text-[#94a3b8]">•</span> ~{data.relocationRoute.travelTimeMinutes ?? "—"} min
+
+          <div className="p-3">
+            {/* Primary navigation stat: Big Driving Time & Distance */}
+            <div className="flex items-baseline justify-between border-b border-[#1e293b] pb-2.5">
+              <div>
+                <span className="text-2xl font-black text-white tracking-tight">
+                  {route.travelTimeMinutes ? `~${route.travelTimeMinutes} min` : "Driving"}
+                </span>
+                <span className="ml-2 text-xs font-bold text-[#38bdf8]">
+                  ({route.distanceKm ?? "—"} km)
+                </span>
               </div>
-              <div className="mt-0.5 text-[9px] text-[#94a3b8]">Via existing road network (OSRM)</div>
-            </>
-          ) : (
-            <>
-              <div className="mt-1 text-[11px] font-bold text-[#fca5a5]">Road routing unavailable</div>
-              <div className="mt-0.5 text-[9px] text-[#94a3b8]">No road network connection</div>
-            </>
-          )}
+              <span className="rounded-full bg-[#10b981]/20 px-2.5 py-1 text-[10px] font-bold text-[#34d399] border border-[#10b981]/40">
+                Fastest Road Route
+              </span>
+            </div>
+
+            {/* Origin & Destination visual flow */}
+            <div className="mt-2.5 space-y-1.5 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#dc2626] text-[10px] font-black text-white shadow">
+                  📍
+                </span>
+                <div className="min-w-0 flex-1 truncate">
+                  <span className="font-semibold text-white">{route.originLabel ?? "Red Zone Origin"}</span>
+                  <span className="ml-1.5 text-[10px] font-bold text-[#f87171]">[RED ZONE]</span>
+                </div>
+              </div>
+
+              <div className="ml-2.5 border-l-2 border-dashed border-[#38bdf8]/60 pl-4 py-0.5">
+                <span className="text-[10px] font-medium text-[#94a3b8] flex items-center gap-1">
+                  🛣️ Exact Roadway Line via State/National Highway
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#16a34a] text-[10px] font-black text-white shadow">
+                  🏁
+                </span>
+                <div className="min-w-0 flex-1 truncate">
+                  <span className="font-semibold text-white">{route.destinationLabel}</span>
+                  <span className="ml-1.5 text-[10px] font-bold text-[#4ade80]">[GREEN ZONE]</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Interactive Navigation Action Buttons */}
+            <div className="mt-3 flex items-center gap-2 pt-2 border-t border-[#1e293b]">
+              <Button
+                onClick={fitNavigationRoute}
+                size="sm"
+                className="h-8 flex-1 rounded-xl bg-[#0284c7] hover:bg-[#0369a1] text-white text-[11px] font-bold shadow-md gap-1.5"
+              >
+                <Compass className="h-3.5 w-3.5" />
+                Fit Route View
+              </Button>
+              <Button
+                onClick={() => {
+                  if (isSimulating) {
+                    setIsSimulating(false);
+                  } else {
+                    setSimIndex(0);
+                    setIsSimulating(true);
+                  }
+                }}
+                variant="outline"
+                size="sm"
+                className={cn(
+                  "h-8 rounded-xl text-[11px] font-bold border-[#38bdf8]/40 gap-1.5 transition-colors",
+                  isSimulating
+                    ? "bg-[#ef4444] text-white border-transparent hover:bg-[#dc2626]"
+                    : "bg-[#0b1e2f] text-[#38bdf8] hover:bg-[#13324d]"
+                )}
+              >
+                {isSimulating ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+                {isSimulating ? "Pause" : "Simulate"}
+              </Button>
+            </div>
+          </div>
         </div>
       )}
+
       {data?.nationwide ? <IndiaOverviewProvenance sources={data.nationwide.sources} statuses={data.nationwide.statuses} updatedAt={data.nationwide.updatedAt} /> : <div className="pointer-events-none absolute bottom-14 right-4 z-10 hidden items-center gap-1.5 rounded-lg bg-white/90 px-2 py-1 text-[10px] text-[#547080] lg:flex"><LocateFixed className="h-3 w-3" /> Coordinates WGS84</div>}
     </div>
   );

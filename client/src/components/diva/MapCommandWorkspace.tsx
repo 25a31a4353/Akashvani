@@ -67,14 +67,22 @@ export function MapCommandWorkspace({ data, selectedId, area, analysis, indiaLoc
     { enabled: Boolean(realDistrict), staleTime: 10 * 60 * 1000 }
   );
 
-  // Identify highest priority exposed habitation with valid coordinates
+  // Identify highest priority exposed habitation with valid coordinates in Red Zone
   const habitationsList = habitationsQuery.data ?? [];
   const exposedHabitations = habitationsList.filter((h: any) => h.insideHazardZone && h.latitude != null && h.longitude != null);
-  const selectedVulnerableHabitation = exposedHabitations[0] ?? habitationsList.find((h: any) => h.latitude != null && h.longitude != null) ?? null;
+  const selectedVulnerableHabitation = exposedHabitations[0] ?? habitationsList.find((h: any) => h.latitude != null && h.longitude != null) ?? (selectedLocation ? {
+    name: `${selectedLocation.name} (Red Zone Origin)`,
+    latitude: selectedLocation.latitude,
+    longitude: selectedLocation.longitude,
+    exposureLevel: risk >= 70 ? "CRITICAL" : "HIGH",
+    population: selectedLocation.population ?? null,
+    hazardType: selectedLocation.category ? `${selectedLocation.category} Hazard Exposure` : "Multi-Hazard Red Zone",
+    insideHazardZone: true,
+  } : null);
 
-  // Identify recommended relocation destination facility (preferred or conditional, strictly NOT unsuitable and NOT hospital)
+  // Identify recommended relocation destination facility in Green Zone (preferred or conditional, strictly NOT unsuitable and NOT hospital)
   const relRec = relocationQuery.data;
-  const destinationCandidate = relRec?.bestCandidate ?? (relRec?.conditionalAlternatives ?? []).find((f: any) => f.latitude != null && f.longitude != null) ?? null;
+  const destinationCandidate = relRec?.bestCandidate ?? (relRec?.conditionalAlternatives ?? []).find((f: any) => f.latitude != null && f.longitude != null) ?? (relRec?.nearestFacilities ?? []).find((f: any) => f.relocationSuitability !== "UNSUITABLE" && f.facilityRole !== "HOSPITAL_MEDICAL_SUPPORT" && f.latitude != null && f.longitude != null) ?? null;
 
   // Fetch verified OSRM evacuation road route
   const routeQuery = trpc.diva.hazards.evacuationRoute.useQuery(
@@ -101,8 +109,8 @@ export function MapCommandWorkspace({ data, selectedId, area, analysis, indiaLoc
 
   const verifiedRoadRoute = routeQuery.data && routeQuery.data.status === "OK" && routeQuery.data.coordinates.length > 0 ? {
     coordinates: routeQuery.data.coordinates,
-    destinationLabel: destinationCandidate?.name ?? "Relocation Destination",
-    originLabel: selectedVulnerableHabitation?.name ?? "Vulnerable Habitation",
+    destinationLabel: destinationCandidate?.name ?? "Green Zone Safe Haven",
+    originLabel: selectedVulnerableHabitation?.name ?? "Red Zone Origin",
     distanceKm: routeQuery.data.routeDistanceKm,
     travelTimeMinutes: routeQuery.data.travelTimeMinutes,
     isRoadRoute: true,

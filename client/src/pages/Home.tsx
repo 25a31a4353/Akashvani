@@ -161,11 +161,19 @@ export default function Home() {
   );
 
   const selectedVulnerableHabitation = isRelocationRequired
-    ? (districtExposed[0] ?? districtHabitations[0] ?? null)
+    ? (districtExposed[0] ?? districtHabitations[0] ?? (realDistrict ? {
+        name: `${realDistrict.name} (Red Zone Origin)`,
+        latitude: realDistrict.latitude,
+        longitude: realDistrict.longitude,
+        exposureLevel: "CRITICAL",
+        population: null,
+        hazardType: "Red Zone Hazard Screening",
+        insideHazardZone: true,
+      } : null))
     : null;
 
   const destinationCandidate = (isRelocationRequired && relRec)
-    ? (relRec.bestCandidate ?? (relRec.conditionalAlternatives ?? []).find((f: any) => f.latitude != null && f.longitude != null) ?? null)
+    ? (relRec.bestCandidate ?? (relRec.conditionalAlternatives ?? []).find((f: any) => f.latitude != null && f.longitude != null) ?? (relRec.nearestFacilities ?? []).find((f: any) => f.relocationSuitability !== "UNSUITABLE" && f.facilityRole !== "HOSPITAL_MEDICAL_SUPPORT" && f.latitude != null && f.longitude != null) ?? null)
     : null;
 
   const routeQuery = trpc.diva.hazards.evacuationRoute.useQuery(
@@ -198,14 +206,14 @@ export default function Home() {
     routeQuery.data.coordinates.length > 0 &&
     selectedVulnerableHabitation &&
     destinationCandidate &&
-    Math.abs(routeQuery.data.coordinates[0][1] - selectedVulnerableHabitation.latitude) < 0.15 &&
-    Math.abs(routeQuery.data.coordinates[0][0] - selectedVulnerableHabitation.longitude) < 0.15
+    Math.abs(routeQuery.data.coordinates[0][1] - selectedVulnerableHabitation.latitude) < 0.25 &&
+    Math.abs(routeQuery.data.coordinates[0][0] - selectedVulnerableHabitation.longitude) < 0.25
   );
 
   const verifiedRoadRoute = isRouteMatchingCurrentLocations && routeQuery.data ? {
     coordinates: routeQuery.data.coordinates,
-    destinationLabel: destinationCandidate?.name ?? "Relocation Destination",
-    originLabel: selectedVulnerableHabitation?.name ?? "Vulnerable Habitation",
+    destinationLabel: destinationCandidate?.name ?? "Green Zone Safe Haven",
+    originLabel: selectedVulnerableHabitation?.name ?? "Red Zone Origin",
     distanceKm: routeQuery.data.routeDistanceKm,
     travelTimeMinutes: routeQuery.data.travelTimeMinutes,
     isRoadRoute: true,
