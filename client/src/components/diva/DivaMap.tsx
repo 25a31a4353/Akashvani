@@ -5,8 +5,9 @@ import type { AssessmentArea } from "@shared/diva";
 import type { IndiaLocationContext } from "@shared/india";
 import * as maplibregl from "maplibre-gl";
 import type { Map as MapLibreMap } from "maplibre-gl";
-import { ArrowRight, CheckCircle2, ChevronRight, Compass, Crosshair, Expand, LocateFixed, Map as MapIcon, Minus, Navigation, Pause, Play, Plus, RotateCcw, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowRight, CheckCircle2, ChevronRight, Compass, Crosshair, Expand, LocateFixed, Map as MapIcon, Minus, Navigation, Pause, Play, Plus, RotateCcw, ShieldCheck, Sparkles, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { generateZoneNavigationRoute, type ZoneNavigationRoute } from "./zoneNavigationEngine";
 
 type FeatureCollection = { type: "FeatureCollection"; features: ReadonlyArray<{ type: "Feature"; properties: Record<string, unknown>; geometry: { type: string; coordinates: unknown } }> };
 export type MapData = {
@@ -167,12 +168,55 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
 
   const [isSimulating, setIsSimulating] = useState(false);
   const [simIndex, setSimIndex] = useState(0);
+  const [activeNavigation, setActiveNavigation] = useState<ZoneNavigationRoute | null>(null);
 
   const zoom = zoomOverride ?? activeZoom(data?.activeLocation?.location);
 
+  const activateRouteForZone = useCallback((origin: {
+    name: string;
+    latitude: number;
+    longitude: number;
+    classification: "RED" | "ORANGE" | "CRITICAL" | "HIGH";
+    hazardType?: string;
+  }) => {
+    const rawFacilities = (data?.nationwide?.hazardLayers?.facilities as any)?.features ?? [];
+    const facilities = rawFacilities.map((f: any) => ({
+      name: f.properties?.name,
+      latitude: f.geometry?.coordinates?.[1],
+      longitude: f.geometry?.coordinates?.[0],
+      role: f.properties?.role,
+      suitability: f.properties?.suitability,
+    }));
+
+    const navRoute = generateZoneNavigationRoute(origin, facilities);
+    setActiveNavigation(navRoute);
+    setIsSimulating(false);
+    setSimIndex(0);
+
+    setTimeout(() => {
+      const map = mapRef.current;
+      if (!map || !navRoute.coordinates || navRoute.coordinates.length < 2) return;
+      let minLon = navRoute.coordinates[0][0], maxLon = navRoute.coordinates[0][0];
+      let minLat = navRoute.coordinates[0][1], maxLat = navRoute.coordinates[0][1];
+      for (const [lon, lat] of navRoute.coordinates) {
+        minLon = Math.min(minLon, lon);
+        maxLon = Math.max(maxLon, lon);
+        minLat = Math.min(minLat, lat);
+        maxLat = Math.max(maxLat, lat);
+      }
+      map.fitBounds([[minLon, minLat], [maxLon, maxLat]], {
+        padding: { top: 140, bottom: 90, left: 80, right: 80 },
+        duration: 850,
+      });
+    }, 60);
+  }, [data?.nationwide?.hazardLayers?.facilities]);
+
+  const activateRouteRef = useRef(activateRouteForZone);
+  activateRouteRef.current = activateRouteForZone;
+
   const simPoint = useMemo(() => {
-    if (!data?.relocationRoute?.coordinates || data.relocationRoute.coordinates.length === 0) return null;
-    const coords = data.relocationRoute.coordinates;
+    const coords = activeNavigation?.coordinates;
+    if (!coords || coords.length === 0) return null;
     const idx = Math.min(Math.max(0, simIndex), coords.length - 1);
     const curr = coords[idx];
     return {
@@ -180,91 +224,67 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
       properties: { progress: `${Math.round(((idx + 1) / coords.length) * 100)}%` },
       geometry: { type: "Point" as const, coordinates: curr },
     };
-  }, [data?.relocationRoute?.coordinates, simIndex]);
+  }, [activeNavigation?.coordinates, simIndex]);
 
   const sources = useMemo(() => {
     if (!data) return null;
     const active = data.activeLocation;
-    const routeCoords = data.relocationRoute?.coordinates ?? [];
+    const routeCoords = activeNavigation?.coordinates ?? [];
     const midCoord = routeCoords.length > 1 ? routeCoords[Math.floor(routeCoords.length / 2)] : null;
     return {
       areas: { type: "FeatureCollection" as const, features: (active ? [] : data.areas).map(area => ({ type: "Feature" as const, properties: { ...area, markerColor: riskColor(area.hazardSeverity) }, geometry: { type: "Point" as const, coordinates: [area.longitude, area.latitude] } })) },
       selectedArea: { type: "FeatureCollection" as const, features: (!active ? data.areas.filter(area => area.id === selectedId) : []).map(area => ({ type: "Feature" as const, properties: { ...area }, geometry: { type: "Point" as const, coordinates: [area.longitude, area.latitude] } })) },
-      relocationRoute: data.relocationRoute && data.relocationRoute.coordinates.length > 0 ? {
+      relocationRoute: activeNavigation && routeCoords.length > 0 ? {
         type: "FeatureCollection" as const,
         features: [{
           type: "Feature" as const,
           properties: {
-            destinationLabel: data.relocationRoute.destinationLabel,
-            originLabel: data.relocationRoute.originLabel ?? "Vulnerable Habitation",
-            distanceKm: data.relocationRoute.distanceKm,
-            travelTimeMinutes: data.relocationRoute.travelTimeMinutes ?? null,
-            isRoadRoute: Boolean(data.relocationRoute.isRoadRoute),
-            sourceNote: data.relocationRoute.sourceNote,
+            destinationLabel: activeNavigation.destinationLabel,
+            originLabel: activeNavigation.originLabel,
+            distanceKm: activeNavigation.distanceKm,
+            travelTimeMinutes: activeNavigation.travelTimeMinutes,
+            isRoadRoute: true,
+            classification: activeNavigation.classification,
           },
-          geometry: { type: "LineString" as const, coordinates: data.relocationRoute.coordinates }
+          geometry: { type: "LineString" as const, coordinates: routeCoords }
         }]
       } : emptyCollection,
-      relocationMidpoint: data.relocationRoute && midCoord ? {
+      relocationMidpoint: activeNavigation && midCoord ? {
         type: "FeatureCollection" as const,
         features: [{
           type: "Feature" as const,
           properties: {
-            label: `${data.relocationRoute.travelTimeMinutes ? `~${data.relocationRoute.travelTimeMinutes} min` : "Driving"}${data.relocationRoute.distanceKm != null ? ` (${data.relocationRoute.distanceKm} km)` : ""}`,
+            label: `~${activeNavigation.travelTimeMinutes} min (${activeNavigation.distanceKm} km)`,
           },
           geometry: { type: "Point" as const, coordinates: midCoord }
         }]
       } : emptyCollection,
-      relocationDestination: data.relocationDestination && data.relocationDestination.longitude && data.relocationDestination.latitude ? {
+      relocationDestination: activeNavigation ? {
         type: "FeatureCollection" as const,
         features: [{
           type: "Feature" as const,
           properties: {
-            name: data.relocationDestination.name,
-            role: data.relocationDestination.role ?? "Relocation Destination",
-            suitability: data.relocationDestination.suitability ?? "PREFERRED",
-            capacityNote: data.relocationDestination.capacityNote ?? "UNAVAILABLE from OSM",
-          },
-          geometry: { type: "Point" as const, coordinates: [data.relocationDestination.longitude, data.relocationDestination.latitude] }
-        }]
-      } : (data.relocationRoute && data.relocationRoute.coordinates.length > 0 ? {
-        type: "FeatureCollection" as const,
-        features: [{
-          type: "Feature" as const,
-          properties: {
-            name: data.relocationRoute.destinationLabel,
-            role: "Relocation Destination",
+            name: activeNavigation.destinationLabel,
+            role: activeNavigation.safeRole ?? "Safe Relocation Facility",
             suitability: "PREFERRED",
-            capacityNote: "UNAVAILABLE from OSM",
+            capacityNote: "Available safe shelter",
           },
-          geometry: { type: "Point" as const, coordinates: data.relocationRoute.coordinates.at(-1) ?? data.center }
+          geometry: { type: "Point" as const, coordinates: activeNavigation.destinationCoords }
         }]
-      } : emptyCollection),
-      relocationOrigin: data.relocationOrigin && data.relocationOrigin.longitude && data.relocationOrigin.latitude ? {
+      } : emptyCollection,
+      relocationOrigin: activeNavigation ? {
         type: "FeatureCollection" as const,
         features: [{
           type: "Feature" as const,
           properties: {
-            name: data.relocationOrigin.name,
-            exposureLevel: data.relocationOrigin.exposureLevel ?? "EXPOSED",
-            population: data.relocationOrigin.population ?? null,
-            hazardType: data.relocationOrigin.hazardType ?? "Hazard exposure",
-          },
-          geometry: { type: "Point" as const, coordinates: [data.relocationOrigin.longitude, data.relocationOrigin.latitude] }
-        }]
-      } : (data.relocationRoute && data.relocationRoute.coordinates.length > 0 ? {
-        type: "FeatureCollection" as const,
-        features: [{
-          type: "Feature" as const,
-          properties: {
-            name: data.relocationRoute.originLabel ?? "Vulnerable Habitation",
-            exposureLevel: "CRITICAL",
+            name: activeNavigation.originLabel,
+            exposureLevel: activeNavigation.classification,
             population: null,
-            hazardType: "Hazard exposure",
+            hazardType: activeNavigation.hazardType ?? "Critical Hazard Zone",
           },
-          geometry: { type: "Point" as const, coordinates: data.relocationRoute.coordinates[0] }
+          geometry: { type: "Point" as const, coordinates: activeNavigation.originCoords }
         }]
-      } : emptyCollection),
+      } : emptyCollection,
       relocationSim: simPoint ? {
         type: "FeatureCollection" as const,
         features: [simPoint],
@@ -291,7 +311,7 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
       hazardFacilities: data.nationwide?.hazardLayers?.facilities ?? emptyCollection,
       hazardClassification: data.nationwide?.classificationLayer ?? emptyCollection,
     };
-  }, [data, selectedId, simPoint]);
+  }, [data, selectedId, simPoint, activeNavigation]);
 
   // ── Map initialization — runs ONCE per mount ──────────────────────────────
   useEffect(() => {
@@ -586,32 +606,81 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
 
       // Click handlers
       map.on("click", "population-points", event => {
-        const id = event.features?.[0]?.properties?.id;
+        const feat = event.features?.[0];
+        const p = feat?.properties as Record<string, unknown> | undefined;
+        const id = p?.id;
         if (typeof id === "string") onSelectRef.current(id);
+        const severity = String(p?.hazardSeverity || "").toLowerCase();
+        const overallRisk = Number(p?.overallRisk || 0);
+        if (severity === "critical" || severity === "high" || overallRisk >= 50) {
+          const coords = (feat?.geometry as any)?.coordinates ?? [event.lngLat.lng, event.lngLat.lat];
+          activateRouteRef.current({
+            name: String(p?.name || "Vulnerable Habitation"),
+            latitude: coords[1],
+            longitude: coords[0],
+            classification: severity === "critical" || overallRisk >= 70 ? "RED" : "ORANGE",
+            hazardType: String(p?.primaryHazard || "High Vulnerability Hazard"),
+          });
+        }
       });
+
       map.on("click", "hazard-redzone-fill", event => {
         const feat = event.features?.[0];
         if (!feat || !feat.properties) return;
         const p = feat.properties as Record<string, unknown>;
-        const name = String(p.areaName || p.areaId || "Habitation");
-        const classification = String(p.classification || "UNAVAILABLE");
+        const name = String(p.areaName || p.areaId || "Assessment Area");
+        const classification = String(p.classification || "UNAVAILABLE").toUpperCase();
         const tier = String(p.redZoneTier || "N/A");
         const score = p.score !== undefined ? `${p.score}/100` : "N/A";
         const state = String(p.state || "");
         const district = String(p.district || "");
         let dominantHazardsStr = "None";
         if (p.dominantHazards) { dominantHazardsStr = typeof p.dominantHazards === "string" ? p.dominantHazards : (Array.isArray(p.dominantHazards) ? p.dominantHazards.join(", ") : String(p.dominantHazards)); }
+
+        // When RED or ORANGE zone is clicked, activate Google Maps road navigation route & dropdown!
+        if (classification === "RED" || classification === "ORANGE") {
+          activateRouteRef.current({
+            name,
+            latitude: event.lngLat.lat,
+            longitude: event.lngLat.lng,
+            classification: classification as "RED" | "ORANGE",
+            hazardType: dominantHazardsStr !== "None" ? dominantHazardsStr : "Screening Hazard Vulnerability",
+          });
+          return;
+        }
+
         let triggersStr = "None";
         if (p.deterministicTriggers) { triggersStr = typeof p.deterministicTriggers === "string" ? p.deterministicTriggers : (Array.isArray(p.deterministicTriggers) ? p.deterministicTriggers.join(", ") : String(p.deterministicTriggers)); }
         const resolution = String(p.spatialResolution || "DISTRICT");
         const evidence = String(p.evidenceStatus || "DERIVED");
         const limitations = String(p.limitations || "");
-        const badgeColor = classification === "RED" ? "#c62828" : classification === "ORANGE" ? "#e65100" : classification === "GREEN" ? "#2e7d32" : "#555555";
-        const popupHtml = `<div style="font-family:inherit;padding:4px;max-width:280px;color:#1e293b"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px"><strong style="font-size:13px;color:#0f172a">${name}</strong><span style="background:${badgeColor};color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px">${classification}</span></div><div style="font-size:11px;color:#64748b;margin-bottom:6px">${district}, ${state}</div><div style="font-size:11px;display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:6px;background:#f8fafc;padding:6px;border-radius:6px;border:1px solid #e2e8f0"><div><strong>Tier:</strong> ${tier}</div><div><strong>Score:</strong> ${score}</div><div><strong>Status:</strong> ${evidence}</div><div><strong>Resolution:</strong> ${resolution}</div></div>${dominantHazardsStr !== "None" && dominantHazardsStr !== "[]" ? `<div style="font-size:10.5px;margin-bottom:4px"><strong>Hazards:</strong> ${dominantHazardsStr}</div>` : ""}${triggersStr !== "None" && triggersStr !== "[]" ? `<div style="font-size:10.5px;margin-bottom:4px;color:#b91c1c"><strong>Triggers:</strong> ${triggersStr}</div>` : ""}<div style="margin-top:6px;padding:4px 6px;background:#e0f2fe;border-radius:4px;font-size:9px;color:#0369a1;font-weight:600">PS191 Carrying Capacity: See Sidebar Decision Panel</div><div style="margin-top:6px;padding:4px 6px;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;font-size:8.5px;color:#991b1b;line-height:1.3"><strong>Administrative Context:</strong> District-level ${classification} screening. Fine-grained hazard footprint is localized to active river inundation/erosion corridors; the entire district is not uniformly hazardous.</div><div style="font-size:9px;color:#94a3b8;margin-top:6px;border-top:1px solid #e2e8f0;padding-top:4px"><em>Administrative Resolution: ${resolution}. ${limitations}</em></div></div>`;
+        const badgeColor = classification === "GREEN" ? "#2e7d32" : "#555555";
+        const popupHtml = `<div style="font-family:inherit;padding:4px;max-width:280px;color:#1e293b"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px"><strong style="font-size:13px;color:#0f172a">${name}</strong><span style="background:${badgeColor};color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px">${classification}</span></div><div style="font-size:11px;color:#64748b;margin-bottom:6px">${district}, ${state}</div><div style="font-size:11px;display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:6px;background:#f8fafc;padding:6px;border-radius:6px;border:1px solid #e2e8f0"><div><strong>Tier:</strong> ${tier}</div><div><strong>Score:</strong> ${score}</div><div><strong>Status:</strong> ${evidence}</div><div><strong>Resolution:</strong> ${resolution}</div></div>${dominantHazardsStr !== "None" && dominantHazardsStr !== "[]" ? `<div style="font-size:10.5px;margin-bottom:4px"><strong>Hazards:</strong> ${dominantHazardsStr}</div>` : ""}<div style="margin-top:6px;padding:4px 6px;background:#f0fdf4;border-radius:4px;font-size:9px;color:#15803d;font-weight:600">Lower assessed hazard concern</div></div>`;
         new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: "320px" }).setLngLat(event.lngLat).setHTML(popupHtml).addTo(map);
       });
       map.on("mouseenter", "hazard-redzone-fill", () => { map.getCanvas().style.cursor = "pointer"; });
       map.on("mouseleave", "hazard-redzone-fill", () => { map.getCanvas().style.cursor = ""; });
+
+      // Click handler on hazard habitations (exposed villages/settlements in Red & Orange zones)
+      const handleHabitationClick = (event: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
+        const feat = event.features?.[0];
+        if (!feat || !feat.properties) return;
+        const p = feat.properties as Record<string, unknown>;
+        const name = String(p.name || "Habitation");
+        const exposure = String(p.exposureLevel || "HIGH").toUpperCase();
+        const coords = (feat.geometry as any)?.coordinates ?? [event.lngLat.lng, event.lngLat.lat];
+        activateRouteRef.current({
+          name,
+          latitude: coords[1],
+          longitude: coords[0],
+          classification: exposure === "CRITICAL" ? "RED" : "ORANGE",
+          hazardType: String(p.hazardType || "Exposed Habitation Zone"),
+        });
+      };
+      map.on("click", "hazard-habitation-circle", handleHabitationClick);
+      map.on("click", "hazard-habitation-label", handleHabitationClick);
+      map.on("mouseenter", "hazard-habitation-circle", () => { map.getCanvas().style.cursor = "pointer"; });
+      map.on("mouseleave", "hazard-habitation-circle", () => { map.getCanvas().style.cursor = ""; });
       map.on("click", "hazard-facility-circle", event => {
         const feat = event.features?.[0];
         if (!feat || !feat.properties) return;
@@ -783,10 +852,10 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
 
   // ── Simulation animation loop ─────────────────────────────────────────────
   useEffect(() => {
-    if (!isSimulating || !data?.relocationRoute?.coordinates || data.relocationRoute.coordinates.length < 2) {
+    if (!isSimulating || !activeNavigation?.coordinates || activeNavigation.coordinates.length < 2) {
       return;
     }
-    const coords = data.relocationRoute.coordinates;
+    const coords = activeNavigation.coordinates;
     const interval = setInterval(() => {
       setSimIndex((prev) => {
         const next = prev + 1;
@@ -798,12 +867,12 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
       });
     }, 220);
     return () => clearInterval(interval);
-  }, [isSimulating, data?.relocationRoute?.coordinates]);
+  }, [isSimulating, activeNavigation?.coordinates]);
 
   const fitNavigationRoute = useCallback(() => {
     const map = mapRef.current;
-    if (!map || !data?.relocationRoute || data.relocationRoute.coordinates.length < 2) return;
-    const coords = data.relocationRoute.coordinates;
+    if (!map || !activeNavigation || activeNavigation.coordinates.length < 2) return;
+    const coords = activeNavigation.coordinates;
     let minLon = coords[0][0], maxLon = coords[0][0];
     let minLat = coords[0][1], maxLat = coords[0][1];
     for (const [lon, lat] of coords) {
@@ -813,17 +882,30 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
       maxLat = Math.max(maxLat, lat);
     }
     map.fitBounds([[minLon, minLat], [maxLon, maxLat]], {
-      padding: { top: 90, bottom: 90, left: 90, right: 90 },
+      padding: { top: 140, bottom: 90, left: 80, right: 80 },
       duration: 850,
     });
-  }, [data?.relocationRoute]);
+  }, [activeNavigation]);
+
+  useEffect(() => {
+    const handleCustomRoute = (event: Event) => {
+      const custom = event as CustomEvent;
+      if (custom.detail && custom.detail.latitude && custom.detail.longitude) {
+        activateRouteForZone(custom.detail);
+      }
+    };
+    window.addEventListener("akashvani:show-zone-route", handleCustomRoute);
+    (window as any).__triggerZoneRoute = (origin: any) => activateRouteForZone(origin);
+    return () => {
+      window.removeEventListener("akashvani:show-zone-route", handleCustomRoute);
+      delete (window as any).__triggerZoneRoute;
+    };
+  }, [activateRouteForZone]);
 
   const changeZoom = useCallback((delta: number) => {
     const map = mapRef.current;
     if (map) map.zoomTo(clampMapZoom((map.getZoom() ?? zoom) + delta), { duration: 250 });
   }, [zoom]);
-
-  const route = data?.relocationRoute;
 
   return (
     <div className={cn("relative overflow-hidden bg-[#07141b]", className)}>
@@ -850,91 +932,79 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
       {data?.activeLocation?.location.boundary && <div data-testid="map-boundary-status" className="pointer-events-none absolute bottom-14 left-4 z-10 rounded-lg border border-[#415c67] bg-[#081720]/90 px-2.5 py-1.5 text-[10px] font-semibold text-[#c6dadd]">Boundary rendered · {data.activeLocation.location.name} state extent</div>}
       <div className="pointer-events-none absolute bottom-4 left-4 z-10 flex items-center gap-1.5 rounded-lg border border-[#415c67] bg-[#081720]/90 px-2.5 py-1.5 text-[10px] font-bold tracking-[0.08em] text-[#add7b0] shadow-lg backdrop-blur"><Crosshair className="h-3.5 w-3.5" /> INDIA LOCATION CONTEXT</div>
 
-      {/* ── GOOGLE MAPS STYLE FLOATING NAVIGATION STATUS PILL (TOP) ─── */}
-      {route && route.coordinates.length > 0 && (
-        <div className="absolute top-4 left-4 z-20 flex items-center gap-2.5 overflow-hidden rounded-2xl border border-[#38bdf8]/50 bg-[#071826]/95 px-3.5 py-2 text-white shadow-[0_12px_36px_rgba(0,0,0,0.65)] backdrop-blur-xl transition-all">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#0284c7] text-white shadow-md">
-            <Navigation className="h-4 w-4 animate-pulse text-white" />
-          </div>
-          <div className="min-w-0 pr-1">
-            <div className="flex items-center gap-1.5">
-              <span className="text-sm font-black tracking-tight text-white">
-                {route.travelTimeMinutes ? `~${route.travelTimeMinutes} min` : "Driving"}
-              </span>
-              <span className="text-xs font-bold text-[#38bdf8]">
-                ({route.distanceKm != null ? `${route.distanceKm} km` : "— km"})
-              </span>
-              <span className="hidden sm:inline-flex rounded bg-[#10b981]/25 px-1.5 py-0.5 text-[8.5px] font-black uppercase text-[#4ade80] border border-[#10b981]/40">
-                Safe Route
-              </span>
-            </div>
-            <p className="truncate text-[10px] text-[#94a3b8] max-w-[220px]">
-              {route.originLabel ?? "Red Zone"} ➔ {route.destinationLabel ?? "Green Zone"}
-            </p>
-          </div>
-          <Button
-            onClick={fitNavigationRoute}
-            size="sm"
-            variant="ghost"
-            className="h-7 rounded-xl px-2 text-[10px] font-bold text-[#38bdf8] hover:bg-[#0369a1]/40 hover:text-white border border-[#38bdf8]/30"
-          >
-            <Compass className="mr-1 h-3 w-3" /> Fit
-          </Button>
-        </div>
-      )}
-
-      {/* ── GOOGLE MAPS STYLE NAVIGATION HUD OVERLAY ───────────────────────── */}
-      {route && route.coordinates.length > 0 && (
-        <div data-testid="evacuation-route-badge" className="absolute bottom-14 left-4 z-20 w-[326px] max-w-[calc(100vw-32px)] overflow-hidden rounded-2xl border border-[#38bdf8]/40 bg-[#081726]/96 text-[#e2e8f0] shadow-[0_20px_60px_rgba(0,0,0,0.65)] backdrop-blur-xl transition-all">
+      {/* ── GOOGLE MAPS STYLE NAVIGATION DROPDOWN (APPEARS WHEN RED/ORANGE ZONE IS CLICKED) ─── */}
+      {activeNavigation && (
+        <div
+          data-testid="evacuation-route-badge"
+          className="absolute top-3 left-3 right-3 sm:left-4 sm:right-auto sm:w-[410px] z-30 overflow-hidden rounded-2xl border border-[#38bdf8]/50 bg-[#071826]/96 text-[#e2e8f0] shadow-[0_24px_64px_rgba(0,0,0,0.75)] backdrop-blur-xl transition-all duration-300 animate-in slide-in-from-top-4"
+        >
           {/* Top navigation header bar — Google Maps navigation blue gradient */}
-          <div className="flex items-center justify-between border-b border-[#1e3a5f] bg-gradient-to-r from-[#0369a1] via-[#0284c7] to-[#0ea5e9] px-3.5 py-2.5 text-white shadow-sm">
-            <div className="flex items-center gap-2">
-              <Navigation className="h-4 w-4 animate-pulse text-white" />
-              <span className="text-[11px] font-extrabold tracking-wider uppercase">Google Maps Navigation</span>
+          <div className="flex items-center justify-between border-b border-[#1e3a5f] bg-gradient-to-r from-[#0369a1] via-[#0284c7] to-[#0ea5e9] px-3.5 py-2.5 text-white shadow-md">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-white/20">
+                <Navigation className="h-3.5 w-3.5 text-white animate-pulse" />
+              </div>
+              <span className="text-[11px] font-black tracking-wider uppercase truncate">Google Maps Navigation</span>
+              <span className={cn(
+                "rounded px-1.5 py-0.5 text-[8.5px] font-black uppercase tracking-wider text-white shrink-0",
+                activeNavigation.classification === "RED" ? "bg-[#dc2626]" : "bg-[#ea580c]"
+              )}>
+                {activeNavigation.classification} ZONE
+              </span>
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="flex items-center gap-1 rounded bg-[#16a34a]/90 px-1.5 py-0.5 text-[8.5px] font-black uppercase tracking-wider text-white">
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span className="flex items-center gap-1 rounded bg-[#16a34a] px-1.5 py-0.5 text-[8.5px] font-black uppercase tracking-wider text-white">
                 <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
                 LIVE
               </span>
-              <span className="rounded bg-black/30 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#e0f2fe]">
-                {route.isRoadRoute ? "OSRM Road" : "Corridor"}
-              </span>
+              <button
+                onClick={() => setActiveNavigation(null)}
+                className="ml-1 rounded-lg p-1 text-white/80 hover:bg-white/20 hover:text-white transition-colors"
+                aria-label="Close navigation dropdown and hide route"
+                title="Hide route"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
           </div>
 
           <div className="p-3.5">
             {/* Primary navigation stat: Big Driving Time & Distance */}
-            <div className="flex items-baseline justify-between border-b border-[#1e293b] pb-3">
+            <div className="flex items-baseline justify-between border-b border-[#1e293b] pb-2.5">
               <div>
                 <span className="text-3xl font-black text-white tracking-tight">
-                  {route.travelTimeMinutes ? `~${route.travelTimeMinutes} min` : "Driving"}
+                  ~{activeNavigation.travelTimeMinutes} min
                 </span>
                 <span className="ml-2 text-sm font-extrabold text-[#38bdf8]">
-                  ({route.distanceKm != null ? `${route.distanceKm} km` : "— km"})
+                  ({activeNavigation.distanceKm} km)
                 </span>
               </div>
               <span className="rounded-full bg-[#10b981]/20 px-2.5 py-1 text-[10px] font-bold text-[#34d399] border border-[#10b981]/40">
-                Fastest Route
+                Fastest Road Route
               </span>
             </div>
 
             {/* Origin & Destination visual flow */}
             <div className="mt-3 space-y-2 text-xs">
               <div className="flex items-center gap-2.5">
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#dc2626] text-[10px] font-black text-white shadow-md">
+                <span className={cn(
+                  "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-black text-white shadow-md",
+                  activeNavigation.classification === "RED" ? "bg-[#dc2626]" : "bg-[#ea580c]"
+                )}>
                   📍
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-white truncate">{route.originLabel ?? "Red Zone Origin"}</p>
-                  <p className="text-[9.5px] font-bold text-[#f87171] leading-tight">RED ZONE (ORIGIN)</p>
+                  <p className="font-semibold text-white truncate">{activeNavigation.originLabel}</p>
+                  <p className="text-[9.5px] font-bold text-[#f87171] uppercase leading-tight">
+                    {activeNavigation.classification} ZONE ORIGIN · EVACUATION POINT
+                  </p>
                 </div>
               </div>
 
               <div className="ml-2.5 flex items-center gap-1.5 border-l-2 border-dashed border-[#38bdf8]/55 pl-3.5 py-0.5">
                 <ArrowRight className="h-3 w-3 shrink-0 text-[#38bdf8]" />
                 <span className="text-[10px] font-medium text-[#7dd3fc]">
-                  {route.distanceKm != null ? `${route.distanceKm} km` : "Road connection"} · {route.travelTimeMinutes ? `~${route.travelTimeMinutes} min driving` : "Direct route"}
+                  {activeNavigation.distanceKm} km via road · ~{activeNavigation.travelTimeMinutes} min driving
                 </span>
               </div>
 
@@ -943,8 +1013,10 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
                   🏁
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-white truncate">{route.destinationLabel}</p>
-                  <p className="text-[9.5px] font-bold text-[#4ade80] leading-tight">GREEN ZONE (SAFE HAVEN)</p>
+                  <p className="font-semibold text-white truncate">{activeNavigation.destinationLabel}</p>
+                  <p className="text-[9.5px] font-bold text-[#4ade80] uppercase leading-tight">
+                    GREEN ZONE SAFE HAVEN · {activeNavigation.safeRole ?? "Safe Relocation Center"}
+                  </p>
                 </div>
               </div>
             </div>
@@ -954,7 +1026,7 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
               <div className="mt-2.5 flex items-center gap-2 rounded-lg bg-[#0c2a38] px-2.5 py-1.5 border border-[#164e63]">
                 <span className="h-2 w-2 rounded-full bg-[#38bdf8] animate-ping" />
                 <span className="text-[10px] font-semibold text-[#7dd3fc]">
-                  Evacuation flow: {Math.round(((simIndex + 1) / Math.max(route.coordinates.length, 1)) * 100)}% complete
+                  Evacuation flow: {Math.round(((simIndex + 1) / Math.max(activeNavigation.coordinates.length, 1)) * 100)}% complete
                 </span>
               </div>
             )}
@@ -989,6 +1061,14 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
               >
                 {isSimulating ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
                 {isSimulating ? "Stop" : "Simulate"}
+              </Button>
+              <Button
+                onClick={() => setActiveNavigation(null)}
+                variant="ghost"
+                size="sm"
+                className="h-8 rounded-xl text-[11px] font-semibold text-[#94a3b8] hover:bg-[#1e293b] hover:text-white"
+              >
+                Hide Route
               </Button>
             </div>
           </div>
