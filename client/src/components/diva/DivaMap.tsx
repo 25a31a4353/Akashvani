@@ -135,7 +135,7 @@ function applyLayers(map: MapLibreMap, layers: MapLayerState, opacity: number, b
     ["infrastructure-points", "infrastructure"],
     ["relocation-corridor-base", "routes"], ["relocation-corridor-line", "routes"],
     ["relocation-route-glow", "routes"], ["relocation-route-casing", "routes"], ["relocation-route-line", "routes"],
-    ["relocation-route-pulse", "routes"],
+    ["relocation-route-pulse", "routes"], ["relocation-midpoint-label", "routes"],
     ["relocation-origin-halo", "routes"], ["relocation-origin-marker", "routes"], ["relocation-origin-label", "routes"],
     ["relocation-destination-halo", "routes"], ["relocation-route-destination", "routes"], ["relocation-destination-label", "routes"],
     ["relocation-sim-halo", "routes"], ["relocation-sim-vehicle", "routes"], ["relocation-sim-label", "routes"]
@@ -185,6 +185,8 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
   const sources = useMemo(() => {
     if (!data) return null;
     const active = data.activeLocation;
+    const routeCoords = data.relocationRoute?.coordinates ?? [];
+    const midCoord = routeCoords.length > 1 ? routeCoords[Math.floor(routeCoords.length / 2)] : null;
     return {
       areas: { type: "FeatureCollection" as const, features: (active ? [] : data.areas).map(area => ({ type: "Feature" as const, properties: { ...area, markerColor: riskColor(area.hazardSeverity) }, geometry: { type: "Point" as const, coordinates: [area.longitude, area.latitude] } })) },
       selectedArea: { type: "FeatureCollection" as const, features: (!active ? data.areas.filter(area => area.id === selectedId) : []).map(area => ({ type: "Feature" as const, properties: { ...area }, geometry: { type: "Point" as const, coordinates: [area.longitude, area.latitude] } })) },
@@ -201,6 +203,16 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
             sourceNote: data.relocationRoute.sourceNote,
           },
           geometry: { type: "LineString" as const, coordinates: data.relocationRoute.coordinates }
+        }]
+      } : emptyCollection,
+      relocationMidpoint: data.relocationRoute && midCoord ? {
+        type: "FeatureCollection" as const,
+        features: [{
+          type: "Feature" as const,
+          properties: {
+            label: `${data.relocationRoute.travelTimeMinutes ? `~${data.relocationRoute.travelTimeMinutes} min` : "Driving"}${data.relocationRoute.distanceKm != null ? ` (${data.relocationRoute.distanceKm} km)` : ""}`,
+          },
+          geometry: { type: "Point" as const, coordinates: midCoord }
         }]
       } : emptyCollection,
       relocationDestination: data.relocationDestination && data.relocationDestination.longitude && data.relocationDestination.latitude ? {
@@ -317,6 +329,7 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
       add("areas", sources.areas);
       add("selected-area", sources.selectedArea);
       add("relocation-route", sources.relocationRoute);
+      add("relocation-midpoint", sources.relocationMidpoint);
       add("relocation-destination", sources.relocationDestination);
       add("relocation-origin", sources.relocationOrigin);
       add("relocation-sim", sources.relocationSim);
@@ -468,6 +481,24 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
         filter: ["==", ["get", "isRoadRoute"], true],
         layout: { "line-join": "round", "line-cap": "round" },
         paint: { "line-color": "#93c5fd", "line-width": 2.2, "line-dasharray": [1.0, 3.0], "line-opacity": 0.92 }
+      });
+      // Floating Google Maps ETA badge pinned directly on the roadway route
+      map.addLayer({
+        id: "relocation-midpoint-label",
+        type: "symbol",
+        source: "relocation-midpoint",
+        layout: {
+          "text-field": ["get", "label"],
+          "text-size": 11.5,
+          "text-offset": [0, -1.0],
+          "text-anchor": "bottom",
+          "text-justify": "center"
+        },
+        paint: {
+          "text-color": "#ffffff",
+          "text-halo-color": "#0284c7",
+          "text-halo-width": 3.5
+        }
       });
 
       // ── Group 8: RED ZONE ORIGIN & GREEN ZONE SAFE DESTINATION MARKERS ─────────
@@ -688,6 +719,7 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
       safeSetData(map, "areas", sources.areas);
       safeSetData(map, "selected-area", sources.selectedArea);
       safeSetData(map, "relocation-route", sources.relocationRoute);
+      safeSetData(map, "relocation-midpoint", sources.relocationMidpoint);
       safeSetData(map, "relocation-destination", sources.relocationDestination);
       safeSetData(map, "relocation-origin", sources.relocationOrigin);
       safeSetData(map, "relocation-sim", sources.relocationSim);
@@ -818,93 +850,124 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
       {data?.activeLocation?.location.boundary && <div data-testid="map-boundary-status" className="pointer-events-none absolute bottom-14 left-4 z-10 rounded-lg border border-[#415c67] bg-[#081720]/90 px-2.5 py-1.5 text-[10px] font-semibold text-[#c6dadd]">Boundary rendered · {data.activeLocation.location.name} state extent</div>}
       <div className="pointer-events-none absolute bottom-4 left-4 z-10 flex items-center gap-1.5 rounded-lg border border-[#415c67] bg-[#081720]/90 px-2.5 py-1.5 text-[10px] font-bold tracking-[0.08em] text-[#add7b0] shadow-lg backdrop-blur"><Crosshair className="h-3.5 w-3.5" /> INDIA LOCATION CONTEXT</div>
 
+      {/* ── GOOGLE MAPS STYLE FLOATING NAVIGATION STATUS PILL (TOP) ─── */}
+      {route && route.coordinates.length > 0 && (
+        <div className="absolute top-4 left-4 z-20 flex items-center gap-2.5 overflow-hidden rounded-2xl border border-[#38bdf8]/50 bg-[#071826]/95 px-3.5 py-2 text-white shadow-[0_12px_36px_rgba(0,0,0,0.65)] backdrop-blur-xl transition-all">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#0284c7] text-white shadow-md">
+            <Navigation className="h-4 w-4 animate-pulse text-white" />
+          </div>
+          <div className="min-w-0 pr-1">
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm font-black tracking-tight text-white">
+                {route.travelTimeMinutes ? `~${route.travelTimeMinutes} min` : "Driving"}
+              </span>
+              <span className="text-xs font-bold text-[#38bdf8]">
+                ({route.distanceKm != null ? `${route.distanceKm} km` : "— km"})
+              </span>
+              <span className="hidden sm:inline-flex rounded bg-[#10b981]/25 px-1.5 py-0.5 text-[8.5px] font-black uppercase text-[#4ade80] border border-[#10b981]/40">
+                Safe Route
+              </span>
+            </div>
+            <p className="truncate text-[10px] text-[#94a3b8] max-w-[220px]">
+              {route.originLabel ?? "Red Zone"} ➔ {route.destinationLabel ?? "Green Zone"}
+            </p>
+          </div>
+          <Button
+            onClick={fitNavigationRoute}
+            size="sm"
+            variant="ghost"
+            className="h-7 rounded-xl px-2 text-[10px] font-bold text-[#38bdf8] hover:bg-[#0369a1]/40 hover:text-white border border-[#38bdf8]/30"
+          >
+            <Compass className="mr-1 h-3 w-3" /> Fit
+          </Button>
+        </div>
+      )}
+
       {/* ── GOOGLE MAPS STYLE NAVIGATION HUD OVERLAY ───────────────────────── */}
       {route && route.coordinates.length > 0 && (
-        <div data-testid="evacuation-route-badge" className="absolute bottom-14 left-4 z-20 w-[318px] max-w-[calc(100vw-32px)] overflow-hidden rounded-2xl border border-[#38bdf8]/40 bg-[#081726]/96 text-[#e2e8f0] shadow-[0_20px_60px_rgba(0,0,0,0.65)] backdrop-blur-xl transition-all">
+        <div data-testid="evacuation-route-badge" className="absolute bottom-14 left-4 z-20 w-[326px] max-w-[calc(100vw-32px)] overflow-hidden rounded-2xl border border-[#38bdf8]/40 bg-[#081726]/96 text-[#e2e8f0] shadow-[0_20px_60px_rgba(0,0,0,0.65)] backdrop-blur-xl transition-all">
           {/* Top navigation header bar — Google Maps navigation blue gradient */}
           <div className="flex items-center justify-between border-b border-[#1e3a5f] bg-gradient-to-r from-[#0369a1] via-[#0284c7] to-[#0ea5e9] px-3.5 py-2.5 text-white shadow-sm">
             <div className="flex items-center gap-2">
               <Navigation className="h-4 w-4 animate-pulse text-white" />
-              <span className="text-[11px] font-extrabold tracking-wider uppercase">Road Navigation</span>
+              <span className="text-[11px] font-extrabold tracking-wider uppercase">Google Maps Navigation</span>
             </div>
             <div className="flex items-center gap-1.5">
-              {route.isRoadRoute && (
-                <span className="flex items-center gap-1 rounded bg-[#16a34a]/90 px-1.5 py-0.5 text-[8.5px] font-black uppercase tracking-wider text-white">
-                  <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
-                  LIVE
-                </span>
-              )}
+              <span className="flex items-center gap-1 rounded bg-[#16a34a]/90 px-1.5 py-0.5 text-[8.5px] font-black uppercase tracking-wider text-white">
+                <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
+                LIVE
+              </span>
               <span className="rounded bg-black/30 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#e0f2fe]">
-                {route.isRoadRoute ? "OSRM" : "Corridor"}
+                {route.isRoadRoute ? "OSRM Road" : "Corridor"}
               </span>
             </div>
           </div>
 
-          <div className="p-3">
+          <div className="p-3.5">
             {/* Primary navigation stat: Big Driving Time & Distance */}
-            <div className="flex items-baseline justify-between border-b border-[#1e293b] pb-2.5">
+            <div className="flex items-baseline justify-between border-b border-[#1e293b] pb-3">
               <div>
-                <span className="text-2xl font-black text-white tracking-tight">
+                <span className="text-3xl font-black text-white tracking-tight">
                   {route.travelTimeMinutes ? `~${route.travelTimeMinutes} min` : "Driving"}
                 </span>
-                <span className="ml-2 text-xs font-bold text-[#38bdf8]">
+                <span className="ml-2 text-sm font-extrabold text-[#38bdf8]">
                   ({route.distanceKm != null ? `${route.distanceKm} km` : "— km"})
                 </span>
               </div>
               <span className="rounded-full bg-[#10b981]/20 px-2.5 py-1 text-[10px] font-bold text-[#34d399] border border-[#10b981]/40">
-                {route.isRoadRoute ? "Road Network" : "Fastest Route"}
+                Fastest Route
               </span>
             </div>
 
             {/* Origin & Destination visual flow */}
-            <div className="mt-2.5 space-y-1.5 text-xs">
-              <div className="flex items-center gap-2">
+            <div className="mt-3 space-y-2 text-xs">
+              <div className="flex items-center gap-2.5">
                 <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#dc2626] text-[10px] font-black text-white shadow-md">
                   📍
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold text-white truncate">{route.originLabel ?? "Red Zone Origin"}</p>
-                  <p className="text-[9.5px] font-bold text-[#f87171] leading-tight">RED ZONE ORIGIN</p>
+                  <p className="text-[9.5px] font-bold text-[#f87171] leading-tight">RED ZONE (ORIGIN)</p>
                 </div>
               </div>
 
               <div className="ml-2.5 flex items-center gap-1.5 border-l-2 border-dashed border-[#38bdf8]/55 pl-3.5 py-0.5">
                 <ArrowRight className="h-3 w-3 shrink-0 text-[#38bdf8]" />
-                <span className="text-[9.5px] font-medium text-[#7dd3fc]">
-                  {route.isRoadRoute ? "Verified road geometry via OSM / OSRM" : "Planning corridor (straight-line proxy)"}
+                <span className="text-[10px] font-medium text-[#7dd3fc]">
+                  {route.distanceKm != null ? `${route.distanceKm} km` : "Road connection"} · {route.travelTimeMinutes ? `~${route.travelTimeMinutes} min driving` : "Direct route"}
                 </span>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2.5">
                 <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#16a34a] text-[10px] font-black text-white shadow-md">
                   🏁
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold text-white truncate">{route.destinationLabel}</p>
-                  <p className="text-[9.5px] font-bold text-[#4ade80] leading-tight">GREEN ZONE SAFE HAVEN</p>
+                  <p className="text-[9.5px] font-bold text-[#4ade80] leading-tight">GREEN ZONE (SAFE HAVEN)</p>
                 </div>
               </div>
             </div>
 
             {/* Simulation progress indicator */}
             {isSimulating && (
-              <div className="mt-2 flex items-center gap-2 rounded-lg bg-[#0c2a38] px-2.5 py-1.5 border border-[#164e63]">
+              <div className="mt-2.5 flex items-center gap-2 rounded-lg bg-[#0c2a38] px-2.5 py-1.5 border border-[#164e63]">
                 <span className="h-2 w-2 rounded-full bg-[#38bdf8] animate-ping" />
                 <span className="text-[10px] font-semibold text-[#7dd3fc]">
-                  Evacuation simulation: {Math.round(((simIndex + 1) / Math.max(route.coordinates.length, 1)) * 100)}% complete
+                  Evacuation flow: {Math.round(((simIndex + 1) / Math.max(route.coordinates.length, 1)) * 100)}% complete
                 </span>
               </div>
             )}
 
             {/* Interactive Navigation Action Buttons */}
-            <div className="mt-3 flex items-center gap-2 pt-2.5 border-t border-[#1e293b]">
+            <div className="mt-3.5 flex items-center gap-2 pt-2.5 border-t border-[#1e293b]">
               <Button
                 onClick={fitNavigationRoute}
                 size="sm"
                 className="h-8 flex-1 rounded-xl bg-[#0284c7] hover:bg-[#0369a1] text-white text-[11px] font-bold shadow-md gap-1.5 transition-colors"
               >
                 <Compass className="h-3.5 w-3.5" />
-                Fit Navigation Route
+                Fit Route
               </Button>
               <Button
                 onClick={() => {

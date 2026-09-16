@@ -54,6 +54,21 @@ const REAL_DISTRICT_MAP: Record<string, { id: string; name: string; stateCode: s
   "uttarkashi": { id: "DIST-UK-UTK", name: "Uttarkashi", stateCode: "UK" },
   "rudraprayag": { id: "DIST-UK-RDP", name: "Rudraprayag", stateCode: "UK" },
   "pithoragarh": { id: "DIST-UK-PTH", name: "Pithoragarh", stateCode: "UK" },
+  // State-level fallbacks — defaults to representative district for the state
+  "assam": { id: "DIST-AS-DIB", name: "Dibrugarh", stateCode: "AS" },
+  "kerala": { id: "DIST-KL-WAY", name: "Wayanad", stateCode: "KL" },
+  "uttarakhand": { id: "DIST-UK-CHA", name: "Chamoli", stateCode: "UK" },
+  "odisha": { id: "DIST-OD-PUR", name: "Puri", stateCode: "OD" },
+  "andhra pradesh": { id: "DIST-AP-EGD", name: "East Godavari", stateCode: "AP" },
+  "maharashtra": { id: "DIST-MH-SAN", name: "Sangli", stateCode: "MH" },
+  "rajasthan": { id: "DIST-RJ-JOD", name: "Jodhpur", stateCode: "RJ" },
+  "bihar": { id: "DIST-BR-KHA", name: "Khagaria", stateCode: "BR" },
+  "karnataka": { id: "DIST-KA-KOD", name: "Kodagu", stateCode: "KA" },
+  "tamil nadu": { id: "DIST-TN-NIL", name: "Nilgiris", stateCode: "TN" },
+  "chhattisgarh": { id: "DIST-CT-RAI", name: "Raipur", stateCode: "CT" },
+  "mizoram": { id: "DIST-MZ-AIZ", name: "Aizawl", stateCode: "MZ" },
+  "jharkhand": { id: "DIST-JH-RAN", name: "Ranchi", stateCode: "JH" },
+  "uttar pradesh": { id: "DIST-UP-GOR", name: "Gorakhpur", stateCode: "UP" },
 };
 
 export function lookupRealDistrict(name?: string | null, district?: string | null) {
