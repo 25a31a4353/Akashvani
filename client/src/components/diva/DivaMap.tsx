@@ -133,6 +133,7 @@ function applyLayers(map: MapLibreMap, layers: MapLayerState, opacity: number, b
     ["national-sensitivity-landslide-fill", "landslideSensitivity"], ["national-sensitivity-landslide-line", "landslideSensitivity"],
     ["national-sensitivity-flood-fill", "floodSensitivity"], ["national-sensitivity-flood-line", "floodSensitivity"],
     ["infrastructure-points", "infrastructure"],
+    ["relocation-corridor-base", "routes"], ["relocation-corridor-line", "routes"],
     ["relocation-route-glow", "routes"], ["relocation-route-casing", "routes"], ["relocation-route-line", "routes"],
     ["relocation-route-pulse", "routes"],
     ["relocation-origin-halo", "routes"], ["relocation-origin-marker", "routes"], ["relocation-origin-label", "routes"],
@@ -418,7 +419,25 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
       map.addLayer({ id: "active-marker", type: "circle", source: "active-marker", paint: { "circle-radius": 9, "circle-color": "#1d788d", "circle-stroke-color": "#ffffff", "circle-stroke-width": 2.3 } });
 
       // ── Group 7: GOOGLE MAPS NAVIGATION ROAD LINE (RED ZONE ➔ GREEN ZONE) ───────
-      // Multi-layer high-fidelity road rendering: ambient glow + deep casing + vibrant navigation blue core + animated dashes
+      // Layer A: Universal corridor baseline — renders ALL route types (road + planning corridor)
+      // Visible immediately even before OSRM responds; replaced visually by road layers when available.
+      map.addLayer({
+        id: "relocation-corridor-base",
+        type: "line",
+        source: "relocation-route",
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": "#0c4a6e", "line-width": 6.5, "line-opacity": 0.82, "line-dasharray": [4, 3] }
+      });
+      map.addLayer({
+        id: "relocation-corridor-line",
+        type: "line",
+        source: "relocation-route",
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": "#38bdf8", "line-width": 3.5, "line-opacity": 0.88, "line-dasharray": [4, 3] }
+      });
+
+      // Layer B: High-fidelity road rendering only when isRoadRoute=true
+      // Multi-layer: ambient glow + deep casing + vibrant navigation blue core + animated pulse
       map.addLayer({
         id: "relocation-route-glow",
         type: "line",

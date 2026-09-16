@@ -136,6 +136,28 @@ export function MapCommandWorkspace({ data, selectedId, area, analysis, indiaLoc
   } : undefined;
 
   const commandLayers: Record<string, boolean> = { ...layers, routes: true, redZones: true };
+
+  // Build a planning corridor fallback when OSRM route is unavailable but origin + destination exist.
+  // This ensures the navigation line is ALWAYS rendered on the map even when OSRM times out.
+  const planningCorridorFallback = !verifiedRoadRoute && selectedVulnerableHabitation && destinationCandidate &&
+    selectedVulnerableHabitation.latitude != null && destinationCandidate.latitude != null ? {
+      coordinates: [
+        [selectedVulnerableHabitation.longitude, selectedVulnerableHabitation.latitude],
+        [
+          (selectedVulnerableHabitation.longitude + destinationCandidate.longitude) / 2,
+          (selectedVulnerableHabitation.latitude + destinationCandidate.latitude) / 2 + 0.008,
+        ],
+        [destinationCandidate.longitude, destinationCandidate.latitude],
+      ],
+      destinationLabel: destinationCandidate.name,
+      originLabel: selectedVulnerableHabitation.name,
+      distanceKm: null as number | null,
+      travelTimeMinutes: null as number | null,
+      isRoadRoute: false,
+      isPlanningCorridor: true as const,
+      sourceNote: "Planning corridor (straight-line proxy). OSRM road routing unavailable — exact road geometry shown when service recovers.",
+    } : undefined;
+
   const commandData: MapData = {
     ...data,
     center: [selectedLocation.longitude, selectedLocation.latitude],
@@ -143,7 +165,7 @@ export function MapCommandWorkspace({ data, selectedId, area, analysis, indiaLoc
     nationwide: data.nationwide, // Preserve nationwide classification polygons
     relocationOrigin,
     relocationDestination,
-    relocationRoute: verifiedRoadRoute ?? (selectedContext
+    relocationRoute: verifiedRoadRoute ?? planningCorridorFallback ?? (selectedContext
       ? undefined
       : buildRelocationRoute(area, data, recommendedSite?.name)),
   };

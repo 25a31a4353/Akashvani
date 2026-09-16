@@ -36,6 +36,7 @@ const REAL_DISTRICT_MAP: Record<string, { id: string; name: string; stateCode: s
   "alappuzha": { id: "DIST-KL-ALP", name: "Alappuzha", stateCode: "KL" },
   "ernakulam": { id: "DIST-KL-ERN", name: "Ernakulam", stateCode: "KL" },
   "idukki": { id: "DIST-KL-IDK", name: "Idukki", stateCode: "KL" },
+  "munnar": { id: "DIST-KL-IDK", name: "Idukki", stateCode: "KL" },
   "kannur": { id: "DIST-KL-KNR", name: "Kannur", stateCode: "KL" },
   "kasaragod": { id: "DIST-KL-KAS", name: "Kasaragod", stateCode: "KL" },
   "kollam": { id: "DIST-KL-KOL", name: "Kollam", stateCode: "KL" },
@@ -46,6 +47,13 @@ const REAL_DISTRICT_MAP: Record<string, { id: string; name: string; stateCode: s
   "pathanamthitta": { id: "DIST-KL-PTA", name: "Pathanamthitta", stateCode: "KL" },
   "thiruvananthapuram": { id: "DIST-KL-TVM", name: "Thiruvananthapuram", stateCode: "KL" },
   "thrissur": { id: "DIST-KL-TSR", name: "Thrissur", stateCode: "KL" },
+  // Uttarakhand — Joshimath / Chamoli subsidence (SIH key demo)
+  "chamoli": { id: "DIST-UK-CHA", name: "Chamoli", stateCode: "UK" },
+  "joshimath": { id: "DIST-UK-CHA", name: "Chamoli", stateCode: "UK" },
+  "gopeshwar": { id: "DIST-UK-CHA", name: "Chamoli", stateCode: "UK" },
+  "uttarkashi": { id: "DIST-UK-UTK", name: "Uttarkashi", stateCode: "UK" },
+  "rudraprayag": { id: "DIST-UK-RDP", name: "Rudraprayag", stateCode: "UK" },
+  "pithoragarh": { id: "DIST-UK-PTH", name: "Pithoragarh", stateCode: "UK" },
 };
 
 export function lookupRealDistrict(name?: string | null, district?: string | null) {
