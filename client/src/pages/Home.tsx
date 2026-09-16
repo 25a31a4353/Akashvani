@@ -88,6 +88,7 @@ export default function Home() {
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [isWorkspaceMenuOpen, setIsWorkspaceMenuOpen] = useState(() => secondaryNavigation.some(item => item.id === new URLSearchParams(window.location.search).get("workspace")));
   const [isLocationDetailsOpen, setIsLocationDetailsOpen] = useState(false);
+  const [isContextOpen, setIsContextOpen] = useState(false);
   const [isInsightsOpen, setIsInsightsOpen] = useState(false);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [showScenarioPanel, setShowScenarioPanel] = useState(true);
@@ -163,8 +164,8 @@ export default function Home() {
   const selectedVulnerableHabitation = isRelocationRequired
     ? (districtExposed[0] ?? districtHabitations[0] ?? (realDistrict ? {
         name: `${realDistrict.name} (Red Zone Origin)`,
-        latitude: realDistrict.latitude,
-        longitude: realDistrict.longitude,
+        latitude: indiaLocation.latitude,
+        longitude: indiaLocation.longitude,
         exposureLevel: "CRITICAL",
         population: null,
         hazardType: "Red Zone Hazard Screening",
@@ -464,7 +465,49 @@ export default function Home() {
             </div>
               {indiaLocation.id !== "india-assam" && <aside className="rounded-2xl border border-[#dbe6e9] bg-white shadow-[0_12px_30px_rgba(28,55,70,0.05)]"><div className="flex items-start justify-between border-b border-[#e7edef] p-4"><div><p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#1e7890]">Selected assessment area</p><h2 className="mt-1 text-lg font-bold tracking-tight text-[#193d53]">{area.name}</h2><p className="mt-0.5 text-xs text-[#71828c]">{area.district} · {area.state}</p></div><Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-[#71828c]" aria-label="Close assessment panel"><X className="h-4 w-4" /></Button></div><div className="grid grid-cols-3 gap-px border-b border-[#e7edef] bg-[#e7edef]"><div className="bg-white px-3 py-3"><p className="text-[9px] font-bold uppercase text-[#819099]">Population</p><p className="mt-1 text-sm font-bold text-[#274b60]">{area.population.toLocaleString()}</p></div><div className="bg-white px-3 py-3"><p className="text-[9px] font-bold uppercase text-[#819099]">Risk</p><div className="mt-1"><RiskBadge level={analysis.riskLevel} className="px-1.5 py-0.5 text-[8px]" /></div></div><div className="bg-white px-3 py-3"><p className="text-[9px] font-bold uppercase text-[#819099]">Priority</p><div className="mt-1"><RiskBadge level={analysis.relocationPriority} className="px-1.5 py-0.5 text-[8px]" /></div></div></div><div className="p-4"><div className="mb-3 flex items-center justify-between"><p className="text-xs font-bold text-[#2a4c61]">Assessment snapshot</p><span className="rounded-md bg-[#eaf5f7] px-1.5 py-0.5 text-[9px] font-bold text-[#1c7084]">KERALA CONTEXT</span></div>{environmentQuery.data && <div className="mb-3 rounded-xl border border-[#d9e8ea] bg-[#f4faf9] p-2.5"><p className="text-[9px] font-bold uppercase tracking-[.1em] text-[#2b7585]">{environmentQuery.data.status}</p><p className="mt-1 text-[11px] font-semibold text-[#385a67]">{environmentQuery.data.temperatureC ?? "—"}°C · {environmentQuery.data.precipitationMm ?? "—"} mm current precipitation · US AQI {environmentQuery.data.usAqi ?? "—"}</p><p className="mt-1 text-[9px] leading-relaxed text-[#758b94]">{environmentQuery.data.source}</p></div>}<div className="space-y-1"><FactorBar label="Overall risk" score={analysis.overallRisk} description={`${area.primaryHazard} · analytical model`} /><FactorBar label="Hazard exposure" score={analysis.hazardExposure} description={environmentQuery.data?.status === "LIVE MODELLED ENVIRONMENTAL CONTEXT" ? `Live environmental context available · not a hazard forecast` : `Environmental context unavailable; analytical hazard review only`} /><FactorBar label="Carrying capacity" score={analysis.carryingCapacityScore} description={`${analysis.capacityStatus} service readiness`} /></div><Button disabled={rerunAnalysis.isPending} onClick={() => rerunAnalysis.mutate({ id: area.id })} variant="outline" className="mt-3 h-8 w-full rounded-lg border-[#d5e6e8] bg-[#f9fcfc] text-[11px] font-semibold text-[#416979]">{rerunAnalysis.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" />} Re-run deterministic analysis</Button><div className="mt-3 rounded-xl border border-[#dce8eb] bg-[#f4f9fa] p-3"><div className="flex items-start gap-2"><Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-[#1d7a8e]" /><div><p className="text-[11px] font-bold text-[#2b5062]">AI/ML decision-support narrative</p><p className="mt-1 text-[10px] leading-relaxed text-[#71848e]">Grounded only in the supplied analysis results. Every output remains pending analyst review.</p></div></div>{narrative && <div className="mt-2.5 border-t border-[#d9e7e9] pt-2.5"><p className="text-[11px] font-bold text-[#315263]">{narrative.headline}</p><p className="mt-1 text-[10px] leading-relaxed text-[#667b86]">{narrative.summary}</p><p className="mt-2 text-[9px] font-bold uppercase tracking-[0.1em] text-[#17718a]">Pending analyst review</p></div>}<Button disabled={generateNarrative.isPending} onClick={() => generateNarrative.mutate({ id: area.id })} variant="outline" className="mt-3 h-8 w-full rounded-lg border-[#bcd8dc] bg-white text-[11px] font-semibold text-[#1d7187]">{generateNarrative.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Bot className="mr-1.5 h-3.5 w-3.5" />}{narrative ? "Refresh narrative" : "Generate reviewed narrative"}</Button>{generateNarrative.error && <p className="mt-2 text-[10px] text-[#b03538]">Narrative generation is temporarily unavailable. The deterministic assessment remains available.</p>}</div><div className="mt-3 flex gap-2"><Button onClick={() => generateReport.mutate({ id: area.id, narrative })} disabled={generateReport.isPending} className="h-9 flex-1 rounded-xl bg-[#173d59] text-xs font-semibold text-white hover:bg-[#0d304a]">{generateReport.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1.5 h-3.5 w-3.5" />} Generate report</Button><Button onClick={() => setWorkspace("risk")} variant="outline" size="icon" className="h-9 w-9 rounded-xl border-[#d6e3e6]" aria-label="Open full assessment"><PanelRightOpen className="h-4 w-4" /></Button></div></div></aside>}
 		          {indiaContextQuery.data && <IndiaContextSidebar context={indiaContextQuery.data} onOpenKeralaAssessment={() => setWorkspace("risk")} />}
-	          </section>          {indiaContextQuery.data && <IndiaLocationSummaryStrip context={indiaContextQuery.data} />}
+	          </section>
+          {indiaContextQuery.data && (
+            <div className="mt-3">
+              <button
+                type="button"
+                id="location-context-toggle"
+                aria-expanded={isContextOpen}
+                aria-controls="location-context-panel"
+                onClick={() => setIsContextOpen(prev => !prev)}
+                className="flex w-full items-center justify-between rounded-xl border border-[#c9dfe5] bg-white px-4 py-3 text-left shadow-sm transition hover:bg-[#f4fafb]"
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-[#e4f3f6] text-[#1d7a8e]">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-[#1d4f63]">
+                      Location Decision Context
+                      {indiaContextQuery.data.redZone && (
+                        <span className={`ml-2 rounded-full px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wide ${
+                          indiaContextQuery.data.redZone.status === "RED" ? "bg-[#fee2e2] text-[#b91c1c]" :
+                          indiaContextQuery.data.redZone.status === "ORANGE" ? "bg-[#ffedd5] text-[#c2410c]" :
+                          indiaContextQuery.data.redZone.status === "YELLOW" ? "bg-[#fef9c3] text-[#a16207]" :
+                          "bg-[#dcfce7] text-[#15803d]"
+                        }`}>
+                          {indiaContextQuery.data.redZone.status} ZONE
+                        </span>
+                      )}
+                    </p>
+                    <p className="mt-0.5 truncate text-[10px] text-[#6e8b97]">
+                      {indiaContextQuery.data.location.name} · {indiaContextQuery.data.location.category} · Screening risk: {indiaContextQuery.data.screening.riskLevel}
+                    </p>
+                  </div>
+                </div>
+                <ChevronDown className={cn("ml-3 h-4 w-4 shrink-0 text-[#5a8496] transition-transform duration-200", isContextOpen && "rotate-180")} />
+              </button>
+              {isContextOpen && (
+                <div id="location-context-panel" className="mt-1 overflow-hidden rounded-xl border border-[#c9dfe5] shadow-sm">
+                  <IndiaLocationSummaryStrip context={indiaContextQuery.data} />
+                </div>
+              )}
+            </div>
+          )}
           {indiaLocation.id === "india-assam" && <><AssamStateProfile /><AssamDisasterHistory />{indiaContextQuery.data && <SelectedLocationForecastDetails context={indiaContextQuery.data} />}</>}
           <section className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4"><MetricCard label="Assessment areas" value={dashboardQuery.data.totals.habitations.toLocaleString()} detail="Within current demonstration extent" icon={MapPin} /><MetricCard label="Critical areas" value={dashboardQuery.data.totals.Critical.toLocaleString()} detail="Highest analytical risk class" icon={ShieldAlert} accent="red" /><MetricCard label="High-priority actions" value={dashboardQuery.data.totals.immediate.toLocaleString()} detail="Immediate relocation assessment" icon={CircleAlert} accent="orange" /><MetricCard label="Population exposed" value={`${Math.round(dashboardQuery.data.totals.population / 1000)}k`} detail="Scenario population across areas" icon={Users} accent="teal" /></section>
           {workspace === "dashboard" && isInsightsOpen && <section className="mt-4 grid gap-4 xl:grid-cols-[1.1fr_1fr_1fr]"><div className="rounded-2xl border border-[#dbe6e9] bg-white p-4 shadow-[0_12px_30px_rgba(28,55,70,0.04)]"><div className="flex items-start justify-between"><div><p className="text-xs font-bold text-[#284b60]">Risk distribution</p><p className="mt-1 text-[10px] text-[#7c8b93]">Scenario classification across assessment areas</p></div><SlidersHorizontal className="h-4 w-4 text-[#7c909a]" /></div><div className="mt-3 h-[174px]"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={riskDistribution} dataKey="value" nameKey="name" innerRadius={43} outerRadius={66} paddingAngle={3}>{riskDistribution.map(entry => <Cell key={entry.name} fill={entry.color} />)}</Pie><Tooltip formatter={(value: number) => [`${value} areas`, "Count"]} contentStyle={{ borderRadius: 10, border: "1px solid #e0e8eb", fontSize: 11 }} /></PieChart></ResponsiveContainer></div><div className="grid grid-cols-4 gap-1 text-center">{riskDistribution.map(item => <div key={item.name}><span className="mx-auto block h-1.5 w-1.5 rounded-full" style={{ background: item.color }} /><p className="mt-1 text-[10px] font-semibold text-[#536a77]">{item.value}</p><p className="text-[9px] text-[#89969d]">{item.name}</p></div>)}</div></div><div className="rounded-2xl border border-[#dbe6e9] bg-white p-4 shadow-[0_12px_30px_rgba(28,55,70,0.04)]"><div><p className="text-xs font-bold text-[#284b60]">Priority comparison</p><p className="mt-1 text-[10px] text-[#7c8b93]">Highest-ranked areas by relocation score</p></div><div className="mt-4 h-[205px]"><ResponsiveContainer width="100%" height="100%"><BarChart data={dashboardQuery.data.ranked.slice(0, 5).map(item => ({ name: item.area.name.split(" ")[0], score: item.analysis.relocationScore }))} layout="vertical" margin={{ left: 0, right: 8 }}><XAxis type="number" hide domain={[0, 100]} /><YAxis type="category" dataKey="name" width={78} tick={{ fontSize: 10, fill: "#6f818b" }} axisLine={false} tickLine={false} /><Tooltip cursor={{ fill: "#f2f7f8" }} contentStyle={{ borderRadius: 10, border: "1px solid #e0e8eb", fontSize: 11 }} /><Bar dataKey="score" radius={[0, 5, 5, 0]} fill="#1d788d" barSize={13} /></BarChart></ResponsiveContainer></div></div><div className="rounded-2xl border border-[#dbe6e9] bg-white p-4 shadow-[0_12px_30px_rgba(28,55,70,0.04)]"><div className="flex items-start justify-between"><div><p className="text-xs font-bold text-[#284b60]">Environmental context</p><p className="mt-1 text-[10px] text-[#7c8b93]">Risk trend across selected priority subset</p></div><CloudRain className="h-4 w-4 text-[#438ea0]" /></div><div className="mt-4 h-[181px]"><ResponsiveContainer width="100%" height="100%"><AreaChart data={trendData}><defs><linearGradient id="riskFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#6cb6c4" stopOpacity={0.44} /><stop offset="100%" stopColor="#6cb6c4" stopOpacity={0.03} /></linearGradient></defs><XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "#748791" }} /><YAxis hide domain={[0, 100]} /><Tooltip contentStyle={{ borderRadius: 10, border: "1px solid #e0e8eb", fontSize: 11 }} /><Area type="monotone" dataKey="risk" stroke="#267e93" strokeWidth={2} fill="url(#riskFill)" /></AreaChart></ResponsiveContainer></div></div></section>}
