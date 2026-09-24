@@ -5,9 +5,9 @@ import type { AssessmentArea } from "@shared/diva";
 import type { IndiaLocationContext } from "@shared/india";
 import * as maplibregl from "maplibre-gl";
 import type { Map as MapLibreMap } from "maplibre-gl";
-import { ArrowRight, CheckCircle2, ChevronRight, Compass, Crosshair, Expand, LocateFixed, Map as MapIcon, Minus, Navigation, Pause, Play, Plus, RotateCcw, ShieldCheck, Sparkles, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckCircle2, ChevronRight, Compass, Crosshair, Expand, Layers, LocateFixed, Map as MapIcon, Minus, Navigation, Pause, Play, Plus, Radio, RotateCcw, ShieldCheck, Sparkles, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { generateZoneNavigationRoute, type ZoneNavigationRoute } from "./zoneNavigationEngine";
+import { generateZoneNavigationRoute, fetchLiveOsrmRoadRoute, type ZoneNavigationRoute } from "./zoneNavigationEngine";
 
 type FeatureCollection = { type: "FeatureCollection"; features: ReadonlyArray<{ type: "Feature"; properties: Record<string, unknown>; geometry: { type: string; coordinates: unknown } }> };
 export type MapData = {
@@ -119,7 +119,7 @@ function applyLayers(map: MapLibreMap, layers: MapLayerState, opacity: number, b
     ["district-line", "boundaries"], ["selected-location-fill", "boundaries"], ["selected-location-line", "boundaries"],
     ["national-terrain", "terrain"], ["national-population", "population"], ["national-state-fill", "nationalStates"],
     ["national-state-line", "nationalStates"], ["national-state-label", "nationalStates"], ["national-weather-fill", "liveWeather"],
-    ["national-weather-line", "liveWeather"], ["national-wind-symbol", "wind"],
+    ["national-weather-line", "liveWeather"], ["national-wind-symbol", "wind"], ["live-radar", "liveRadar"],
     ["hazard-redzone-fill", "redZones"], ["hazard-redzone-line", "redZones"], ["hazard-redzone-label", "redZones"],
     ["hazard-seismic-fill", "seismicOfficial"], ["hazard-seismic-line", "seismicOfficial"],
     ["hazard-cwc-circle", "cwcGauges"], ["hazard-cwc-label", "cwcGauges"],
@@ -159,7 +159,29 @@ function applyLayers(map: MapLibreMap, layers: MapLayerState, opacity: number, b
   }
 }
 
-export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle, className, zoomOverride }: { data?: MapData; selectedId?: string; onSelect: (id: string) => void; layers: MapLayerState; opacity: number; baseStyle: "muted" | "terrain"; className?: string; zoomOverride?: number }) {
+export function DivaMap({
+  data,
+  selectedId,
+  onSelect,
+  layers,
+  opacity,
+  baseStyle,
+  className,
+  zoomOverride,
+  is3DMode,
+  onToggle3D,
+}: {
+  data?: MapData;
+  selectedId?: string;
+  onSelect: (id: string) => void;
+  layers: MapLayerState;
+  opacity: number;
+  baseStyle: "muted" | "terrain";
+  className?: string;
+  zoomOverride?: number;
+  is3DMode?: boolean;
+  onToggle3D?: () => void;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const mapReadyRef = useRef(false);
@@ -169,8 +191,82 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
   const [isSimulating, setIsSimulating] = useState(false);
   const [simIndex, setSimIndex] = useState(0);
   const [activeNavigation, setActiveNavigation] = useState<ZoneNavigationRoute | null>(null);
+  const [internal3D, setInternal3D] = useState(false);
+  const [terrain3dError, setTerrain3dError] = useState<string | null>(null);
+  const [isLegendOpen, setIsLegendOpen] = useState(true);
+
+  const is3D = is3DMode !== undefined ? is3DMode : internal3D;
 
   const zoom = zoomOverride ?? activeZoom(data?.activeLocation?.location);
+
+  const toggle3D = useCallback(() => {
+    if (onToggle3D) {
+      onToggle3D();
+      return;
+    }
+    const map = mapRef.current;
+    if (!map) return;
+    setTerrain3dError(null);
+
+    if (!internal3D) {
+      try {
+        if (!map.getSource("terrain-rgb")) {
+          map.addSource("terrain-rgb", {
+            type: "raster-dem",
+            tiles: ["https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"],
+            encoding: "terrarium",
+            tileSize: 256,
+            maxzoom: 14,
+          });
+        }
+        map.setTerrain({ source: "terrain-rgb", exaggeration: 1.4 });
+        map.easeTo({ pitch: 58, bearing: -15, duration: 800 });
+        setInternal3D(true);
+      } catch (err) {
+        console.warn("Could not activate 3D terrain:", err);
+        setInternal3D(false);
+        setTerrain3dError("3D elevation data unavailable (reverted to 2D)");
+        try {
+          map.setTerrain(null);
+          map.easeTo({ pitch: 0, bearing: 0 });
+        } catch {}
+      }
+    } else {
+      try {
+        map.setTerrain(null);
+        map.easeTo({ pitch: 0, bearing: 0, duration: 600 });
+      } catch {}
+      setInternal3D(false);
+    }
+  }, [internal3D, onToggle3D]);
+
+  useEffect(() => {
+    if (is3DMode === undefined) return;
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    if (is3DMode) {
+      try {
+        if (!map.getSource("terrain-rgb")) {
+          map.addSource("terrain-rgb", {
+            type: "raster-dem",
+            tiles: ["https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"],
+            encoding: "terrarium",
+            tileSize: 256,
+            maxzoom: 14,
+          });
+        }
+        map.setTerrain({ source: "terrain-rgb", exaggeration: 1.4 });
+        map.easeTo({ pitch: 58, bearing: -15, duration: 800 });
+      } catch (err) {
+        setTerrain3dError("3D elevation data unavailable");
+      }
+    } else {
+      try {
+        map.setTerrain(null);
+        map.easeTo({ pitch: 0, bearing: 0, duration: 600 });
+      } catch {}
+    }
+  }, [is3DMode]);
 
   const activateRouteForZone = useCallback((origin: {
     name: string;
@@ -192,6 +288,27 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
     setActiveNavigation(navRoute);
     setIsSimulating(false);
     setSimIndex(0);
+
+    // Asynchronously fetch live turn-by-turn road geometry from OSRM to ensure exact street/highway precision
+    fetchLiveOsrmRoadRoute(
+      navRoute.originCoords[0],
+      navRoute.originCoords[1],
+      navRoute.destinationCoords[0],
+      navRoute.destinationCoords[1]
+    ).then(liveRoad => {
+      if (liveRoad && liveRoad.coordinates.length > 0) {
+        setActiveNavigation(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            coordinates: liveRoad.coordinates,
+            distanceKm: liveRoad.distanceKm,
+            travelTimeMinutes: liveRoad.travelTimeMinutes,
+            isRoadRoute: true,
+          };
+        });
+      }
+    }).catch(() => {});
 
     setTimeout(() => {
       const map = mapRef.current;
@@ -229,60 +346,81 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
   const sources = useMemo(() => {
     if (!data) return null;
     const active = data.activeLocation;
-    const routeCoords = activeNavigation?.coordinates ?? [];
+
+    const effectiveRoute = activeNavigation ?? (data.relocationRoute && data.relocationRoute.coordinates?.length > 0 ? {
+      originLabel: data.relocationRoute.originLabel ?? "Vulnerable Habitation",
+      destinationLabel: data.relocationRoute.destinationLabel ?? "Safe Relocation Haven",
+      originCoords: [
+        data.relocationOrigin?.longitude ?? data.relocationRoute.coordinates[0][0],
+        data.relocationOrigin?.latitude ?? data.relocationRoute.coordinates[0][1]
+      ] as [number, number],
+      destinationCoords: [
+        data.relocationDestination?.longitude ?? data.relocationRoute.coordinates[data.relocationRoute.coordinates.length - 1][0],
+        data.relocationDestination?.latitude ?? data.relocationRoute.coordinates[data.relocationRoute.coordinates.length - 1][1]
+      ] as [number, number],
+      coordinates: data.relocationRoute.coordinates,
+      distanceKm: data.relocationRoute.distanceKm ?? 0,
+      travelTimeMinutes: data.relocationRoute.travelTimeMinutes ?? 0,
+      isRoadRoute: true,
+      classification: "RED" as const,
+      hazardType: data.relocationOrigin?.hazardType ?? "Critical Vulnerable Habitation",
+      safeRole: data.relocationDestination?.role ?? "Safe Relocation Shelter",
+    } : null);
+
+    const routeCoords = effectiveRoute?.coordinates ?? [];
     const midCoord = routeCoords.length > 1 ? routeCoords[Math.floor(routeCoords.length / 2)] : null;
     return {
       areas: { type: "FeatureCollection" as const, features: (active ? [] : data.areas).map(area => ({ type: "Feature" as const, properties: { ...area, markerColor: riskColor(area.hazardSeverity) }, geometry: { type: "Point" as const, coordinates: [area.longitude, area.latitude] } })) },
       selectedArea: { type: "FeatureCollection" as const, features: (!active ? data.areas.filter(area => area.id === selectedId) : []).map(area => ({ type: "Feature" as const, properties: { ...area }, geometry: { type: "Point" as const, coordinates: [area.longitude, area.latitude] } })) },
-      relocationRoute: activeNavigation && routeCoords.length > 0 ? {
+      relocationRoute: effectiveRoute && routeCoords.length > 0 ? {
         type: "FeatureCollection" as const,
         features: [{
           type: "Feature" as const,
           properties: {
-            destinationLabel: activeNavigation.destinationLabel,
-            originLabel: activeNavigation.originLabel,
-            distanceKm: activeNavigation.distanceKm,
-            travelTimeMinutes: activeNavigation.travelTimeMinutes,
+            destinationLabel: effectiveRoute.destinationLabel,
+            originLabel: effectiveRoute.originLabel,
+            distanceKm: effectiveRoute.distanceKm,
+            travelTimeMinutes: effectiveRoute.travelTimeMinutes,
             isRoadRoute: true,
-            classification: activeNavigation.classification,
+            classification: effectiveRoute.classification,
           },
           geometry: { type: "LineString" as const, coordinates: routeCoords }
         }]
       } : emptyCollection,
-      relocationMidpoint: activeNavigation && midCoord ? {
+      relocationMidpoint: effectiveRoute && midCoord ? {
         type: "FeatureCollection" as const,
         features: [{
           type: "Feature" as const,
           properties: {
-            label: `~${activeNavigation.travelTimeMinutes} min (${activeNavigation.distanceKm} km)`,
+            label: `~${effectiveRoute.travelTimeMinutes} min (${effectiveRoute.distanceKm} km)`,
           },
           geometry: { type: "Point" as const, coordinates: midCoord }
         }]
       } : emptyCollection,
-      relocationDestination: activeNavigation ? {
+      relocationDestination: effectiveRoute ? {
         type: "FeatureCollection" as const,
         features: [{
           type: "Feature" as const,
           properties: {
-            name: activeNavigation.destinationLabel,
-            role: activeNavigation.safeRole ?? "Safe Relocation Facility",
+            name: effectiveRoute.destinationLabel,
+            role: effectiveRoute.safeRole ?? "Safe Relocation Facility",
             suitability: "PREFERRED",
             capacityNote: "Available safe shelter",
           },
-          geometry: { type: "Point" as const, coordinates: activeNavigation.destinationCoords }
+          geometry: { type: "Point" as const, coordinates: effectiveRoute.destinationCoords }
         }]
       } : emptyCollection,
-      relocationOrigin: activeNavigation ? {
+      relocationOrigin: effectiveRoute ? {
         type: "FeatureCollection" as const,
         features: [{
           type: "Feature" as const,
           properties: {
-            name: activeNavigation.originLabel,
-            exposureLevel: activeNavigation.classification,
-            population: null,
-            hazardType: activeNavigation.hazardType ?? "Critical Hazard Zone",
+            name: effectiveRoute.originLabel,
+            exposureLevel: effectiveRoute.classification,
+            population: data.relocationOrigin?.population ?? null,
+            hazardType: effectiveRoute.hazardType ?? "Critical Hazard Zone",
           },
-          geometry: { type: "Point" as const, coordinates: activeNavigation.originCoords }
+          geometry: { type: "Point" as const, coordinates: effectiveRoute.originCoords }
         }]
       } : emptyCollection,
       relocationSim: simPoint ? {
@@ -375,6 +513,34 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
       add("hazard-facilities", sources.hazardFacilities);
       add("hazard-redzones", sources.hazardClassification);
 
+      // Live Doppler precipitation radar from RainViewer (global real-time meteorological feed)
+      fetch("https://api.rainviewer.com/public/weather-maps.json")
+        .then(r => r.json())
+        .then(rvData => {
+          const radarPath = rvData?.radar?.past?.slice(-1)?.[0]?.path;
+          if (radarPath && mapRef.current) {
+            const tileUrl = `https://tilecache.rainviewer.com${radarPath}/256/{z}/{x}/{y}/2/1_1.png`;
+            if (!mapRef.current.getSource("live-radar")) {
+              mapRef.current.addSource("live-radar", {
+                type: "raster",
+                tiles: [tileUrl],
+                tileSize: 256,
+                attribution: "RainViewer Live Doppler Radar"
+              });
+              if (!mapRef.current.getLayer("live-radar")) {
+                mapRef.current.addLayer({
+                  id: "live-radar",
+                  type: "raster",
+                  source: "live-radar",
+                  paint: { "raster-opacity": 0.65 },
+                  layout: { visibility: layers.liveRadar ? "visible" : "none" }
+                }, "hazard-redzone-fill");
+              }
+            }
+          }
+        })
+        .catch(() => {});
+
       if (data.nationwide) {
         map.addSource("national-terrain", { type: "image", url: data.nationwide.terrainImage, coordinates: data.nationwide.imageCoordinates });
         map.addSource("national-population", { type: "image", url: data.nationwide.populationImage, coordinates: data.nationwide.imageCoordinates });
@@ -389,8 +555,8 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
       map.addLayer({ id: "district-fill", type: "fill", source: "districts", paint: { "fill-color": "transparent" } });
       map.addLayer({ id: "district-line", type: "line", source: "districts", paint: { "line-color": "#64748b", "line-width": 0.85, "line-opacity": 0.45 } });
       map.addLayer({ id: "boundary-line", type: "line", source: "boundary", paint: { "line-color": "#a8d4b0", "line-width": 1.35, "line-dasharray": [3, 2] } });
-      map.addLayer({ id: "selected-location-fill", type: "fill", source: "selected-location", paint: { "fill-color": "#0ea5e9", "fill-opacity": 0.08 } });
-      map.addLayer({ id: "selected-location-line", type: "line", source: "selected-location", paint: { "line-color": "#0284c7", "line-width": 2.2 } });
+      map.addLayer({ id: "selected-location-fill", type: "fill", source: "selected-location", paint: { "fill-color": "transparent", "fill-opacity": 0 } });
+      map.addLayer({ id: "selected-location-line", type: "line", source: "selected-location", paint: { "line-color": "#f8fafc", "line-width": 2.0, "line-opacity": 0.85, "line-dasharray": [4, 2] } });
 
       // Group 2: Macro weather & Sensitivity overlays (underneath assessment zones)
       map.addLayer({ id: "national-weather-fill", type: "fill", source: "weather", paint: { "fill-color": ["interpolate", ["linear"], ["coalesce", ["get", "temperatureC"], 0], 10, "#5ba96a", 22, "#d1cf50", 30, "#f68f37", 38, "#c83f36"], "fill-opacity": 0.34 } });
@@ -399,7 +565,7 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
       (["earthquake", "landslide", "flood"] as const).forEach(kind => {
         const hazard = `${kind[0].toUpperCase()}${kind.slice(1)} sensitivity`;
         const color = kind === "earthquake" ? "#8b3f72" : kind === "landslide" ? "#a76932" : "#0ea5e9";
-        map.addLayer({ id: `national-sensitivity-${kind}-fill`, type: "fill", source: "sensitivity", filter: ["==", ["get", "hazard"], hazard], paint: { "fill-color": color, "fill-opacity": 0.12 } });
+        map.addLayer({ id: `national-sensitivity-${kind}-fill`, type: "fill", source: "sensitivity", filter: ["==", ["get", "hazard"], hazard], paint: { "fill-color": color, "fill-opacity": kind === "flood" ? 0 : 0.12 } });
         map.addLayer({ id: `national-sensitivity-${kind}-line`, type: "line", source: "sensitivity", filter: ["==", ["get", "hazard"], hazard], paint: { "line-color": color, "line-width": 1.25, "line-dasharray": [3, 2] } });
       });
 
@@ -407,10 +573,10 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
       map.addLayer({ id: "hazard-seismic-fill", type: "fill", source: "hazard-seismic", paint: { "fill-color": ["match", ["get", "zone"], "ZONE_V", "#9c27b0", "ZONE_IV", "#e91e63", "#ff9800"], "fill-opacity": 0.16 } });
       map.addLayer({ id: "hazard-seismic-line", type: "line", source: "hazard-seismic", paint: { "line-color": "#ab47bc", "line-width": 1.15 } });
       
-      // Actual authoritative CWC / riverine flood inundation corridor (Real physical hazard footprint)
-      // Soft, refined aquatic blue with high transparency so satellite terrain remains clearly visible
-      map.addLayer({ id: "hazard-floodplain-fill", type: "fill", source: "hazard-floodplains", paint: { "fill-color": "#0284c7", "fill-opacity": 0.14 } });
-      map.addLayer({ id: "hazard-floodplain-line", type: "line", source: "hazard-floodplains", paint: { "line-color": "#0284c7", "line-width": 1.4, "line-opacity": 0.75, "line-dasharray": [4, 2] } });
+      // Actual authoritative CWC / riverine flood inundation corridor
+      // Fill transparent to eliminate blue shade/wash; clean boundary stroke
+      map.addLayer({ id: "hazard-floodplain-fill", type: "fill", source: "hazard-floodplains", paint: { "fill-color": "transparent", "fill-opacity": 0 } });
+      map.addLayer({ id: "hazard-floodplain-line", type: "line", source: "hazard-floodplains", paint: { "line-color": "#38bdf8", "line-width": 1.2, "line-opacity": 0.45, "line-dasharray": [4, 2] } });
       map.addLayer({ id: "hazard-fill", type: "fill", source: "hazards", layout: { "visibility": "none" }, filter: ["!=", ["get", "type"], "Landslide"], paint: { "fill-color": ["match", ["get", "level"], "Critical", "#d9534f", "High", "#e58b3a", "Moderate", "#edc856", "#e58b3a"], "fill-opacity": 0.2 } });
       map.addLayer({ id: "hazard-line", type: "line", source: "hazards", layout: { "visibility": "none" }, filter: ["!=", ["get", "type"], "Landslide"], paint: { "line-color": "#bc7041", "line-width": 1.2 } });
       map.addLayer({ id: "landslide-fill", type: "fill", source: "hazards", layout: { "visibility": "none" }, filter: ["==", ["get", "type"], "Landslide"], paint: { "fill-color": "#bd3034", "fill-opacity": 0.2 } });
@@ -418,9 +584,10 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
 
       // Group 4: PS191 ASSESSMENT ZONE DISTRICT POLYGONS (Administrative screening context)
       // Subtle tint so satellite geography remains clearly visible underneath
-      map.addLayer({ id: "hazard-redzone-fill", type: "fill", source: "hazard-redzones", paint: { "fill-color": ["match", ["get", "classification"], "RED", "#dc2626", "ORANGE", "#ea580c", "GREEN", "#16a34a", "rgba(0,0,0,0)"], "fill-opacity": 0.12 } });
-      map.addLayer({ id: "hazard-redzone-line", type: "line", source: "hazard-redzones", paint: { "line-color": ["match", ["get", "classification"], "RED", "#dc2626", "ORANGE", "#ea580c", "GREEN", "#16a34a", "rgba(0,0,0,0)"], "line-width": 2.2 } });
-      map.addLayer({ id: "hazard-redzone-label", type: "symbol", source: "hazard-redzones", layout: { "text-field": ["concat", ["get", "areaName"], " [", ["get", "classification"], " SCREENING]"], "text-size": 10.5, "text-offset": [0, 0], "text-anchor": "center" }, paint: { "text-color": ["match", ["get", "classification"], "RED", "#ffffff", "ORANGE", "#ffffff", "GREEN", "#ffffff", "#333333"], "text-halo-color": ["match", ["get", "classification"], "RED", "#7f1d1d", "ORANGE", "#7c2d12", "GREEN", "#14532d", "#ffffff"], "text-halo-width": 2.4 } });
+      // Note: GREEN classification on district polygons is suppressed to avoid misleading "safe zone" polygons
+      map.addLayer({ id: "hazard-redzone-fill", type: "fill", source: "hazard-redzones", filter: ["!=", ["get", "classification"], "GREEN"], paint: { "fill-color": ["match", ["get", "classification"], "RED", "#dc2626", "ORANGE", "#ea580c", "YELLOW", "#eab308", "rgba(0,0,0,0)"], "fill-opacity": 0.12 } });
+      map.addLayer({ id: "hazard-redzone-line", type: "line", source: "hazard-redzones", filter: ["!=", ["get", "classification"], "GREEN"], paint: { "line-color": ["match", ["get", "classification"], "RED", "#dc2626", "ORANGE", "#ea580c", "YELLOW", "#eab308", "rgba(0,0,0,0)"], "line-width": 2.2 } });
+      map.addLayer({ id: "hazard-redzone-label", type: "symbol", source: "hazard-redzones", filter: ["!=", ["get", "classification"], "GREEN"], layout: { "text-field": ["concat", ["get", "areaName"], " [", ["get", "classification"], " SCREENING]"], "text-size": 10.5, "text-offset": [0, 0], "text-anchor": "center" }, paint: { "text-color": ["match", ["get", "classification"], "RED", "#ffffff", "ORANGE", "#ffffff", "#ffffff"], "text-halo-color": ["match", ["get", "classification"], "RED", "#7f1d1d", "ORANGE", "#7c2d12", "#1e293b"], "text-halo-width": 2.4 } });
 
       // Group 5: Linear hazards and background roads
       map.addLayer({ id: "roads", type: "line", source: "roads", layout: { "visibility": "none" }, paint: { "line-color": "#f3f7ef", "line-width": 1.35, "line-opacity": 0.82, "line-dasharray": [2.5, 2.5] } });
@@ -428,21 +595,21 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
       map.addLayer({ id: "hazard-cyclone-line", type: "line", source: "hazard-cyclones", paint: { "line-color": "#00897b", "line-width": 2.0, "line-dasharray": [3, 2] } });
       map.addLayer({ id: "hazard-cyclone-label", type: "symbol", source: "hazard-cyclones", layout: { "text-field": ["get", "name"], "text-size": 9 }, paint: { "text-color": "#004d40", "text-halo-color": "#ffffff", "text-halo-width": 1 } });
 
-      // Group 6: Point features & facilities & infrastructure (underneath evacuation route)
-      map.addLayer({ id: "hazard-cwc-circle", type: "circle", source: "hazard-cwc", paint: { "circle-radius": 5.5, "circle-color": "#00acc1", "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.5 } });
-      map.addLayer({ id: "hazard-cwc-label", type: "symbol", source: "hazard-cwc", layout: { "text-field": ["get", "name"], "text-size": 9, "text-offset": [0, 1.2] }, paint: { "text-color": "#006064", "text-halo-color": "#ffffff", "text-halo-width": 1 } });
-      map.addLayer({ id: "hazard-landslide-circle", type: "circle", source: "hazard-landslides", paint: { "circle-radius": 6.5, "circle-color": "#e53935", "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.8 } });
-      map.addLayer({ id: "hazard-landslide-label", type: "symbol", source: "hazard-landslides", layout: { "text-field": ["get", "name"], "text-size": 9, "text-offset": [0, 1.2] }, paint: { "text-color": "#b71c1c", "text-halo-color": "#ffffff", "text-halo-width": 1 } });
-      map.addLayer({ id: "hazard-habitation-circle", type: "circle", source: "hazard-habitations", paint: { "circle-radius": 5.5, "circle-color": "#fb8c00", "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.2 } });
-      map.addLayer({ id: "hazard-habitation-label", type: "symbol", source: "hazard-habitations", layout: { "text-field": ["get", "name"], "text-size": 8.5, "text-offset": [0, 1.2] }, paint: { "text-color": "#e65100", "text-halo-color": "#ffffff", "text-halo-width": 1 } });
+      // Group 6: Point features & facilities & infrastructure (underneath evacuation route) - Decluttered with minzoom
+      map.addLayer({ minzoom: 5, id: "hazard-cwc-circle", type: "circle", source: "hazard-cwc", paint: { "circle-radius": 5.5, "circle-color": "#00acc1", "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.5 } });
+      map.addLayer({ minzoom: 8, id: "hazard-cwc-label", type: "symbol", source: "hazard-cwc", layout: { "text-field": ["get", "name"], "text-size": 9, "text-offset": [0, 1.2] }, paint: { "text-color": "#006064", "text-halo-color": "#ffffff", "text-halo-width": 1 } });
+      map.addLayer({ minzoom: 5.5, id: "hazard-landslide-circle", type: "circle", source: "hazard-landslides", paint: { "circle-radius": 6.5, "circle-color": "#e53935", "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.8 } });
+      map.addLayer({ minzoom: 8.5, id: "hazard-landslide-label", type: "symbol", source: "hazard-landslides", layout: { "text-field": ["get", "name"], "text-size": 9, "text-offset": [0, 1.2] }, paint: { "text-color": "#b71c1c", "text-halo-color": "#ffffff", "text-halo-width": 1 } });
+      map.addLayer({ minzoom: 5, id: "hazard-habitation-circle", type: "circle", source: "hazard-habitations", paint: { "circle-radius": 5.5, "circle-color": "#fb8c00", "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.2 } });
+      map.addLayer({ minzoom: 8, id: "hazard-habitation-label", type: "symbol", source: "hazard-habitations", layout: { "text-field": ["get", "name"], "text-size": 8.5, "text-offset": [0, 1.2] }, paint: { "text-color": "#e65100", "text-halo-color": "#ffffff", "text-halo-width": 1 } });
       
       // Evacuation Shelters & Relief Centres (excluding hospitals)
-      map.addLayer({ id: "hazard-facility-circle", type: "circle", source: "hazard-facilities", filter: ["!=", ["get", "role"], "HOSPITAL_MEDICAL_SUPPORT"], paint: { "circle-radius": 6.5, "circle-color": ["match", ["get", "suitability"], "PREFERRED", "#15803d", "CONDITIONAL", "#ea580c", "UNSUITABLE", "#b91c1c", "#475569"], "circle-stroke-color": "#ffffff", "circle-stroke-width": 2 } });
-      map.addLayer({ id: "hazard-facility-label", type: "symbol", source: "hazard-facilities", filter: ["!=", ["get", "role"], "HOSPITAL_MEDICAL_SUPPORT"], layout: { "text-field": ["get", "name"], "text-size": 8.5, "text-offset": [0, 1.25], "text-anchor": "top" }, paint: { "text-color": "#1e3a8a", "text-halo-color": "#ffffff", "text-halo-width": 1.4 } });
+      map.addLayer({ minzoom: 6, id: "hazard-facility-circle", type: "circle", source: "hazard-facilities", filter: ["!=", ["get", "role"], "HOSPITAL_MEDICAL_SUPPORT"], paint: { "circle-radius": 6.5, "circle-color": ["match", ["get", "suitability"], "PREFERRED", "#15803d", "CONDITIONAL", "#ea580c", "UNSUITABLE", "#b91c1c", "#475569"], "circle-stroke-color": "#ffffff", "circle-stroke-width": 2 } });
+      map.addLayer({ minzoom: 9, id: "hazard-facility-label", type: "symbol", source: "hazard-facilities", filter: ["!=", ["get", "role"], "HOSPITAL_MEDICAL_SUPPORT"], layout: { "text-field": ["get", "name"], "text-size": 8.5, "text-offset": [0, 1.25], "text-anchor": "top" }, paint: { "text-color": "#1e3a8a", "text-halo-color": "#ffffff", "text-halo-width": 1.4 } });
 
       // Hospitals / Medical Support (controlled by layers.hospitals, default off)
-      map.addLayer({ id: "hazard-hospital-circle", type: "circle", source: "hazard-facilities", filter: ["==", ["get", "role"], "HOSPITAL_MEDICAL_SUPPORT"], paint: { "circle-radius": 6.0, "circle-color": "#0284c7", "circle-stroke-color": "#ffffff", "circle-stroke-width": 2 } });
-      map.addLayer({ id: "hazard-hospital-label", type: "symbol", source: "hazard-facilities", filter: ["==", ["get", "role"], "HOSPITAL_MEDICAL_SUPPORT"], layout: { "text-field": ["concat", "🏥 ", ["get", "name"]], "text-size": 8.5, "text-offset": [0, 1.25], "text-anchor": "top" }, paint: { "text-color": "#0369a1", "text-halo-color": "#ffffff", "text-halo-width": 1.4 } });
+      map.addLayer({ minzoom: 6.5, id: "hazard-hospital-circle", type: "circle", source: "hazard-facilities", filter: ["==", ["get", "role"], "HOSPITAL_MEDICAL_SUPPORT"], paint: { "circle-radius": 6.0, "circle-color": "#0284c7", "circle-stroke-color": "#ffffff", "circle-stroke-width": 2 } });
+      map.addLayer({ minzoom: 9.5, id: "hazard-hospital-label", type: "symbol", source: "hazard-facilities", filter: ["==", ["get", "role"], "HOSPITAL_MEDICAL_SUPPORT"], layout: { "text-field": ["concat", "🏥 ", ["get", "name"]], "text-size": 8.5, "text-offset": [0, 1.25], "text-anchor": "top" }, paint: { "text-color": "#0369a1", "text-halo-color": "#ffffff", "text-halo-width": 1.4 } });
 
       map.addLayer({ id: "infrastructure-points", type: "circle", source: "infrastructure", paint: { "circle-radius": 6, "circle-color": "#163e5b", "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.5 } });
       map.addLayer({ id: "population-points", type: "circle", source: "areas", paint: { "circle-radius": ["interpolate", ["linear"], ["get", "populationDensity"], 800, 5, 2200, 10, 5000, 17], "circle-color": ["get", "markerColor"], "circle-opacity": 0.78, "circle-stroke-color": "#f7fff5", "circle-stroke-width": 1.2 } });
@@ -476,7 +643,7 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
         type: "line",
         source: "relocation-route",
         filter: ["==", ["get", "isRoadRoute"], true],
-        paint: { "line-color": "#2563eb", "line-width": 15, "line-opacity": 0.45, "line-blur": 3.5 }
+        paint: { "line-color": "#2563eb", "line-width": 8.0, "line-opacity": 0.25, "line-blur": 1.5 }
       });
       map.addLayer({
         id: "relocation-route-casing",
@@ -484,7 +651,7 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
         source: "relocation-route",
         filter: ["==", ["get", "isRoadRoute"], true],
         layout: { "line-join": "round", "line-cap": "round" },
-        paint: { "line-color": "#0c4a6e", "line-width": 8.5, "line-opacity": 0.98 }
+        paint: { "line-color": "#082f49", "line-width": 7.0, "line-opacity": 0.98 }
       });
       map.addLayer({
         id: "relocation-route-line",
@@ -492,7 +659,7 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
         source: "relocation-route",
         filter: ["==", ["get", "isRoadRoute"], true],
         layout: { "line-join": "round", "line-cap": "round" },
-        paint: { "line-color": "#38bdf8", "line-width": 5.2, "line-opacity": 1.0 }
+        paint: { "line-color": "#38bdf8", "line-width": 4.5, "line-opacity": 1.0 }
       });
       map.addLayer({
         id: "relocation-route-pulse",
@@ -500,7 +667,7 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
         source: "relocation-route",
         filter: ["==", ["get", "isRoadRoute"], true],
         layout: { "line-join": "round", "line-cap": "round" },
-        paint: { "line-color": "#93c5fd", "line-width": 2.2, "line-dasharray": [1.0, 3.0], "line-opacity": 0.92 }
+        paint: { "line-color": "#ffffff", "line-width": 2.0, "line-dasharray": [1.5, 3.5], "line-opacity": 0.95 }
       });
       // Floating Google Maps ETA badge pinned directly on the roadway route
       map.addLayer({
@@ -920,17 +1087,111 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
         aria-label="Interactive India GIS map"
       />
 
-      {/* Zoom controls */}
-      <div className="absolute right-4 top-4 z-20 flex flex-col overflow-hidden rounded-xl border border-[#395460] bg-[#0b202a]/90 shadow-2xl backdrop-blur">
-        <Button variant="ghost" size="icon" className="h-9 w-9 rounded-none border-b border-[#2b4651] text-[#d8e9ed] hover:bg-[#153440] hover:text-white" aria-label="Zoom in" onClick={() => changeZoom(1)}><Plus className="h-4 w-4" /></Button>
-        <Button variant="ghost" size="icon" className="h-9 w-9 rounded-none border-b border-[#2b4651] text-[#d8e9ed] hover:bg-[#153440] hover:text-white" aria-label="Zoom out" onClick={() => changeZoom(-1)}><Minus className="h-4 w-4" /></Button>
-        <Button variant="ghost" size="icon" className="h-9 w-9 rounded-none border-b border-[#2b4651] text-[#d8e9ed] hover:bg-[#153440] hover:text-white" aria-label="Reset map view" onClick={() => mapRef.current?.flyTo({ center: data?.center, zoom: clampMapZoom(zoom), duration: 650 })}><RotateCcw className="h-4 w-4" /></Button>
-        <Button variant="ghost" size="icon" className="h-9 w-9 rounded-none text-[#d8e9ed] hover:bg-[#153440] hover:text-white" aria-label="Toggle fullscreen map" onClick={() => containerRef.current?.requestFullscreen()}><Expand className="h-4 w-4" /></Button>
+      {/* 2D / 3D Mode Toggle & Zoom Controls */}
+      <div className="absolute right-4 top-4 z-20 flex flex-col gap-2">
+        <div className="flex overflow-hidden rounded-xl border border-[#395460] bg-[#0b202a]/95 shadow-2xl backdrop-blur p-0.5">
+          <Button
+            size="sm"
+            onClick={toggle3D}
+            data-testid="map-terrain-3d-toggle"
+            className={cn(
+              "h-8 px-2.5 text-xs font-black rounded-lg transition-all gap-1.5",
+              is3D
+                ? "bg-gradient-to-r from-emerald-600 to-teal-500 text-white shadow-lg shadow-emerald-900/50"
+                : "bg-transparent text-[#94a3b8] hover:text-white hover:bg-[#153440]"
+            )}
+            title={is3D ? "Switch to 2D Top-Down View" : "Switch to 3D Real Elevation Terrain"}
+          >
+            <Layers className="h-3.5 w-3.5" />
+            {is3D ? "3D TERRAIN" : "2D FLAT"}
+          </Button>
+        </div>
+
+        {/* Zoom controls */}
+        <div className="flex flex-col overflow-hidden rounded-xl border border-[#395460] bg-[#0b202a]/90 shadow-2xl backdrop-blur">
+          <Button variant="ghost" size="icon" className="h-9 w-9 rounded-none border-b border-[#2b4651] text-[#d8e9ed] hover:bg-[#153440] hover:text-white" aria-label="Zoom in" onClick={() => changeZoom(1)}><Plus className="h-4 w-4" /></Button>
+          <Button variant="ghost" size="icon" className="h-9 w-9 rounded-none border-b border-[#2b4651] text-[#d8e9ed] hover:bg-[#153440] hover:text-white" aria-label="Zoom out" onClick={() => changeZoom(-1)}><Minus className="h-4 w-4" /></Button>
+          <Button variant="ghost" size="icon" className="h-9 w-9 rounded-none border-b border-[#2b4651] text-[#d8e9ed] hover:bg-[#153440] hover:text-white" aria-label="Reset map view" onClick={() => mapRef.current?.flyTo({ center: data?.center, zoom: clampMapZoom(zoom), duration: 650 })}><RotateCcw className="h-4 w-4" /></Button>
+          <Button variant="ghost" size="icon" className="h-9 w-9 rounded-none text-[#d8e9ed] hover:bg-[#153440] hover:text-white" aria-label="Toggle fullscreen map" onClick={() => containerRef.current?.requestFullscreen()}><Expand className="h-4 w-4" /></Button>
+        </div>
       </div>
+
+      {terrain3dError && (
+        <div data-testid="terrain-3d-error-banner" className="absolute top-24 right-4 z-30 flex items-center gap-2 rounded-xl border border-amber-500/50 bg-[#1e1709]/95 px-3 py-2 text-xs font-medium text-amber-200 shadow-xl backdrop-blur max-w-xs">
+          <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0" />
+          <span>{terrain3dError}</span>
+          <button onClick={() => setTerrain3dError(null)} className="ml-auto text-amber-400 hover:text-amber-100">&times;</button>
+        </div>
+      )}
 
       <div className="pointer-events-none absolute bottom-4 right-4 z-10 flex items-center gap-1.5 rounded-lg border border-[#415c67] bg-[#081720]/90 px-2.5 py-1.5 text-[10px] font-medium text-[#b4c9ce] shadow-lg backdrop-blur"><MapIcon className="h-3.5 w-3.5 text-[#77cc81]" /> Satellite imagery · Esri</div>
       {data?.activeLocation?.location.boundary && <div data-testid="map-boundary-status" className="pointer-events-none absolute bottom-14 left-4 z-10 rounded-lg border border-[#415c67] bg-[#081720]/90 px-2.5 py-1.5 text-[10px] font-semibold text-[#c6dadd]">Boundary rendered · {data.activeLocation.location.name} state extent</div>}
       <div className="pointer-events-none absolute bottom-4 left-4 z-10 flex items-center gap-1.5 rounded-lg border border-[#415c67] bg-[#081720]/90 px-2.5 py-1.5 text-[10px] font-bold tracking-[0.08em] text-[#add7b0] shadow-lg backdrop-blur"><Crosshair className="h-3.5 w-3.5" /> INDIA LOCATION CONTEXT</div>
+
+      {/* Live Weather & Predictive Hazard Floating Map HUD */}
+      {data?.activeLocation?.environment && (
+        <div
+          data-testid="map-live-weather-hud"
+          className={cn(
+            "absolute z-25 hidden md:flex flex-col gap-2 rounded-2xl border border-[#3e606e]/80 bg-[#091b26]/95 p-3 text-white shadow-2xl backdrop-blur-md max-w-xs transition-all",
+            activeNavigation ? "bottom-16 left-4" : "left-4 top-4"
+          )}
+        >
+          <div className="flex items-center justify-between gap-2 border-b border-[#1c3642] pb-2">
+            <div className="flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
+              <span className="text-[10px] font-black uppercase tracking-wider text-[#7dd3fc]">
+                Live Weather Telemetry
+              </span>
+            </div>
+            <span className="rounded bg-[#123140] px-1.5 py-0.5 text-[9px] font-semibold text-[#8eb2c2]">
+              {data.activeLocation.location.name}
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-2xl font-black tracking-tight text-white">
+                {data.activeLocation.environment.temperatureC !== null
+                  ? `${Math.round(data.activeLocation.environment.temperatureC)}°C`
+                  : "—"}
+              </span>
+              {data.activeLocation.environment.apparentTemperatureC != null && (
+                <span className="text-[10px] text-[#f97316] font-bold">
+                  (Feels {Math.round(data.activeLocation.environment.apparentTemperatureC)}°)
+                </span>
+              )}
+            </div>
+            <div className="flex flex-col items-end text-right">
+              <span className="text-xs font-bold text-[#e2e8f0]">
+                {data.activeLocation.environment.weatherDescription ?? "Fair Weather"}
+              </span>
+              <span className="text-[9px] text-[#94a3b8]">
+                💨 {data.activeLocation.environment.windSpeedKph ? `${Math.round(data.activeLocation.environment.windSpeedKph)} km/h` : "Calm"} · 🌧️ {data.activeLocation.environment.precipitationMm ?? 0} mm
+              </span>
+            </div>
+          </div>
+
+          {/* Predictive Warning Banner if any problem detected */}
+          {data.activeLocation.environment.predictions?.predictedProblems?.[0] && (
+            <div
+              className={cn(
+                "flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-[10px] font-bold border",
+                data.activeLocation.environment.predictions.overallRiskLevel === "CRITICAL"
+                  ? "bg-red-950/80 border-red-500/60 text-red-300 animate-pulse"
+                  : data.activeLocation.environment.predictions.overallRiskLevel === "HIGH"
+                  ? "bg-orange-950/80 border-orange-500/60 text-orange-300"
+                  : "bg-amber-950/80 border-amber-500/60 text-amber-300"
+              )}
+            >
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">
+                {data.activeLocation.environment.predictions.predictedProblems[0].title}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── GOOGLE MAPS STYLE NAVIGATION DROPDOWN (APPEARS WHEN RED/ORANGE ZONE IS CLICKED) ─── */}
       {activeNavigation && (
@@ -938,7 +1199,6 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
           data-testid="evacuation-route-badge"
           className="absolute top-3 left-3 right-3 sm:left-4 sm:right-auto sm:w-[410px] z-30 overflow-hidden rounded-2xl border border-[#38bdf8]/50 bg-[#071826]/96 text-[#e2e8f0] shadow-[0_24px_64px_rgba(0,0,0,0.75)] backdrop-blur-xl transition-all duration-300 animate-in slide-in-from-top-4"
         >
-          {/* Top navigation header bar — Google Maps navigation blue gradient */}
           <div className="flex items-center justify-between border-b border-[#1e3a5f] bg-gradient-to-r from-[#0369a1] via-[#0284c7] to-[#0ea5e9] px-3.5 py-2.5 text-white shadow-md">
             <div className="flex items-center gap-2 min-w-0">
               <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-white/20">
@@ -1074,6 +1334,59 @@ export function DivaMap({ data, selectedId, onSelect, layers, opacity, baseStyle
           </div>
         </div>
       )}
+
+      {/* Persistent Map Legend */}
+      <div data-testid="map-persistent-legend" className="absolute bottom-12 right-4 z-20 max-w-xs">
+        {isLegendOpen ? (
+          <div className="rounded-xl border border-[#334e5b] bg-[#071722]/95 p-3 text-xs text-[#cbd5e1] shadow-2xl backdrop-blur-md">
+            <div className="flex items-center justify-between border-b border-[#1e2f38] pb-1.5 mb-2">
+              <span className="font-bold text-white tracking-wider text-[11px] uppercase flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-cyan-400" />
+                ResQ Map Legend
+              </span>
+              <button
+                onClick={() => setIsLegendOpen(false)}
+                className="text-[10px] text-[#94a3b8] hover:text-white px-1.5 py-0.5 rounded bg-[#0f2430] hover:bg-[#1a3848]"
+                aria-label="Collapse map legend"
+              >
+                Hide
+              </button>
+            </div>
+            <div className="space-y-1.5 text-[11px]">
+              <div className="flex items-center gap-2">
+                <span className="h-3 w-3 rounded-full bg-[#ef4444] border border-white/40 shadow-sm shrink-0" />
+                <span><strong className="text-red-400">RED:</strong> Vulnerable / Hazardous Habitation</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="h-3 w-3 rounded-full bg-[#22c55e] border border-white/40 shadow-sm shrink-0" />
+                <span><strong className="text-emerald-400">GREEN:</strong> Safe-Haven Relocation Destination</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="h-1.5 w-4 rounded-full bg-[#06b6d4] shrink-0" />
+                <span><strong className="text-cyan-400">CYAN / BLUE:</strong> Verified Road Evacuation Route</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="h-3 w-3 rounded-full bg-[#f59e0b] border border-white/40 shadow-sm shrink-0" />
+                <span><strong className="text-amber-400">ORANGE / YELLOW:</strong> Hazard & Warning Context</span>
+              </div>
+            </div>
+            <div className="mt-2.5 pt-2 border-t border-[#1e2f38] text-[10px] text-[#94a3b8] flex flex-wrap gap-1.5 items-center">
+              <span className="text-[9px] uppercase tracking-wider text-[#64748b]">Facility Data:</span>
+              <span className="px-1.5 py-0.5 rounded bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 font-bold text-[9px]">VERIFIED</span>
+              <span className="px-1.5 py-0.5 rounded bg-amber-950/80 border border-amber-500/40 text-amber-300 font-bold text-[9px]">SIMULATED</span>
+              <span className="px-1.5 py-0.5 rounded bg-slate-800/80 border border-slate-600/40 text-slate-300 font-bold text-[9px]">UNAVAILABLE</span>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setIsLegendOpen(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-[#334e5b] bg-[#071722]/90 px-2.5 py-1 text-[11px] font-bold text-[#94a3b8] hover:text-white shadow-lg backdrop-blur"
+            aria-label="Expand map legend"
+          >
+            <Layers className="h-3.5 w-3.5 text-cyan-400" /> ResQ Legend
+          </button>
+        )}
+      </div>
 
       {data?.nationwide ? <IndiaOverviewProvenance sources={data.nationwide.sources} statuses={data.nationwide.statuses} updatedAt={data.nationwide.updatedAt} /> : <div className="pointer-events-none absolute bottom-14 right-4 z-10 hidden items-center gap-1.5 rounded-lg bg-white/90 px-2 py-1 text-[10px] text-[#547080] lg:flex"><LocateFixed className="h-3 w-3" /> Coordinates WGS84</div>}
     </div>

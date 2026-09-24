@@ -48,6 +48,7 @@ export const authoritativeHazardMapLayerVisibility = {
   exposedHabitations: ["hazard-habitation-circle", "hazard-habitation-label"],
   boundaries: ["boundary-line", "district-fill", "district-line", "selected-location-fill", "selected-location-line"],
   infrastructure: ["infrastructure-points"],
+  liveRadar: ["live-radar"],
 };
 
 export const auditedLayerGroups = [
@@ -84,6 +85,7 @@ export const auditedLayerGroups = [
   {
     label: "Live / Modelled",
     items: [
+      ["liveRadar", "Live Doppler rain radar (RainViewer)"],
       ["liveWeather", "Live weather coverage"],
       ["wind", "10 m wind speed & direction"],
       ["earthquakeSensitivity", "Earthquake sensitivity extent"],

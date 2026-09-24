@@ -3,7 +3,7 @@ import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 import type { AssessmentAnalysis, AssessmentArea } from "@shared/diva";
 import type { IndiaLocation, IndiaLocationContext } from "@shared/india";
-import { ArrowRight, Bot, Building2, Check, ChevronDown, CircleAlert, CloudSun, Crosshair, Download, Expand, Layers3, Loader2, MapPin, Menu, Minus, MoreHorizontal, PanelRightOpen, Plus, RotateCcw, ShieldAlert, Sparkles, Users, Wind, X } from "lucide-react";
+import { ArrowRight, Bot, Building2, Check, ChevronDown, CircleAlert, CloudSun, Crosshair, Download, Expand, Layers3, Loader2, MapPin, Menu, Minus, MoreHorizontal, PanelRightOpen, Plus, Radio, RotateCcw, ShieldAlert, Sparkles, Users, Wind, X } from "lucide-react";
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { DivaMap, type MapData } from "./DivaMap";
@@ -12,6 +12,11 @@ import { buildLocationPlanningCorridor, buildRelocationRoute, buildSelectedLocat
 import { PS191DecisionPanel } from "./PS191DecisionPanel";
 import { lookupRealDistrict } from "./SelectedLocationDecisionPanels";
 import { IndiaOverviewLayerControls } from "./IndiaOverviewLayerControls";
+import { VERIFIED_ROAD_CORRIDORS } from "@shared/verifiedRoadCorridors";
+import { LanguageSelector } from "@/components/LanguageSelector";
+import { SosModal } from "./SosModal";
+import { SosResponderDrawer } from "./SosResponderDrawer";
+import { ResqAiAssistant } from "./ResqAiAssistant";
 
 function PanelHeading({ icon: Icon, children }: { icon: typeof MapPin; children: string }) {
   return <div className="flex items-center gap-2 text-[12px] font-semibold text-[#f0f6f3]"><Icon className="h-4 w-4 text-[#d9e7ec]" />{children}</div>;
@@ -26,6 +31,9 @@ export function MapCommandWorkspace({ data, selectedId, area, analysis, indiaLoc
   const [isLegendOpen, setIsLegendOpen] = useState(false);
   const [isLayersOpen, setIsLayersOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isSosOpen, setIsSosOpen] = useState(false);
+  const [isResponderDrawerOpen, setIsResponderDrawerOpen] = useState(false);
+  const [isAiAssistantOpen, setIsAiAssistantOpen] = useState(false);
 
   const selectedContext = indiaContext;
   const selectedLocation = selectedContext?.location ?? indiaLocation;
@@ -80,23 +88,26 @@ export function MapCommandWorkspace({ data, selectedId, area, analysis, indiaLoc
     insideHazardZone: true,
   } : null);
 
-  // Identify recommended relocation destination facility in Green Zone
+  const origLat = selectedVulnerableHabitation?.latitude ?? 0;
+  const origLon = selectedVulnerableHabitation?.longitude ?? 0;
+
+  const matchedCorridor = selectedVulnerableHabitation
+    ? VERIFIED_ROAD_CORRIDORS.find(c => {
+        const d = Math.hypot((c.matchLat - origLat) * 111, (c.matchLon - origLon) * 111 * Math.cos((origLat * Math.PI) / 180));
+        return d <= c.toleranceKm;
+      })
+    : null;
+
+  // Identify recommended relocation destination facility in Green Zone (no fake coordinates)
   const relRec = relocationQuery.data;
-  const destinationCandidate = relRec?.bestCandidate ?? (relRec?.conditionalAlternatives ?? []).find((f: any) => f.latitude != null && f.longitude != null) ?? (relRec?.nearestFacilities ?? []).find((f: any) => f.relocationSuitability !== "UNSUITABLE" && f.facilityRole !== "HOSPITAL_MEDICAL_SUPPORT" && f.latitude != null && f.longitude != null) ?? (recommendedSite && selectedVulnerableHabitation ? {
-    name: recommendedSite.name,
-    facilityRole: "EMERGENCY_SHELTER",
-    relocationSuitability: "PREFERRED",
-    latitude: selectedVulnerableHabitation.latitude + 0.024,
-    longitude: selectedVulnerableHabitation.longitude + 0.035,
-    capacity: recommendedSite.capacity,
-  } : (selectedVulnerableHabitation ? {
-    name: `${selectedLocation.name.split(" ")[0]} Safe Relocation & Relief Campus`,
+  const destinationCandidate = relRec?.bestCandidate ?? (relRec?.conditionalAlternatives ?? []).find((f: any) => f.latitude != null && f.longitude != null) ?? (relRec?.nearestFacilities ?? []).find((f: any) => f.relocationSuitability !== "UNSUITABLE" && f.facilityRole !== "HOSPITAL_MEDICAL_SUPPORT" && f.latitude != null && f.longitude != null) ?? (matchedCorridor ? {
+    name: matchedCorridor.destName,
     facilityRole: "RELIEF_CENTRE",
     relocationSuitability: "PREFERRED",
-    latitude: selectedVulnerableHabitation.latitude + 0.024,
-    longitude: selectedVulnerableHabitation.longitude + 0.035,
+    latitude: matchedCorridor.coordinates[matchedCorridor.coordinates.length - 1][1],
+    longitude: matchedCorridor.coordinates[matchedCorridor.coordinates.length - 1][0],
     capacity: 2500,
-  } : null));
+  } : null);
 
   // Fetch verified OSRM evacuation road route
   const routeQuery = trpc.diva.hazards.evacuationRoute.useQuery(
@@ -121,8 +132,6 @@ export function MapCommandWorkspace({ data, selectedId, area, analysis, indiaLoc
     }
   );
 
-  const origLat = selectedVulnerableHabitation?.latitude ?? 0;
-  const origLon = selectedVulnerableHabitation?.longitude ?? 0;
   const dstLat = destinationCandidate?.latitude ?? 0;
   const dstLon = destinationCandidate?.longitude ?? 0;
   const straightDistKm = Math.hypot((dstLat - origLat) * 111, (dstLon - origLon) * 111 * Math.cos((origLat * Math.PI) / 180));
@@ -137,7 +146,15 @@ export function MapCommandWorkspace({ data, selectedId, area, analysis, indiaLoc
     travelTimeMinutes: routeQuery.data.travelTimeMinutes ?? calcMinutes,
     isRoadRoute: true,
     sourceNote: routeQuery.data.note,
-  } : undefined;
+  } : (matchedCorridor ? {
+    coordinates: matchedCorridor.coordinates,
+    destinationLabel: destinationCandidate?.name ?? matchedCorridor.destName,
+    originLabel: selectedVulnerableHabitation?.name ?? "Vulnerable Habitation",
+    distanceKm: matchedCorridor.distanceKm,
+    travelTimeMinutes: matchedCorridor.travelTimeMinutes,
+    isRoadRoute: true,
+    sourceNote: `Verified turn-by-turn road route (${matchedCorridor.districtName}): ${matchedCorridor.distanceKm} km (~${matchedCorridor.travelTimeMinutes} min). Roadway network geometry.`,
+  } : undefined);
 
   const relocationOrigin = selectedVulnerableHabitation ? {
     latitude: selectedVulnerableHabitation.latitude,
@@ -157,24 +174,22 @@ export function MapCommandWorkspace({ data, selectedId, area, analysis, indiaLoc
     capacityNote: destinationCandidate.capacity ? `${destinationCandidate.capacity} capacity` : "UNAVAILABLE from OSM",
   } : undefined;
 
-  const commandLayers: Record<string, boolean> = { ...layers, routes: true, redZones: true };
+  const commandLayers: Record<string, boolean> = { ...layers, routes: true, redZones: true, liveRadar: Boolean(layers.liveRadar) };
 
-  // Build a planning corridor fallback when OSRM route is unavailable but origin + destination exist.
+  // Direct geometric planning corridor when OSRM route is unavailable but origin + destination exist.
   const planningCorridorFallback = !verifiedRoadRoute && selectedVulnerableHabitation && destinationCandidate &&
     selectedVulnerableHabitation.latitude != null && destinationCandidate.latitude != null ? {
       coordinates: [
         [origLon, origLat],
-        [(origLon * 2 + dstLon) / 3 - 0.003, (origLat * 2 + dstLat) / 3 + 0.005],
-        [(origLon + dstLon * 2) / 3 + 0.003, (origLat + dstLat * 2) / 3 + 0.007],
         [dstLon, dstLat],
       ],
       destinationLabel: destinationCandidate.name,
       originLabel: selectedVulnerableHabitation.name,
       distanceKm: calcDistKm,
       travelTimeMinutes: calcMinutes,
-      isRoadRoute: true,
+      isRoadRoute: false,
       isPlanningCorridor: true as const,
-      sourceNote: `Emergency road corridor: ${calcDistKm} km (~${calcMinutes} min). Road navigation active.`,
+      sourceNote: `Direct geometric planning corridor (${calcDistKm} km). Roadway routing unavailable from OSRM.`,
     } : undefined;
 
   const commandData: MapData = {
@@ -192,7 +207,17 @@ export function MapCommandWorkspace({ data, selectedId, area, analysis, indiaLoc
   return <div data-testid="map-command-workspace" className="map-command-workspace min-h-screen overflow-hidden bg-[#06121a] text-[#edf7f3]">{locationNotice && <div role="status" className="absolute left-4 right-4 top-4 z-50 rounded-xl border border-[#8c6b26] bg-[#3a2c0d]/95 px-3 py-2 text-[11px] font-medium text-[#f6dfa1] shadow-2xl backdrop-blur-md lg:left-[206px] lg:right-[302px]"><span className="font-bold">Location fallback:</span> {locationNotice}</div>}
     <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[190px_minmax(0,1fr)_286px]">
       <aside className="relative z-30 hidden border-r border-[#203742] bg-[#071722] lg:flex lg:flex-col">
-        <div className="flex items-center gap-2.5 border-b border-[#203742] px-4 py-3.5"><div className="grid h-8 w-8 place-items-center rounded-lg bg-[#183747] text-[#bce9de]"><ShieldAlert className="h-4 w-4" /></div><div><p className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#a8c5cc]">PS 191 · SIH</p><p className="text-[13px] font-semibold text-white">Akashvani</p></div></div>
+        <div className="flex items-center gap-2.5 border-b border-[#203742] px-4 py-3.5">
+          <img
+            src="/resq-logo.png"
+            alt="ResQ Logo"
+            className="h-8 w-8 rounded-lg object-contain bg-white/95 p-0.5 shadow-sm ring-1 ring-white/10"
+          />
+          <div>
+            <p className="text-[13px] font-bold leading-tight text-white">ResQ</p>
+            <p className="text-[9px] font-medium text-[#8eaab0]">Command Center</p>
+          </div>
+        </div>
         <div className="space-y-5 overflow-y-auto p-3.5">
           <section><PanelHeading icon={MapPin}>Selected location</PanelHeading><div className="mt-3 rounded-lg border border-[#2c4855] bg-[#0d202a] px-3 py-2.5"><p className="text-[13px] font-semibold text-white">{panelLocationName}</p><p className="mt-1 text-[10px] text-[#9bb1b6]">{panelLocationKind} · {panelDistrict} · {panelState}</p><p className="mt-2 text-[9px] leading-relaxed text-[#78939b]">Use the search box above to change the location.</p></div></section>
           <div className="h-px bg-[#203742]" />
@@ -206,7 +231,57 @@ export function MapCommandWorkspace({ data, selectedId, area, analysis, indiaLoc
 
       <main className="relative min-h-[720px] min-w-0 bg-[#0a1a20]">
         <div className="absolute inset-0"><DivaMap data={commandData} selectedId={selectedId} onSelect={onSelectArea} layers={commandLayers} opacity={opacity} baseStyle={baseStyle} className="h-full w-full" zoomOverride={isSearchContext ? undefined : 10.2} /></div>
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-3 p-4 sm:p-5"><div className="pointer-events-auto flex min-w-0 flex-1 items-center gap-2"><div className="w-full max-w-[295px]"><IndiaLocationSearch tone="dark" onSelect={onSelectLocation} /></div><div className="hidden items-center gap-1.5 rounded-lg border border-[#49646c] bg-[#0b1e27]/85 px-2.5 py-2 text-[10px] font-semibold text-[#c4d8dc] shadow-xl backdrop-blur-md sm:flex"><Crosshair className="h-3.5 w-3.5 text-[#75c987]" />{indiaLocation.name}</div></div><div className="pointer-events-auto flex items-center gap-1.5"><Button variant="ghost" size="icon" onClick={onOpenDashboard} className="h-9 w-9 rounded-lg border border-[#405a63] bg-[#0b1e27]/90 text-[#d7e5e8] shadow-xl backdrop-blur-md hover:bg-[#173541]" aria-label="Open dashboard"><MoreHorizontal className="h-4 w-4" /></Button><Button variant="ghost" size="icon" onClick={() => setIsMobileMenuOpen(true)} className="h-9 w-9 rounded-lg border border-[#405a63] bg-[#0b1e27]/90 text-[#d7e5e8] shadow-xl backdrop-blur-md hover:bg-[#173541] lg:hidden" aria-label="Open map menu"><Menu className="h-4 w-4" /></Button></div></div>
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-3 p-4 sm:p-5">
+          <div className="pointer-events-auto flex min-w-0 flex-1 items-center gap-2">
+            <div className="w-full max-w-[295px]"><IndiaLocationSearch tone="dark" onSelect={onSelectLocation} /></div>
+            <div className="hidden items-center gap-1.5 rounded-lg border border-[#49646c] bg-[#0b1e27]/85 px-2.5 py-2 text-[10px] font-semibold text-[#c4d8dc] shadow-xl backdrop-blur-md sm:flex"><Crosshair className="h-3.5 w-3.5 text-[#75c987]" />{indiaLocation.name}</div>
+          </div>
+          <div className="pointer-events-auto flex items-center gap-1.5">
+            {/* Language Selector */}
+            <LanguageSelector tone="dark" />
+
+            {/* ResQ AI Assistant Trigger */}
+            <Button
+              data-testid="map-ai-assistant-btn"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsAiAssistantOpen(true)}
+              className="h-9 gap-1.5 rounded-xl border-[#3a5866] bg-[#091b26]/95 text-xs font-bold text-cyan-300 hover:bg-[#123142] hover:text-white shadow-xl backdrop-blur-md"
+              title="Ask ResQ AI Assistant"
+            >
+              <Bot className="h-4 w-4 text-cyan-400" />
+              <span className="hidden sm:inline">ResQ AI</span>
+            </Button>
+
+            {/* Responder Dispatch Log */}
+            <Button
+              data-testid="map-responder-log-btn"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsResponderDrawerOpen(true)}
+              className="h-9 gap-1.5 rounded-xl border-[#3a5866] bg-[#091b26]/95 text-xs font-semibold text-[#94a3b8] hover:bg-[#123142] hover:text-white shadow-xl backdrop-blur-md"
+              title="View SOS Dispatches (Responder View)"
+            >
+              <Radio className="h-3.5 w-3.5 text-rose-400" />
+              <span className="hidden md:inline">Dispatches</span>
+            </Button>
+
+            {/* Emergency SOS Action */}
+            <Button
+              data-testid="map-sos-btn"
+              size="sm"
+              onClick={() => setIsSosOpen(true)}
+              className="h-9 gap-1.5 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white font-black text-xs shadow-xl animate-pulse"
+              title="Trigger Emergency SOS"
+            >
+              <span className="h-2 w-2 rounded-full bg-white" />
+              SOS
+            </Button>
+
+            <Button variant="ghost" size="icon" onClick={onOpenDashboard} className="h-9 w-9 rounded-lg border border-[#405a63] bg-[#0b1e27]/90 text-[#d7e5e8] shadow-xl backdrop-blur-md hover:bg-[#173541]" aria-label="Open dashboard"><MoreHorizontal className="h-4 w-4" /></Button>
+            <Button variant="ghost" size="icon" onClick={() => setIsMobileMenuOpen(true)} className="h-9 w-9 rounded-lg border border-[#405a63] bg-[#0b1e27]/90 text-[#d7e5e8] shadow-xl backdrop-blur-md hover:bg-[#173541] lg:hidden" aria-label="Open map menu"><Menu className="h-4 w-4" /></Button>
+          </div>
+        </div>
         <div className="absolute left-1/2 top-[76px] z-20 flex -translate-x-1/2 items-center gap-1 rounded-lg border border-[#405a63] bg-[#0b1e27]/90 p-1 shadow-2xl backdrop-blur-md"><Button variant="ghost" size="sm" onClick={() => setIsLayersOpen(value => !value)} className={cn("h-8 rounded-md px-2.5 text-[11px] font-semibold text-[#e1ecee] hover:bg-[#1b3c46]", isLayersOpen && "bg-[#193d45] text-[#8be090]")}><Layers3 className="mr-1.5 h-3.5 w-3.5" />Layers</Button><Button variant="ghost" size="sm" onClick={() => setIsLegendOpen(value => !value)} className={cn("h-8 rounded-md px-2.5 text-[11px] font-semibold text-[#e1ecee] hover:bg-[#1b3c46]", isLegendOpen && "bg-[#193d45] text-[#8be090]")}><span className="mr-1.5 grid grid-cols-2 gap-0.5"><span className="h-1.5 w-1.5 bg-[#7fc58e]" /><span className="h-1.5 w-1.5 bg-[#f2be55]" /></span>Legend</Button><Button variant="ghost" size="icon" onClick={() => document.querySelector<HTMLElement>('[data-testid="india-gis-map"]')?.requestFullscreen()} className="h-8 w-8 rounded-md text-[#e1ecee] hover:bg-[#1b3c46]" aria-label="Toggle fullscreen map"><Expand className="h-3.5 w-3.5" /></Button></div>
         {isLayersOpen && <div className="absolute left-1/2 top-[124px] z-30 w-[268px] max-h-[460px] overflow-y-auto -translate-x-1/2 rounded-xl border border-[#3e5c65] bg-[#0b1d26]/96 p-3 shadow-2xl backdrop-blur-md"><div className="flex items-center justify-between"><p className="text-[11px] font-bold text-[#e6f3ef]">Map layers</p><span className="rounded bg-[#173d3d] px-1.5 py-0.5 text-[9px] font-bold uppercase text-[#84d58d]">Live view</span></div><div className="mt-2 [&_label]:text-[#bdd0d4] [&_label:hover]:text-white [&_div]:text-[#6c8c96]"><IndiaOverviewLayerControls layers={commandLayers} onChange={(id, enabled) => onLayerChange(id, enabled)} /></div><div className="mt-2 border-t border-[#25404a] pt-2"><div className="grid grid-cols-2 gap-1 rounded-md bg-[#102832] p-1"><button onClick={() => onBaseStyleChange("muted")} className={cn("rounded px-2 py-1 text-[9px] font-semibold", baseStyle === "muted" ? "bg-[#315159] text-white" : "text-[#8fa9af]")}>Muted</button><button onClick={() => onBaseStyleChange("terrain")} className={cn("rounded px-2 py-1 text-[9px] font-semibold", baseStyle === "terrain" ? "bg-[#315159] text-white" : "text-[#8fa9af]")}>Terrain</button></div><div className="mt-2 flex items-center justify-between text-[9px] text-[#8fa9af]"><span>Overlay opacity</span><span>{Math.round(opacity * 100)}%</span></div><Slider value={[opacity * 100]} min={25} max={100} step={5} onValueChange={values => onOpacityChange((values[0] ?? 90) / 100)} className="mt-2" aria-label="Map overlay opacity" /></div></div>}
         {isLegendOpen && <div className="absolute left-1/2 top-[124px] z-30 w-[228px] -translate-x-1/2 rounded-xl border border-[#3e5c65] bg-[#0b1d26]/96 p-3 shadow-2xl backdrop-blur-md"><p className="text-[11px] font-bold text-[#e6f3ef]">Active legend</p><div className="mt-2 space-y-2 text-[10px] text-[#bdd0d4]"><div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#c62828]" />RED (Critical red zone)</div><div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#e65100]" />ORANGE (Attention required)</div><div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#2e7d32]" />GREEN (Low assessed risk)</div><div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#ea580c]" />📍 Vulnerable habitation</div><div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#16a34a]" />🟢 Safe destination</div></div></div>}
@@ -292,5 +367,32 @@ export function MapCommandWorkspace({ data, selectedId, area, analysis, indiaLoc
       </aside>
     </div>
     {isMobileMenuOpen && <div className="fixed inset-0 z-50 bg-[#02090d]/80 lg:hidden"><aside className="h-full w-[286px] border-r border-[#294450] bg-[#071722] p-4 shadow-2xl"><div className="flex items-center justify-between border-b border-[#203742] pb-3"><div className="flex items-center gap-2"><ShieldAlert className="h-4 w-4 text-[#9ddbb0]" /><span className="text-sm font-semibold text-white">Map controls</span></div><Button variant="ghost" size="icon" onClick={() => setIsMobileMenuOpen(false)} className="h-8 w-8 text-[#c8d7db]" aria-label="Close map controls"><X className="h-4 w-4" /></Button></div><div className="mt-4 space-y-4"><p className="text-[10px] leading-relaxed text-[#8ea8af]">Use the desktop layout for the full region, hazard, and relocation legend. The selected location remains centered on the map.</p><Button onClick={onOpenDashboard} variant="outline" className="w-full border-[#35515b] text-[#d7e5e8]">Open dashboard</Button></div></aside></div>}
+
+    {/* ResQ Emergency SOS Modal */}
+    <SosModal
+      isOpen={isSosOpen}
+      onClose={() => setIsSosOpen(false)}
+      defaultLocation={selectedLocation ? {
+        latitude: selectedLocation.latitude,
+        longitude: selectedLocation.longitude,
+        name: selectedLocation.name,
+        district: selectedLocation.address?.district ?? selectedLocation.address?.city,
+        state: selectedLocation.address?.state,
+      } : undefined}
+    />
+
+    {/* Responder Emergency Dispatch Log Drawer */}
+    <SosResponderDrawer
+      isOpen={isResponderDrawerOpen}
+      onClose={() => setIsResponderDrawerOpen(false)}
+    />
+
+    {/* ResQ Grounded AI Assistant */}
+    <ResqAiAssistant
+      isOpen={isAiAssistantOpen}
+      onClose={() => setIsAiAssistantOpen(false)}
+      context={selectedContext}
+      selectedLocation={selectedLocation}
+    />
   </div>;
 }

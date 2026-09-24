@@ -22,6 +22,7 @@ import type {
 import { buildMultiHazardProfile } from "./engine";
 import { tierToPresentation } from "./classification";
 import { haversineKm } from "./capacity";
+import { VERIFIED_ROAD_CORRIDORS } from "../../../shared/verifiedRoadCorridors";
 
 // ─── OSM tag → FacilityRole mapping ──────────────────────────────────────────
 
@@ -139,84 +140,14 @@ interface RoadGeometryFallback {
   coordinates: number[][];     // Road-traced polyline [lon, lat][]
 }
 
-const ROAD_GEOMETRY_FALLBACKS: RoadGeometryFallback[] = [
-  // ── Dibrugarh, Assam — NH-37 evacuation corridor (Maijan Gaon → Dikom Relief Camp)
-  {
-    districtName: "Dibrugarh",
-    fromCoord: [94.9120, 27.4728],   // Assam Medical College area (city anchor)
-    toCoord: [95.0820, 27.4985],     // Dikom Relief Camp
-    routeDistanceKm: 14.2,
-    travelTimeMinutes: 22,
-    coordinates: [
-      [94.9120, 27.4728], [94.9250, 27.4800], [94.9400, 27.4900],
-      [94.9550, 27.5000], [94.9700, 27.5010], [94.9900, 27.5000],
-      [95.0100, 27.4995], [95.0300, 27.4990], [95.0550, 27.4985], [95.0820, 27.4985]
-    ]
-  },
-  // ── Wayanad, Kerala — Chooralmala to Meppadi (landslide evacuation road)
-  {
-    districtName: "Wayanad-Chooralmala",
-    fromCoord: [76.1689, 11.5375],   // Chooralmala
-    toCoord: [76.1284, 11.5512],     // Meppadi
-    routeDistanceKm: 6.8,
-    travelTimeMinutes: 14,
-    coordinates: [
-      [76.1689, 11.5375], [76.1640, 11.5385], [76.1580, 11.5405],
-      [76.1510, 11.5438], [76.1440, 11.5462], [76.1370, 11.5488], [76.1284, 11.5512]
-    ]
-  },
-  // ── Wayanad, Kerala — Kalpetta to Kozhikode (district HQ to coast evacuation)
-  {
-    districtName: "Wayanad-Kalpetta",
-    fromCoord: [76.0817, 11.6097],   // Kalpetta District Hospital
-    toCoord: [76.0854, 11.6122],     // District Collectorate (nearby — close loop)
-    routeDistanceKm: 4.5,
-    travelTimeMinutes: 10,
-    coordinates: [
-      [76.0817, 11.6097], [76.0830, 11.6105], [76.0842, 11.6115], [76.0854, 11.6122]
-    ]
-  },
-  // ── Chamoli (Joshimath), Uttarakhand — NH-58 mountain road (Joshimath → Gopeshwar)
-  {
-    districtName: "Chamoli",
-    fromCoord: [79.5642, 30.5558],   // ITBP Camp Joshimath
-    toCoord: [79.3140, 30.4078],     // Gopeshwar District Hospital
-    routeDistanceKm: 38.5,
-    travelTimeMinutes: 75,
-    coordinates: [
-      [79.5642, 30.5558], [79.5490, 30.5480], [79.5280, 30.5340],
-      [79.5050, 30.5180], [79.4820, 30.5020], [79.4570, 30.4850],
-      [79.4310, 30.4690], [79.4080, 30.4540], [79.3820, 30.4400],
-      [79.3560, 30.4270], [79.3340, 30.4160], [79.3140, 30.4078]
-    ]
-  },
-  // ── Idukki (Munnar), Kerala — SH-17 hill road (Munnar → Thodupuzha)
-  {
-    districtName: "Idukki",
-    fromCoord: [77.0595, 10.0889],   // Munnar HSS / Town
-    toCoord: [76.7159, 9.8918],      // Thodupuzha District Hospital
-    routeDistanceKm: 55.0,
-    travelTimeMinutes: 95,
-    coordinates: [
-      [77.0595, 10.0889], [77.0400, 10.0700], [77.0150, 10.0430],
-      [76.9900, 10.0120], [76.9680, 9.9780], [76.9500, 9.9420],
-      [76.9200, 9.9150], [76.8900, 9.9000], [76.8600, 9.8980],
-      [76.8300, 9.8960], [76.7800, 9.8940], [76.7400, 9.8925], [76.7159, 9.8918]
-    ]
-  },
-  // ── Puri, Odisha — coastal cyclone evacuation (Puri Cyclone Shelter → hospital)
-  {
-    districtName: "Puri",
-    fromCoord: [85.8274, 19.7902],   // Puri Cyclone Shelter
-    toCoord: [85.8312, 19.8133],     // District HQ Hospital
-    routeDistanceKm: 2.6,
-    travelTimeMinutes: 8,
-    coordinates: [
-      [85.8274, 19.7902], [85.8282, 19.7980], [85.8295, 19.8050],
-      [85.8305, 19.8100], [85.8312, 19.8133]
-    ]
-  },
-];
+const ROAD_GEOMETRY_FALLBACKS: RoadGeometryFallback[] = VERIFIED_ROAD_CORRIDORS.map(c => ({
+  districtName: c.districtName,
+  fromCoord: [c.matchLon, c.matchLat] as [number, number],
+  toCoord: [c.destLon, c.destLat] as [number, number],
+  routeDistanceKm: c.distanceKm,
+  travelTimeMinutes: c.travelTimeMinutes,
+  coordinates: c.coordinates,
+}));
 
 /**
  * Find the best matching embedded road geometry fallback for a given coordinate pair.
@@ -344,7 +275,7 @@ export async function fetchRoadRouteWithGeometry(
 
   for (const url of endpoints) {
     try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(3500) });
+      const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
       if (res.ok) {
         const data = (await res.json()) as {
           code: string;

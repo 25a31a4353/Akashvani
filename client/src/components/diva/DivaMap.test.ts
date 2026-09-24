@@ -41,9 +41,9 @@ describe("Zone Navigation Engine (Red & Orange Zones to Nearest Safe Haven)", ()
 
     expect(route.classification).toBe("RED");
     expect(route.destinationLabel).toContain("Dikom");
-    expect(route.distanceKm).toBeCloseTo(14.2, 1);
+    expect(route.distanceKm).toBeCloseTo(23.6, 1);
     expect(route.travelTimeMinutes).toBe(22);
-    expect(route.coordinates.length).toBeGreaterThan(5);
+    expect(route.coordinates.length).toBeGreaterThan(100); // 371 real OSRM road coordinates
   });
 
   it("computes road connectivity for Chamoli Joshimath Red Zone", () => {
@@ -56,9 +56,9 @@ describe("Zone Navigation Engine (Red & Orange Zones to Nearest Safe Haven)", ()
     });
 
     expect(route.destinationLabel).toContain("Gopeshwar");
-    expect(route.distanceKm).toBe(38.5);
-    expect(route.travelTimeMinutes).toBe(75);
-    expect(route.coordinates[0]).toEqual([79.5642, 30.5558]);
+    expect(route.distanceKm).toBe(57.8);
+    expect(route.travelTimeMinutes).toBe(84);
+    expect(route.coordinates.length).toBeGreaterThan(500); // 1688 real road points
   });
 
   it("computes road connectivity for Puri Orange Zone", () => {

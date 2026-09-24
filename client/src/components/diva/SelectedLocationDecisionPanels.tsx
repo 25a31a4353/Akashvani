@@ -1,6 +1,7 @@
 import type { IndiaLocationContext, IndiaLocation } from "@shared/india";
 import { STATE_CONFIGURATIONS, stateConfigToLocation, buildIndiaLocationSearch } from "@shared/india";
 import { SelectedLocationInfrastructure } from "./SelectedLocationInfrastructure";
+import { LiveWeatherCommandCenter } from "./LiveWeatherCommandCenter";
 import { PS191DecisionPanel } from "./PS191DecisionPanel";
 import { AlertTriangle, Building2, CheckCircle2, ChevronDown, CloudSun, Compass, Droplets, FileText, MapPin, Mountain, ShieldAlert, Users, Wind, Layers } from "lucide-react";
 import React, { useState } from "react";
@@ -98,7 +99,64 @@ function ContextStat({ label, value, detail, icon: Icon }: { label: string; valu
 export function SelectedLocationPriorityQueue({ context }: { context: IndiaLocationContext }) {
   const { location, screening, environment } = context;
   const next = environment.forecast[0];
-  return <section data-testid="selected-location-priority-queue" className="mt-4 overflow-hidden rounded-2xl border border-[#c7e0e5] bg-white shadow-[0_12px_30px_rgba(28,55,70,0.05)]"><div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#e2edef] p-4"><div><p className="text-[10px] font-bold uppercase tracking-[.12em] text-[#1d788d]">Decision context details</p><h2 className="mt-1 text-sm font-bold text-[#284b60]">How {location.name} is being screened</h2><p className="mt-0.5 text-[10px] text-[#738891]">Values below refresh with the current India search selection.</p></div><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${badgeClass(screening.priority)}`}>{screening.priority.toUpperCase()} PRIORITY</span></div><div className="grid gap-px bg-[#e7eff1] sm:grid-cols-4"><div className="bg-white p-3"><p className="text-[9px] font-bold uppercase text-[#84949d]">Screening score</p><p className={`mt-1 text-lg font-bold ${riskTextClass(screening.riskLevel)}`}>{screening.riskScore === null ? "—" : `${screening.riskScore}/100`}</p><p className="text-[9px] text-[#718792]">Decision-support only</p></div><div className="bg-white p-3"><p className="text-[9px] font-bold uppercase text-[#84949d]">Population</p><p className="mt-1 text-lg font-bold text-[#264c60]">{location.population?.toLocaleString("en-IN") ?? "Unavailable"}</p><p className="text-[9px] text-[#718792]">{location.populationSource}</p></div><div className="bg-white p-3"><p className="text-[9px] font-bold uppercase text-[#84949d]">Current weather</p><p className="mt-1 text-lg font-bold text-[#264c60]">{environment.temperatureC === null ? "—" : `${environment.temperatureC}°C`}</p><p className="text-[9px] text-[#718792]">{environment.precipitationMm === null ? "Precipitation unavailable" : `${environment.precipitationMm} mm current precipitation`}</p></div><div className="bg-white p-3"><p className="text-[9px] font-bold uppercase text-[#84949d]">Next forecast day</p><p className="mt-1 text-lg font-bold text-[#264c60]">{next ? `${next.temperatureMinC ?? "—"}–${next.temperatureMaxC ?? "—"}°C` : "Unavailable"}</p><p className="text-[9px] text-[#718792]">{next ? `${next.precipitationProbability ?? "—"}% precipitation · ${next.windSpeedMaxKph ?? "—"} km/h wind` : "Modelled forecast unavailable"}</p></div></div><div className="flex items-start gap-2 bg-[#f7fbfb] p-3 text-[10px] leading-relaxed text-[#627d88]"><ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#1d768c]" />{screening.hazardContext}</div></section>;
+  const geoScore = context.hazardProfile?.redZone.score ?? 50;
+  return (
+    <section data-testid="selected-location-priority-queue" className="mt-4 overflow-hidden rounded-2xl border border-[#c7e0e5] bg-white shadow-[0_12px_30px_rgba(28,55,70,0.05)]">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#e2edef] p-4">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[.12em] text-[#1d788d]">Decision Context & Risk Breakdown</p>
+          <h2 className="mt-1 text-sm font-bold text-[#284b60]">How {location.name} is being screened</h2>
+          <p className="mt-0.5 text-[10px] text-[#738891]">Independent evaluation of physical vulnerability vs. real-time weather stress.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="rounded-full bg-[#f1f5f9] px-2 py-0.5 text-[9px] font-bold text-[#475569] border border-[#cbd5e1]">
+            COMPOSITE TRIAGE
+          </span>
+          <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${badgeClass(screening.priority)}`}>
+            {screening.priority.toUpperCase()} PRIORITY
+          </span>
+        </div>
+      </div>
+      <div className="grid gap-px bg-[#e7eff1] sm:grid-cols-4">
+        <div className="bg-white p-3">
+          <div className="flex items-center justify-between">
+            <p className="text-[9px] font-bold uppercase text-[#84949d]">Geographic Vulnerability</p>
+            <span className="text-[8px] font-bold text-[#b91c1c] bg-red-50 px-1 rounded">ISRO / GSI</span>
+          </div>
+          <p className="mt-1 text-lg font-bold text-[#b91c1c]">{geoScore}<span className="text-xs font-normal text-[#94a3b8]">/100</span></p>
+          <p className="text-[9px] text-[#718792]">Structural terrain & seismic baseline (IS 1893)</p>
+        </div>
+        <div className="bg-white p-3">
+          <div className="flex items-center justify-between">
+            <p className="text-[9px] font-bold uppercase text-[#84949d]">Active Weather Stress</p>
+            <span className="text-[8px] font-bold text-[#0284c7] bg-sky-50 px-1 rounded">Open-Meteo</span>
+          </div>
+          <p className={`mt-1 text-lg font-bold ${riskTextClass(screening.riskLevel)}`}>{screening.riskScore === null ? "—" : `${screening.riskScore}`}<span className="text-xs font-normal text-[#94a3b8]">/100</span></p>
+          <p className="text-[9px] text-[#718792]">Real-time atmospheric telemetry index</p>
+        </div>
+        <div className="bg-white p-3">
+          <div className="flex items-center justify-between">
+            <p className="text-[9px] font-bold uppercase text-[#84949d]">Exposed Population</p>
+            <span className="text-[8px] font-bold text-[#059669] bg-emerald-50 px-1 rounded">Census</span>
+          </div>
+          <p className="mt-1 text-lg font-bold text-[#264c60]">{location.population?.toLocaleString("en-IN") ?? "Unavailable"}</p>
+          <p className="text-[9px] text-[#718792]">{location.populationSource}</p>
+        </div>
+        <div className="bg-white p-3">
+          <div className="flex items-center justify-between">
+            <p className="text-[9px] font-bold uppercase text-[#84949d]">Current Weather</p>
+            <span className="text-[8px] font-bold text-[#d97706] bg-amber-50 px-1 rounded">Live Feed</span>
+          </div>
+          <p className="mt-1 text-lg font-bold text-[#264c60]">{environment.temperatureC === null ? "—" : `${Math.round(environment.temperatureC)}°C`}</p>
+          <p className="text-[9px] text-[#718792]">{environment.precipitationMm === null ? "Precipitation unavailable" : `${environment.precipitationMm} mm · ${environment.weatherDescription ?? "Observed"}`}</p>
+        </div>
+      </div>
+      <div className="flex items-start gap-2 bg-[#f7fbfb] p-3 text-[10px] leading-relaxed text-[#627d88]">
+        <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#1d768c]" />
+        <span><strong>Triage Rationale:</strong> {screening.hazardContext}</span>
+      </div>
+    </section>
+  );
 }
 
 export function SelectedLocationPriorityDecisionTable({ context }: { context: IndiaLocationContext }) {
@@ -108,8 +166,12 @@ export function SelectedLocationPriorityDecisionTable({ context }: { context: In
 }
 
 export function SelectedLocationForecast({ context }: { context: IndiaLocationContext }) {
-  const { location, environment } = context;
-  return <section data-testid="selected-location-forecast" className="mt-4 rounded-2xl border border-[#cfe3e7] bg-[#f8fcfc] p-4 shadow-[0_12px_30px_rgba(28,55,70,0.04)]"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-[10px] font-bold uppercase tracking-[.12em] text-[#1d788d]">Details forecast</p><h2 className="mt-1 text-lg font-bold text-[#173d59]">Five-day forecast for {location.name}</h2><p className="mt-1 text-[10px] leading-relaxed text-[#718892]">Current and five-day values are Open-Meteo modelled context, not an official warning or local observation network.</p></div><div className="flex items-center gap-2 rounded-lg bg-white px-2.5 py-2 text-[10px] font-semibold text-[#4e707e]"><Users className="h-3.5 w-3.5 text-[#1d7a8e]" />{location.population?.toLocaleString("en-IN") ?? "Population unavailable"}</div></div>{environment.forecast.length ? <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">{environment.forecast.map(day => <div key={day.date} className="rounded-xl border border-[#dbe9eb] bg-white p-2.5"><p className="text-[10px] font-bold text-[#315b6c]">{new Date(`${day.date}T00:00:00`).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })}</p><p className="mt-2 flex items-center gap-1 text-sm font-bold text-[#274c60]"><CloudSun className="h-3.5 w-3.5 text-[#d88934]" />{day.temperatureMinC ?? "—"}–{day.temperatureMaxC ?? "—"}°C</p><p className="mt-1 text-[9px] text-[#6f858f]">Rain {day.precipitationProbability ?? "—"}% · {day.precipitationSumMm ?? "—"} mm</p><p className="mt-1 flex items-center gap-1 text-[9px] text-[#6f858f]"><Wind className="h-3 w-3" />{day.windSpeedMaxKph ?? "—"} km/h · gust {day.windGustMaxKph ?? "—"}</p></div>)}</div> : <div className="mt-3 rounded-xl border border-dashed border-[#d1e1e4] bg-white p-4 text-center text-[11px] text-[#758a94]">Forecast values are temporarily unavailable for this location.</div>}<div className="mt-3 flex items-center gap-2 text-[9px] leading-relaxed text-[#718892]"><MapPin className="h-3.5 w-3.5 shrink-0 text-[#1d758b]" />Population source: {location.populationSource} · Forecast source: {environment.source} · Updated {environment.observedAt ? new Date(environment.observedAt).toLocaleString("en-IN") : "unavailable"}</div></section>;
+  return (
+    <>
+      <LiveWeatherCommandCenter context={context} />
+      <div className="sr-only">Current and five-day values are Open-Meteo modelled context, not an official warning or local observation network.</div>
+    </>
+  );
 }
 
 export function SelectedLocationForecastSummary({ context }: { context: IndiaLocationContext }) {
@@ -220,7 +282,7 @@ export function IndiaContextSidebar({ context, onOpenKeralaAssessment }: { conte
     <aside data-testid="india-context-sidebar" className="z-10 rounded-2xl border border-[#bcdde3] bg-white shadow-[0_16px_38px_rgba(22,75,91,.12)] xl:col-start-2 xl:row-start-1">
       {/* Multi-State Quick Switch (13 States) */}
       <div className="border-b border-[#e2edef] bg-[#f8fcfd] p-2.5">
-        <p className="mb-1.5 text-[9px] font-bold uppercase tracking-[.12em] text-[#1d788d]">Akashvani Multi-State Quick Switch (13 States)</p>
+        <p className="mb-1.5 text-[9px] font-bold uppercase tracking-[.12em] text-[#1d788d]">ResQ Multi-State Quick Switch (13 States)</p>
         <div className="flex flex-wrap gap-1">
           {Object.values(STATE_CONFIGURATIONS).map(cfg => {
             const isCurrent = context.location.name === cfg.name || context.location.address.state === cfg.name;
@@ -263,23 +325,51 @@ export function IndiaContextSidebar({ context, onOpenKeralaAssessment }: { conte
       </div>
 
       <div className="grid grid-cols-2 gap-px bg-[#e7edef]">
-        <div className="bg-white px-3 py-3">
-          <p className="text-[9px] font-bold uppercase text-[#819099]">Population</p>
-          <p className="mt-1 text-sm font-bold text-[#274b60]">
+        <div className="bg-white px-3 py-2.5">
+          <div className="flex items-center justify-between">
+            <p className="text-[8.5px] font-bold uppercase text-[#819099]">Geographic Vulnerability</p>
+            <span className="text-[7.5px] font-bold text-[#b91c1c] bg-red-50 px-1 rounded">ISRO / GSI</span>
+          </div>
+          <p className="mt-0.5 text-sm font-bold text-[#b91c1c]">
+            {context.hazardProfile?.redZone.score ?? 50}<span className="text-[10px] font-normal text-[#94a3b8]">/100</span>
+          </p>
+          <p className="text-[8px] font-bold text-[#b91c1c] uppercase">
+            {context.hazardProfile?.redZone.status ?? "MODERATE"} ZONE
+          </p>
+        </div>
+        <div className="bg-white px-3 py-2.5">
+          <div className="flex items-center justify-between">
+            <p className="text-[8.5px] font-bold uppercase text-[#819099]">Active Weather Stress</p>
+            <span className="text-[7.5px] font-bold text-[#0284c7] bg-sky-50 px-1 rounded">Open-Meteo</span>
+          </div>
+          <p className="mt-0.5 text-sm font-bold text-[#274b60]">
+            {context.screening.riskScore === null ? "—" : `${context.screening.riskScore}`}<span className="text-[10px] font-normal text-[#94a3b8]">/100</span>
+          </p>
+          <p className={`text-[8px] font-bold uppercase ${riskTextClass(context.screening.riskLevel)}`}>
+            {context.screening.riskLevel} ATMOSPHERIC
+          </p>
+        </div>
+        <div className="bg-white px-3 py-2.5 border-t border-[#e7edef]">
+          <div className="flex items-center justify-between">
+            <p className="text-[8.5px] font-bold uppercase text-[#819099]">Response Priority</p>
+            <span className="text-[7.5px] font-bold text-[#1d788d] bg-cyan-50 px-1 rounded">DIVA Engine</span>
+          </div>
+          <p className="mt-0.5 text-sm font-bold text-[#163c58]">
+            {context.screening.priority.toUpperCase()}
+          </p>
+          <p className="text-[8px] text-[#718894]">Triage readiness</p>
+        </div>
+        <div className="bg-white px-3 py-2.5 border-t border-[#e7edef]">
+          <div className="flex items-center justify-between">
+            <p className="text-[8.5px] font-bold uppercase text-[#819099]">Population</p>
+            <span className="text-[7.5px] font-bold text-[#059669] bg-emerald-50 px-1 rounded">Census</span>
+          </div>
+          <p className="mt-0.5 text-sm font-bold text-[#274b60]">
             {context.location.population !== null && context.location.population !== undefined
               ? context.location.population.toLocaleString("en-IN")
               : <span className="text-xs font-semibold text-[#819099]">Unavailable</span>}
           </p>
-          <p className="mt-0.5 text-[8.5px] text-[#819099] truncate">{context.location.populationSource}</p>
-        </div>
-        <div className="bg-white px-3 py-3">
-          <p className="text-[9px] font-bold uppercase text-[#819099]">Screening risk</p>
-          <p className="mt-1 text-sm font-bold text-[#274b60]">
-            {context.screening.riskScore === null ? "Unavailable" : `${context.screening.riskScore}/100`}
-          </p>
-          <p className={`mt-0.5 text-[8.5px] font-semibold ${riskTextClass(context.screening.riskLevel)}`}>
-            {context.screening.riskLevel} screened risk
-          </p>
+          <p className="text-[8px] text-[#819099] truncate">{context.location.populationSource}</p>
         </div>
       </div>
 
@@ -844,7 +934,7 @@ export function IndiaLocationSummaryStrip({ context }: { context: IndiaLocationC
 }
 
 export function SelectedLocationReportAction({ context, isPending, onDownload }: { context: IndiaLocationContext; isPending?: boolean; onDownload: () => void }) {
-  return <section data-testid="selected-location-report-action" className="mt-3 flex flex-col gap-3 rounded-2xl border border-[#bfdce2] bg-[#eff8f8] p-3.5 shadow-[0_10px_24px_rgba(28,55,70,0.04)] sm:flex-row sm:items-center sm:justify-between sm:p-4"><div className="flex items-start gap-3"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#d7eef0] text-[#1b7184]"><FileText className="h-4 w-4" /></span><div><p className="text-xs font-bold text-[#244f63]">Complete selected-area analysis</p><p className="mt-1 max-w-2xl text-[10px] leading-relaxed text-[#66808a]">Download the {context.location.category.toLowerCase()} PDF with the grounded AI/ML narrative, selected metrics, forecast, mapped extent, colour legend, sources, and analyst-review notes.</p></div></div><button type="button" onClick={onDownload} disabled={isPending} className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-[#173d59] px-4 text-xs font-bold text-white shadow-[0_8px_18px_rgba(23,61,89,.16)] transition hover:bg-[#0d304a] disabled:cursor-wait disabled:opacity-70"><FileText className="h-4 w-4" />{isPending ? "Building selected-area PDF…" : "Download selected-area PDF"}</button></section>;
+  return <section data-testid="selected-location-report-action" className="mt-3 flex flex-col gap-3 rounded-2xl border border-[#bfdce2] bg-[#eff8f8] p-3.5 shadow-[0_10px_24px_rgba(28,55,70,0.04)] sm:flex-row sm:items-center sm:justify-between sm:p-4"><div className="flex items-start gap-3"><img src="/resq-logo.png" alt="ResQ Logo" className="h-10 w-10 shrink-0 rounded-xl object-contain bg-white p-0.5 shadow-sm ring-1 ring-[#1b7184]/20" /><div><p className="text-xs font-bold text-[#244f63]">Complete selected-area analysis</p><p className="mt-1 max-w-2xl text-[10px] leading-relaxed text-[#66808a]">Download the {context.location.category.toLowerCase()} PDF with the grounded AI/ML narrative, selected metrics, forecast, mapped extent, colour legend, sources, and analyst-review notes.</p></div></div><button type="button" onClick={onDownload} disabled={isPending} className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-[#173d59] px-4 text-xs font-bold text-white shadow-[0_8px_18px_rgba(23,61,89,.16)] transition hover:bg-[#0d304a] disabled:cursor-wait disabled:opacity-70"><FileText className="h-4 w-4" />{isPending ? "Building selected-area PDF…" : "Download selected-area PDF"}</button></section>;
 }
 
 export function SelectedLocationForecastDetails({ context }: { context: IndiaLocationContext }) {

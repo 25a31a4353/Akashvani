@@ -149,5 +149,21 @@ export const historicalReports = mysqlTable("historical_reports", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
+export const sosDispatches = mysqlTable("sos_dispatches", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  category: varchar("category", { length: 64 }).notNull(),
+  latitude: varchar("latitude", { length: 32 }),
+  longitude: varchar("longitude", { length: 32 }),
+  locationSource: varchar("locationSource", { length: 64 }).notNull(),
+  status: varchar("status", { length: 32 }).notNull(),
+  isSimulated: varchar("isSimulated", { length: 16 }).default("false").notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  acknowledgedAt: timestamp("acknowledgedAt"),
+  resolvedAt: timestamp("resolvedAt"),
+});
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
+export type SosDispatch = typeof sosDispatches.$inferSelect;
+export type InsertSosDispatch = typeof sosDispatches.$inferInsert;

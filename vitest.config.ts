@@ -16,7 +16,7 @@ export default defineConfig({
     environment: "node",
     include: ["server/**/*.test.ts", "server/**/*.spec.ts", "client/**/*.test.ts", "client/**/*.spec.ts"],
     env: {
-      VITE_APP_TITLE: "Akashvani — Disaster Intelligence Platform",
+      VITE_APP_TITLE: "ResQ — Disaster Intelligence Platform",
     },
   },
 });

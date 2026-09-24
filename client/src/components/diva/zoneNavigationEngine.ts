@@ -92,6 +92,8 @@ export const CURATED_SAFE_HAVENS: SafeHaven[] = [
   { id: "SH-BR-KHA-1", name: "Khagaria District Flood Evacuation Shelter", role: "EMERGENCY_SHELTER", suitability: "PREFERRED", lat: 25.5030, lon: 86.4750, capacity: 3100, district: "Khagaria", stateCode: "BR" },
 ];
 
+import { VERIFIED_ROAD_CORRIDORS } from "@shared/verifiedRoadCorridors";
+
 // ── Known Real Road-Traced Corridors for Key Demo Areas ──────────────────────
 interface RoadFallback {
   matchLat: number;
@@ -105,87 +107,55 @@ interface RoadFallback {
   travelTimeMinutes: number;
 }
 
-const KNOWN_ROAD_CORRIDORS: RoadFallback[] = [
-  // Wayanad Chooralmala ➔ Meppadi
-  {
-    matchLat: 11.5375,
-    matchLon: 76.1689,
-    toleranceKm: 6,
-    destLat: 11.5512,
-    destLon: 76.1284,
-    destName: "Meppadi Community Relief Shelter",
-    coords: [
-      [76.1689, 11.5375], [76.1640, 11.5385], [76.1580, 11.5405],
-      [76.1510, 11.5438], [76.1440, 11.5462], [76.1370, 11.5488], [76.1284, 11.5512]
-    ],
-    distanceKm: 6.8,
-    travelTimeMinutes: 14,
-  },
-  // Dibrugarh Maijan / Riverside ➔ Dikom Shelter
-  {
-    matchLat: 27.4728,
-    matchLon: 94.9120,
-    toleranceKm: 12,
-    destLat: 27.4985,
-    destLon: 95.0820,
-    destName: "Dikom Multi-Purpose Relief Shelter",
-    coords: [
-      [94.9120, 27.4728], [94.9250, 27.4800], [94.9400, 27.4900],
-      [94.9550, 27.5000], [94.9700, 27.5010], [94.9900, 27.5000],
-      [95.0100, 27.4995], [95.0300, 27.4990], [95.0550, 27.4985], [95.0820, 27.4985]
-    ],
-    distanceKm: 14.2,
-    travelTimeMinutes: 22,
-  },
-  // Chamoli Joshimath ➔ Gopeshwar
-  {
-    matchLat: 30.5558,
-    matchLon: 79.5642,
-    toleranceKm: 15,
-    destLat: 30.4078,
-    destLon: 79.3140,
-    destName: "Gopeshwar Central Relief Campus",
-    coords: [
-      [79.5642, 30.5558], [79.5490, 30.5480], [79.5280, 30.5340],
-      [79.5050, 30.5180], [79.4820, 30.5020], [79.4570, 30.4850],
-      [79.4310, 30.4690], [79.4080, 30.4540], [79.3820, 30.4400],
-      [79.3560, 30.4270], [79.3340, 30.4160], [79.3140, 30.4078]
-    ],
-    distanceKm: 38.5,
-    travelTimeMinutes: 75,
-  },
-  // Munnar ➔ Thodupuzha Safe Relief
-  {
-    matchLat: 10.0889,
-    matchLon: 77.0595,
-    toleranceKm: 14,
-    destLat: 9.8918,
-    destLon: 76.7159,
-    destName: "Munnar Town Panchayat Community Hall",
-    coords: [
-      [77.0595, 10.0889], [77.0400, 10.0700], [77.0150, 10.0430],
-      [76.9900, 10.0120], [76.9680, 9.9780], [76.9500, 9.9420],
-      [76.9200, 9.9150], [76.8900, 9.9000], [76.8600, 9.8980], [76.7159, 9.8918]
-    ],
-    distanceKm: 55.0,
-    travelTimeMinutes: 95,
-  },
-  // Puri Cyclone Coast ➔ District Safe Shelter
-  {
-    matchLat: 19.7902,
-    matchLon: 85.8274,
-    toleranceKm: 8,
-    destLat: 19.8133,
-    destLon: 85.8312,
-    destName: "Puri Multi-Purpose Cyclone Shelter (Official)",
-    coords: [
-      [85.8274, 19.7902], [85.8282, 19.7980], [85.8295, 19.8050],
-      [85.8305, 19.8100], [85.8312, 19.8133]
-    ],
-    distanceKm: 2.6,
-    travelTimeMinutes: 8,
-  },
-];
+export const KNOWN_ROAD_CORRIDORS: RoadFallback[] = VERIFIED_ROAD_CORRIDORS.map(c => ({
+  matchLat: c.matchLat,
+  matchLon: c.matchLon,
+  toleranceKm: c.toleranceKm,
+  destLat: c.destLat,
+  destLon: c.destLon,
+  destName: c.destName,
+  coords: c.coordinates,
+  distanceKm: c.distanceKm,
+  travelTimeMinutes: c.travelTimeMinutes,
+}));
+
+/**
+ * Fetch live turn-by-turn driving route geometry directly from OSRM public servers.
+ * Returns true highway/street coordinates, exact road distance, and travel time.
+ */
+export async function fetchLiveOsrmRoadRoute(
+  origLon: number,
+  origLat: number,
+  destLon: number,
+  destLat: number
+): Promise<{ coordinates: number[][]; distanceKm: number; travelTimeMinutes: number } | null> {
+  const endpoints = [
+    `https://routing.openstreetmap.de/routed-car/route/v1/driving/${origLon.toFixed(5)},${origLat.toFixed(5)};${destLon.toFixed(5)},${destLat.toFixed(5)}?overview=full&geometries=geojson`,
+    `https://router.project-osrm.org/route/v1/driving/${origLon.toFixed(5)},${origLat.toFixed(5)};${destLon.toFixed(5)},${destLat.toFixed(5)}?overview=full&geometries=geojson`,
+  ];
+  for (const url of endpoints) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.code === "Ok" && data.routes && data.routes.length > 0) {
+          const route = data.routes[0];
+          const coords = route.geometry?.coordinates;
+          if (Array.isArray(coords) && coords.length > 0) {
+            return {
+              coordinates: coords,
+              distanceKm: Number((route.distance / 1000).toFixed(1)),
+              travelTimeMinutes: Math.max(1, Math.round(route.duration / 60)),
+            };
+          }
+        }
+      }
+    } catch {
+      // try next endpoint
+    }
+  }
+  return null;
+}
 
 /**
  * Find the nearest safe relocation facility to a given origin point.

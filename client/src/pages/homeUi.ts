@@ -28,7 +28,7 @@ export function locationDetailsToggleLabel(isOpen: boolean) {
 
 export function workspaceTitle(id: WorkspaceId) {
   const titles: Record<WorkspaceId, string> = {
-    dashboard: "Akashvani overview",
+    dashboard: "ResQ overview",
     map: "Explore the map",
     risk: "Risk assessment",
     capacity: "Site capacity",

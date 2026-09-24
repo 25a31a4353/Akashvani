@@ -4,7 +4,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 import { buildAssessmentAnalysis, buildAssessmentPdf, buildSelectedLocationPdf, generateGroundedNarrative, getDemoArea, getDemoAreas, getDemoMapData, getRankedAssessments } from "./diva";
-import { getPersistedReport, listAllHistoricalReports, listPersistedReports, persistAnalyticalSnapshot, persistNarrative, persistReport, persistSourceArtifact } from "./db";
+import { getPersistedReport, listAllHistoricalReports, listPersistedReports, persistAnalyticalSnapshot, persistNarrative, persistReport, persistSourceArtifact, createSosDispatch, listSosDispatches, updateSosDispatchStatus } from "./db";
 import { storagePut } from "./storage";
 import { compareHistoricalGeometry, deriveHistoricalPrediction, validateDatasetGeometry } from "./diva/historical";
 import { createHistoricalCase, listHistoricalCases, listHistoricalDatasets, persistHistoricalDataset, persistHistoricalRun, persistHistoricalReport } from "./db";
@@ -13,6 +13,7 @@ import { getEnvironmentalContext } from "./diva/environment";
 import { getIndiaLocationContext, searchIndiaLocations } from "./diva/india";
 import { getNationwideIndiaMap } from "./diva/nationwideMap";
 import { mergePersistentPdfArchive } from "./diva/reportArchive";
+import { generateResqExplanation } from "./diva/assistant";
 import { andhraPradeshDefault } from "../shared/india";
 import {
   getAllStates,
@@ -233,6 +234,93 @@ export const appRouter = router({
           input.originName,
           input.destinationName
         );
+      }),
+    }),
+    sos: router({
+      create: publicProcedure.input(z.object({
+        category: z.string().min(1),
+        latitude: z.number().nullable().optional(),
+        longitude: z.number().nullable().optional(),
+        locationSource: z.string().default("GPS / DEVICE"),
+        isSimulated: z.boolean().default(false),
+        notes: z.string().optional(),
+      })).mutation(async ({ input }) => {
+        const id = `SOS-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+        const record = await createSosDispatch({
+          id,
+          category: input.category,
+          latitude: input.latitude !== undefined && input.latitude !== null ? input.latitude.toString() : null,
+          longitude: input.longitude !== undefined && input.longitude !== null ? input.longitude.toString() : null,
+          locationSource: input.locationSource,
+          status: "SENT",
+          isSimulated: input.isSimulated ? "true" : "false",
+          notes: input.notes ?? null,
+        });
+        return record;
+      }),
+      list: publicProcedure.query(async () => {
+        return listSosDispatches();
+      }),
+      updateStatus: publicProcedure.input(z.object({
+        id: z.string().min(1),
+        status: z.enum(["SENT", "ACKNOWLEDGED", "RESOLVED", "FAILED"]),
+        isSimulated: z.boolean().optional(),
+      })).mutation(async ({ input }) => {
+        const updated = await updateSosDispatchStatus(input.id, input.status, { isSimulated: input.isSimulated });
+        if (!updated) throw new Error(`SOS dispatch with ID ${input.id} not found.`);
+        return updated;
+      }),
+    }),
+    assistant: router({
+      explain: publicProcedure.input(z.object({
+        locationName: z.string(),
+        category: z.string().optional(),
+        district: z.string().optional(),
+        state: z.string().optional(),
+        latitude: z.number(),
+        longitude: z.number(),
+        primaryHazard: z.string().optional(),
+        secondaryHazards: z.array(z.string()).optional(),
+        classificationZone: z.string().optional(),
+        classificationScore: z.number().nullable().optional(),
+        classificationReasons: z.array(z.string()).optional(),
+        exposedHabitations: z.array(z.object({
+          name: z.string(),
+          population: z.number().nullable().optional(),
+          exposureLevel: z.string().optional(),
+          hazardType: z.string().optional(),
+          distanceKm: z.number().optional(),
+        })).optional(),
+        relocationPriority: z.string().optional(),
+        facilitiesAvailable: z.number().optional(),
+        facilityBreakdown: z.object({
+          hospitals: z.number(),
+          shelters: z.number(),
+          emergency: z.number(),
+        }).optional(),
+        facilityCapacityVerified: z.boolean().default(false),
+        facilityCapacityNote: z.string().optional(),
+        selectedDestination: z.object({
+          name: z.string(),
+          role: z.string().optional(),
+          suitability: z.string().optional(),
+          distanceKm: z.number().nullable().optional(),
+        }).nullable().optional(),
+        evacuationRoute: z.object({
+          isRoadRoute: z.boolean(),
+          distanceKm: z.number().nullable().optional(),
+          travelTimeMinutes: z.number().nullable().optional(),
+          sourceNote: z.string().optional(),
+        }).nullable().optional(),
+        weatherConditions: z.object({
+          temperatureC: z.number().nullable().optional(),
+          precipitationMm: z.number().nullable().optional(),
+          airQualityAqi: z.number().nullable().optional(),
+          status: z.string().optional(),
+        }).optional(),
+        unavailableData: z.array(z.string()).optional(),
+      })).mutation(async ({ input }) => {
+        return generateResqExplanation(input);
       }),
     }),
     riskAnalyze: publicProcedure.input(z.object({ id: z.string().min(1) })).mutation(async ({ input }) => {

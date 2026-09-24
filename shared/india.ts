@@ -28,9 +28,66 @@ export type IndiaLocation = {
   source: string;
 };
 
+export type PredictedWeatherProblem = {
+  id: string;
+  category: "FLASH_FLOOD" | "LANDSLIDE" | "HEATWAVE" | "SQUALL_GALE" | "THUNDERSTORM_LIGHTNING" | "AIR_POLLUTION" | "DROUGHT";
+  title: string;
+  severity: "CRITICAL" | "HIGH" | "MODERATE" | "LOW";
+  triggerHorizon: string;
+  probabilityPct: number;
+  causalFactors: string[];
+  anticipatedImpact: string;
+  immediateDirectives: string[];
+};
+
+export type WeatherPredictionReport = {
+  overallRiskLevel: "CRITICAL" | "HIGH" | "MODERATE" | "LOW";
+  summaryNarrative: string;
+  primaryThreat: string;
+  predictedProblems: PredictedWeatherProblem[];
+  generatedAt: string;
+};
+
+export type ForecastDayDetailed = {
+  date: string;
+  temperatureMinC: number | null;
+  temperatureMaxC: number | null;
+  apparentTemperatureMinC?: number | null;
+  apparentTemperatureMaxC?: number | null;
+  precipitationProbability: number | null;
+  precipitationSumMm: number | null;
+  windSpeedMaxKph: number | null;
+  windGustMaxKph: number | null;
+  uvIndexMax?: number | null;
+  weatherCode: number | null;
+  weatherDescription?: string;
+};
+
+export type EnvironmentalContext = {
+  temperatureC: number | null;
+  apparentTemperatureC?: number | null;
+  relativeHumidityPct?: number | null;
+  precipitationMm: number | null;
+  surfacePressureHpa?: number | null;
+  windSpeedKph?: number | null;
+  windGustKph?: number | null;
+  windDirectionDeg?: number | null;
+  uvIndex?: number | null;
+  weatherCode?: number | null;
+  weatherDescription?: string;
+  usAqi: number | null;
+  pm25: number | null;
+  pm10?: number | null;
+  observedAt: string | null;
+  forecast: ForecastDayDetailed[];
+  predictions?: WeatherPredictionReport;
+  source: string;
+  status: string;
+};
+
 export type IndiaLocationContext = {
   location: IndiaLocation;
-  environment: { temperatureC: number | null; precipitationMm: number | null; usAqi: number | null; pm25: number | null; observedAt: string | null; forecast: Array<{ date: string; temperatureMinC: number | null; temperatureMaxC: number | null; precipitationProbability: number | null; precipitationSumMm: number | null; windSpeedMaxKph: number | null; windGustMaxKph: number | null; weatherCode: number | null }>; source: string; status: string };
+  environment: EnvironmentalContext;
   infrastructure: { items: Array<{ id: string; name: string; type: string; latitude: number; longitude: number }>; source: string; status: "LIVE OSM FACILITY SAMPLE" | "UNAVAILABLE"; observedAt: string | null };
   screening: { riskScore: number | null; riskLevel: "Low" | "Moderate" | "High" | "Unavailable"; priority: "Immediate" | "High" | "Moderate" | "Low" | "Unavailable"; hazardContext: string; populationContext: string; status: string };
   terrain?: TerrainContext;

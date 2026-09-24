@@ -14,6 +14,9 @@ import {
   historicalDatasets,
   historicalRuns,
   historicalReports,
+  sosDispatches,
+  type SosDispatch,
+  type InsertSosDispatch,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -41,6 +44,7 @@ const memoryStore = {
   historicalDatasets: [] as Array<typeof historicalDatasets.$inferSelect>,
   historicalRuns: [] as Array<typeof historicalRuns.$inferSelect>,
   historicalReports: [] as Array<typeof historicalReports.$inferSelect>,
+  sosDispatches: [] as Array<typeof sosDispatches.$inferSelect>,
 };
 
 let memoryUserIdCounter = 1;
@@ -373,3 +377,64 @@ export async function listAllHistoricalReports(): Promise<Array<typeof historica
   }
   return [...memoryStore.historicalReports].slice(0, 50);
 }
+
+export async function createSosDispatch(input: InsertSosDispatch): Promise<SosDispatch> {
+  const db = await getDb();
+  const record: SosDispatch = {
+    id: input.id || ("sos_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7)),
+    category: input.category,
+    latitude: input.latitude ?? null,
+    longitude: input.longitude ?? null,
+    locationSource: input.locationSource,
+    status: input.status,
+    isSimulated: input.isSimulated ?? "false",
+    notes: input.notes ?? null,
+    createdAt: new Date(),
+    acknowledgedAt: null,
+    resolvedAt: null,
+  };
+
+  if (db) {
+    await db.insert(sosDispatches).values(record);
+    return record;
+  }
+
+  memoryStore.sosDispatches.unshift(record);
+  return record;
+}
+
+export async function listSosDispatches(): Promise<SosDispatch[]> {
+  const db = await getDb();
+  if (db) {
+    return db.select().from(sosDispatches).orderBy(desc(sosDispatches.createdAt)).limit(100);
+  }
+  return [...memoryStore.sosDispatches].slice(0, 100);
+}
+
+export async function updateSosDispatchStatus(
+  id: string,
+  status: "SENT" | "ACKNOWLEDGED" | "RESOLVED" | "FAILED",
+  opts?: { isSimulated?: boolean }
+): Promise<SosDispatch | null> {
+  const db = await getDb();
+  const now = new Date();
+  const updateData: Partial<SosDispatch> = { status };
+  if (status === "ACKNOWLEDGED") updateData.acknowledgedAt = now;
+  if (status === "RESOLVED") updateData.resolvedAt = now;
+  if (opts?.isSimulated) updateData.isSimulated = "true";
+
+  if (db) {
+    await db.update(sosDispatches).set(updateData).where(eq(sosDispatches.id, id));
+    const results = await db.select().from(sosDispatches).where(eq(sosDispatches.id, id)).limit(1);
+    return results[0] ?? null;
+  }
+
+  const existing = memoryStore.sosDispatches.find(d => d.id === id);
+  if (!existing) return null;
+  existing.status = status;
+  if (status === "ACKNOWLEDGED") existing.acknowledgedAt = now;
+  if (status === "RESOLVED") existing.resolvedAt = now;
+  if (opts?.isSimulated) existing.isSimulated = "true";
+  return existing;
+}
+

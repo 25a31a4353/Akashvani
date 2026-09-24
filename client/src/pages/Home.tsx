@@ -18,10 +18,14 @@ import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
 import type { DecisionNarrative, RiskLevel } from "@shared/diva";
-import { buildIndiaLocationSearch, resolveIndiaLocationFromSearch, resolveIndiaLocationSelection, type IndiaLocation } from "@shared/india";
-import { BarChart3, Bot, Building2, ChevronDown, CircleAlert, CloudRain, Database, Download, FileText, Filter, FlaskConical, History, Layers3, Loader2, MapPin, Menu, MoreHorizontal, PanelRightOpen, Search, ShieldAlert, SlidersHorizontal, Sparkles, Upload, Users, X } from "lucide-react";
+import { buildIndiaLocationSearch, resolveIndiaLocationFromSearch, resolveIndiaLocationSelection, type IndiaLocation, type IndiaLocationContext } from "@shared/india";
+import { BarChart3, Bot, Building2, ChevronDown, CircleAlert, CloudRain, Database, Download, FileText, Filter, FlaskConical, History, Layers3, Loader2, MapPin, Menu, MoreHorizontal, PanelRightOpen, Radio, Search, ShieldAlert, SlidersHorizontal, Sparkles, Upload, Users, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { LanguageSelector } from "@/components/LanguageSelector";
+import { SosModal } from "@/components/diva/SosModal";
+import { SosResponderDrawer } from "@/components/diva/SosResponderDrawer";
+import { ResqAiAssistant } from "@/components/diva/ResqAiAssistant";
 
 type Workspace = WorkspaceId;
 
@@ -53,7 +57,7 @@ const initialLayers: Record<string, boolean> = {
   hospitals: false,
   seismicOfficial: false,
   cwcGauges: false,
-  floodPlains: true,
+  floodPlains: false,
   erosionCorridors: true,
   landslideEvents: true,
   cycloneTracks: false,
@@ -67,6 +71,14 @@ const initialLayers: Record<string, boolean> = {
 
 
 function percentage(value: number) { return `${Math.max(0, Math.min(100, value))}%`; }
+
+function formatHumanPopulation(raw: number | null | undefined): string {
+  if (raw == null || isNaN(raw) || raw <= 0) return "Unavailable";
+  if (raw >= 10_000_000) return `${(raw / 1_000_000).toFixed(1)}M people`;
+  if (raw >= 1_000_000) return `${(raw / 1_000_000).toFixed(2)}M people`;
+  if (raw >= 10_000) return `${Math.round(raw / 1000)}K people`;
+  return `${raw.toLocaleString("en-IN")} people`;
+}
 
 function FactorBar({ label, score, description }: { label: string; score: number; description: string }) {
   return <div className="py-2.5"><div className="flex items-center justify-between gap-3"><div><p className="text-xs font-semibold text-[#314b5c]">{label}</p><p className="mt-0.5 text-[10px] text-[#778894]">{description}</p></div><span className="text-xs font-bold text-[#1b435b]">{score}<span className="font-medium text-[#83929b]">/100</span></span></div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#e8eef1]"><div className="h-full rounded-full bg-[#1f788d] transition-all duration-500" style={{ width: percentage(score) }} /></div></div>;
@@ -97,6 +109,9 @@ export default function Home() {
   const [locationNotice, setLocationNotice] = useState<string | null>(() => initialIndiaLocation.isFallback && initialIndiaLocation.requested ? selectedLocationFallbackMessage(initialIndiaLocation.requested) : null);
   const [filters, setFilters] = useState({ hazards: [] as string[], riskLevels: [] as RiskLevel[], priority: [] as Array<"Immediate" | "High" | "Moderate" | "Low">, minimumPopulation: 0, capacity: [] as Array<"Adequate" | "Constrained" | "Insufficient"> });
   const [narrative, setNarrative] = useState<DecisionNarrative | null>(null);
+  const [isSosOpen, setIsSosOpen] = useState(false);
+  const [isResponderDrawerOpen, setIsResponderDrawerOpen] = useState(false);
+  const [isAiAssistantOpen, setIsAiAssistantOpen] = useState(false);
   const artifactInputRef = useRef<HTMLInputElement>(null);
   const utils = trpc.useUtils();
   const dashboardQuery = trpc.diva.dashboard.useQuery();
@@ -287,7 +302,7 @@ export default function Home() {
     sourceNote: `Emergency road corridor: ${calcDistKm} km (~${calcMinutes} min). Road navigation active.`,
   };
 
-  const mapLocationContext = useMemo(() => {
+  const mapLocationContext = useMemo((): IndiaLocationContext | undefined => {
     if (indiaContextRequest.data && (indiaContextRequest.data.location.id === indiaLocation.id || indiaContextRequest.data.location.name.toLowerCase() === indiaLocation.name.toLowerCase())) {
       return indiaContextRequest.data;
     }
@@ -360,7 +375,47 @@ export default function Home() {
     reader.readAsDataURL(file);
   };
 
-  if (dashboardQuery.isLoading || mapQuery.isLoading || assessmentQuery.isLoading || selectedContextLoading) return <div role="status" aria-live="polite" className="grid min-h-screen place-items-center bg-[#f4f7f8] p-6"><div className="max-w-sm rounded-2xl border border-[#dbe7e9] bg-white p-5 text-center shadow-[0_12px_28px_rgba(28,55,70,0.06)]"><Loader2 className="mx-auto h-6 w-6 animate-spin text-[#1f788d]" /><p className="mt-3 text-sm font-semibold text-[#264a60]">{selectedContextLoading ? selectedLocationLoadingMessage(indiaLocation.displayName) : "Loading your Akashvani workspace"}</p><p className="mt-1 text-xs leading-relaxed text-[#71858f]">{selectedContextLoading ? "The map and details will update together when this location is ready." : "Preparing the map and assessment summary."}</p></div></div>;
+  if (dashboardQuery.isLoading || mapQuery.isLoading || assessmentQuery.isLoading || selectedContextLoading)
+    return (
+      <div role="status" aria-live="polite" className="grid min-h-screen place-items-center bg-[#f0f4f7] p-6">
+        <div className="flex max-w-sm flex-col items-center rounded-3xl border border-[#d3e2e6] bg-white/95 p-8 text-center shadow-[0_20px_50px_rgba(20,50,70,0.12)] backdrop-blur">
+          <div className="relative mb-6 flex items-center justify-center">
+            <div className="absolute h-24 w-24 animate-ping rounded-full bg-[#f97316]/20 duration-1000" />
+            <div
+              className="absolute -inset-2 animate-spin rounded-full border-2 border-dashed border-[#1f788d]/50"
+              style={{ animationDuration: "8s" }}
+            />
+            <div className="relative flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl bg-white p-1 shadow-lg ring-1 ring-black/5">
+              <img
+                src="/resq-logo.png"
+                alt="ResQ Logo"
+                className="h-full w-full object-contain"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Loader2 className="h-4 w-4 animate-spin text-[#1f788d]" />
+            <h2 className="text-base font-bold tracking-tight text-[#163c58]">
+              {selectedContextLoading
+                ? selectedLocationLoadingMessage(indiaLocation.displayName)
+                : "Loading ResQ Workspace"}
+            </h2>
+          </div>
+
+          <p className="mt-2 text-xs leading-relaxed text-[#68828e]">
+            {selectedContextLoading
+              ? "The map, hazard layers, and decision panels will update once this location is ready."
+              : "Preparing spatial hazard models, red-zones, and shelter network."}
+          </p>
+
+          <div className="mt-6 flex items-center gap-2 rounded-full bg-[#f0f7f8] px-3.5 py-1 text-[11px] font-semibold text-[#1f788d]">
+            <span className="h-2 w-2 rounded-full bg-[#10b981] animate-pulse" />
+            <span>ResQ Intelligence Core</span>
+          </div>
+        </div>
+      </div>
+    );
   if (!selected || !mapData || !dashboardQuery.data) return <div className="grid min-h-screen place-items-center bg-[#f4f7f8] p-6 text-center"><div><CircleAlert className="mx-auto h-8 w-8 text-[#bb443f]" /><h1 className="mt-3 text-lg font-bold">Workspace data is unavailable</h1><p className="mt-2 text-sm text-muted-foreground">Please refresh the page. No live data is represented in this demonstration workspace.</p></div></div>;
 
   const { area, analysis } = selected;
@@ -371,7 +426,17 @@ export default function Home() {
   return <div className="min-h-screen bg-[#f4f7f8] text-[#173347]">
     <header className="sticky top-0 z-40 border-b border-[#e0e8eb] bg-[#fbfcfc]/95 backdrop-blur">
       <div className="flex h-[68px] items-center gap-4 px-4 lg:px-6">
-        <div className="flex shrink-0 items-center gap-3"><div className="grid h-9 w-9 place-items-center rounded-xl bg-[#163c58] text-white shadow-[0_8px_18px_rgba(22,60,88,0.24)]"><div className="relative h-4 w-4"><span className="absolute inset-x-0 bottom-0 h-1.5 rounded-sm bg-[#80cbd6]" /><span className="absolute bottom-0 left-1.5 h-3 w-1.5 rounded-t-sm bg-white" /><span className="absolute bottom-0 right-1 h-2.5 w-1.5 rounded-t-sm bg-[#c0e5ea]" /></div></div><div className="hidden sm:block"><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#1f788d]">PS 191 · SIH</p><p className="text-sm font-bold tracking-tight text-[#15384f]">Akashvani</p></div></div>
+        <div className="flex shrink-0 items-center gap-2.5">
+          <img
+            src="/resq-logo.png"
+            alt="ResQ Logo"
+            className="h-10 w-10 rounded-xl object-contain bg-white p-0.5 shadow-[0_4px_12px_rgba(22,60,88,0.18)] ring-1 ring-[#163c58]/10"
+          />
+          <div className="hidden sm:block">
+            <p className="text-base font-bold leading-tight tracking-tight text-[#15384f]">ResQ</p>
+            <p className="text-[9px] font-medium tracking-wide text-[#6c8691]">Safer Communities</p>
+          </div>
+        </div>
         <div ref={headerSearchRef} className="relative mx-auto w-full max-w-[510px]">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#84949d]" />
           <Input
@@ -494,7 +559,51 @@ export default function Home() {
             </div>
           )}
         </div>
-        <div className="ml-auto flex items-center gap-2"><div className="hidden items-center gap-1.5 rounded-full bg-[#e6f5ed] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.1em] text-[#267653] md:flex"><span className="h-1.5 w-1.5 rounded-full bg-[#2e9a67]" /> Demo mode</div><Button variant="outline" size="icon" onClick={() => setIsMobileNavOpen(true)} className="h-9 w-9 rounded-xl border-[#dbe5e8] bg-white text-[#476574] lg:hidden" aria-label="Open navigation"><Menu className="h-4 w-4" /></Button><Button variant="outline" size="icon" onClick={() => setIsMoreOpen(current => !current)} className="hidden h-9 w-9 rounded-xl border-[#dbe5e8] bg-white text-[#476574] sm:inline-flex" aria-label="More options"><MoreHorizontal className="h-4 w-4" /></Button></div>
+        <div className="ml-auto flex items-center gap-2">
+          {/* Multi-language Selector */}
+          <LanguageSelector tone="light" />
+
+          {/* ResQ Grounded AI Assistant */}
+          <Button
+            data-testid="header-ai-assistant-btn"
+            variant="outline"
+            size="sm"
+            onClick={() => setIsAiAssistantOpen(true)}
+            className="h-9 gap-1.5 rounded-xl border-[#c8dfe4] bg-[#eff7f9] text-xs font-bold text-[#155a70] hover:bg-[#dff0f3] hover:text-[#0e4354] shadow-sm"
+            title="Ask ResQ AI Assistant about this location"
+          >
+            <Bot className="h-4 w-4 text-[#1a7a92]" />
+            <span className="hidden sm:inline">ResQ AI</span>
+          </Button>
+
+          {/* Responder Emergency Dispatch Log */}
+          <Button
+            data-testid="header-responder-log-btn"
+            variant="outline"
+            size="sm"
+            onClick={() => setIsResponderDrawerOpen(true)}
+            className="h-9 gap-1.5 rounded-xl border-[#dbe5e8] bg-white text-xs font-semibold text-[#456473] hover:bg-[#f2f7f8]"
+            title="View SOS Dispatches (Responder View)"
+          >
+            <Radio className="h-3.5 w-3.5 text-[#e11d48]" />
+            <span className="hidden md:inline">Dispatches</span>
+          </Button>
+
+          {/* Emergency SOS Action */}
+          <Button
+            data-testid="header-sos-btn"
+            size="sm"
+            onClick={() => setIsSosOpen(true)}
+            className="h-9 gap-1.5 rounded-xl bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-700 hover:to-rose-800 text-white font-black text-xs shadow-md shadow-red-500/25 animate-pulse"
+            title="Trigger Emergency SOS"
+          >
+            <span className="h-2 w-2 rounded-full bg-white" />
+            SOS
+          </Button>
+
+          <Button variant="outline" size="icon" onClick={() => setIsMobileNavOpen(true)} className="h-9 w-9 rounded-xl border-[#dbe5e8] bg-white text-[#476574] lg:hidden" aria-label="Open navigation"><Menu className="h-4 w-4" /></Button>
+          <Button variant="outline" size="icon" onClick={() => setIsMoreOpen(current => !current)} className="hidden h-9 w-9 rounded-xl border-[#dbe5e8] bg-white text-[#476574] sm:inline-flex" aria-label="More options"><MoreHorizontal className="h-4 w-4" /></Button>
+        </div>
       </div>
     </header>
     {isMobileNavOpen && <div className="fixed inset-0 z-50 bg-[#15384f]/35 lg:hidden" role="dialog" aria-label="Navigation menu"><aside className="h-full w-[286px] bg-white p-4 shadow-2xl"><div className="flex items-center justify-between border-b border-[#e5edef] pb-3"><p className="text-sm font-bold text-[#274a60]">Decision support</p><Button variant="ghost" size="icon" onClick={() => setIsMobileNavOpen(false)} aria-label="Close navigation"><X className="h-4 w-4" /></Button></div><nav className="mt-4 space-y-1"><p className="px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#8a99a2]">Start here</p>{primaryNavigation.map(item => { const Icon = item.icon; return <button key={item.id} onClick={() => { setWorkspace(item.id); setIsMobileNavOpen(false); }} className={cn("flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium", workspace === item.id ? "bg-[#eaf5f7] text-[#17627d]" : "text-[#526b79] hover:bg-[#f0f5f6]")}><Icon className="h-[17px] w-[17px]" />{item.label}</button>; })}<div className="mt-4 border-t border-[#e5edef] pt-3"><button type="button" onClick={() => setIsWorkspaceMenuOpen(current => !current)} aria-expanded={isWorkspaceMenuOpen} className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-[#526b79] hover:bg-[#f0f5f6]"><span>More workspaces</span><ChevronDown className={cn("h-4 w-4 transition-transform", isWorkspaceMenuOpen && "rotate-180")} /></button>{isWorkspaceMenuOpen && <div className="mt-1 space-y-1">{secondaryNavigation.map(item => { const Icon = item.icon; return <button key={item.id} onClick={() => { setWorkspace(item.id); setIsMobileNavOpen(false); }} className={cn("flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium", workspace === item.id ? "bg-[#eaf5f7] text-[#17627d]" : "text-[#526b79] hover:bg-[#f0f5f6]")}><Icon className="h-[17px] w-[17px]" />{item.label}</button>; })}</div>}</div></nav></aside></div>}
@@ -558,7 +667,7 @@ export default function Home() {
             </div>
           )}
           {indiaLocation.id === "india-assam" && <><AssamStateProfile /><AssamDisasterHistory />{indiaContextQuery.data && <SelectedLocationForecastDetails context={indiaContextQuery.data} />}</>}
-          <section className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4"><MetricCard label="Assessment areas" value={dashboardQuery.data.totals.habitations.toLocaleString()} detail="Within current demonstration extent" icon={MapPin} /><MetricCard label="Critical areas" value={dashboardQuery.data.totals.Critical.toLocaleString()} detail="Highest analytical risk class" icon={ShieldAlert} accent="red" /><MetricCard label="High-priority actions" value={dashboardQuery.data.totals.immediate.toLocaleString()} detail="Immediate relocation assessment" icon={CircleAlert} accent="orange" /><MetricCard label="Population exposed" value={`${Math.round(dashboardQuery.data.totals.population / 1000)}k`} detail="Scenario population across areas" icon={Users} accent="teal" /></section>
+          <section className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4"><MetricCard label="Assessment areas" value={dashboardQuery.data.totals.habitations.toLocaleString()} detail="Within current demonstration extent" icon={MapPin} /><MetricCard label="Critical areas" value={dashboardQuery.data.totals.Critical.toLocaleString()} detail="Highest analytical risk class" icon={ShieldAlert} accent="red" /><MetricCard label="High-priority actions" value={dashboardQuery.data.totals.immediate.toLocaleString()} detail="Immediate relocation assessment" icon={CircleAlert} accent="orange" /><MetricCard label="Population exposed" value={formatHumanPopulation(dashboardQuery.data.totals.population)} detail="Scenario population across areas" icon={Users} accent="teal" /></section>
           {workspace === "dashboard" && isInsightsOpen && <section className="mt-4 grid gap-4 xl:grid-cols-[1.1fr_1fr_1fr]"><div className="rounded-2xl border border-[#dbe6e9] bg-white p-4 shadow-[0_12px_30px_rgba(28,55,70,0.04)]"><div className="flex items-start justify-between"><div><p className="text-xs font-bold text-[#284b60]">Risk distribution</p><p className="mt-1 text-[10px] text-[#7c8b93]">Scenario classification across assessment areas</p></div><SlidersHorizontal className="h-4 w-4 text-[#7c909a]" /></div><div className="mt-3 h-[174px]"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={riskDistribution} dataKey="value" nameKey="name" innerRadius={43} outerRadius={66} paddingAngle={3}>{riskDistribution.map(entry => <Cell key={entry.name} fill={entry.color} />)}</Pie><Tooltip formatter={(value: number) => [`${value} areas`, "Count"]} contentStyle={{ borderRadius: 10, border: "1px solid #e0e8eb", fontSize: 11 }} /></PieChart></ResponsiveContainer></div><div className="grid grid-cols-4 gap-1 text-center">{riskDistribution.map(item => <div key={item.name}><span className="mx-auto block h-1.5 w-1.5 rounded-full" style={{ background: item.color }} /><p className="mt-1 text-[10px] font-semibold text-[#536a77]">{item.value}</p><p className="text-[9px] text-[#89969d]">{item.name}</p></div>)}</div></div><div className="rounded-2xl border border-[#dbe6e9] bg-white p-4 shadow-[0_12px_30px_rgba(28,55,70,0.04)]"><div><p className="text-xs font-bold text-[#284b60]">Priority comparison</p><p className="mt-1 text-[10px] text-[#7c8b93]">Highest-ranked areas by relocation score</p></div><div className="mt-4 h-[205px]"><ResponsiveContainer width="100%" height="100%"><BarChart data={dashboardQuery.data.ranked.slice(0, 5).map(item => ({ name: item.area.name.split(" ")[0], score: item.analysis.relocationScore }))} layout="vertical" margin={{ left: 0, right: 8 }}><XAxis type="number" hide domain={[0, 100]} /><YAxis type="category" dataKey="name" width={78} tick={{ fontSize: 10, fill: "#6f818b" }} axisLine={false} tickLine={false} /><Tooltip cursor={{ fill: "#f2f7f8" }} contentStyle={{ borderRadius: 10, border: "1px solid #e0e8eb", fontSize: 11 }} /><Bar dataKey="score" radius={[0, 5, 5, 0]} fill="#1d788d" barSize={13} /></BarChart></ResponsiveContainer></div></div><div className="rounded-2xl border border-[#dbe6e9] bg-white p-4 shadow-[0_12px_30px_rgba(28,55,70,0.04)]"><div className="flex items-start justify-between"><div><p className="text-xs font-bold text-[#284b60]">Environmental context</p><p className="mt-1 text-[10px] text-[#7c8b93]">Risk trend across selected priority subset</p></div><CloudRain className="h-4 w-4 text-[#438ea0]" /></div><div className="mt-4 h-[181px]"><ResponsiveContainer width="100%" height="100%"><AreaChart data={trendData}><defs><linearGradient id="riskFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#6cb6c4" stopOpacity={0.44} /><stop offset="100%" stopColor="#6cb6c4" stopOpacity={0.03} /></linearGradient></defs><XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "#748791" }} /><YAxis hide domain={[0, 100]} /><Tooltip contentStyle={{ borderRadius: 10, border: "1px solid #e0e8eb", fontSize: 11 }} /><Area type="monotone" dataKey="risk" stroke="#267e93" strokeWidth={2} fill="url(#riskFill)" /></AreaChart></ResponsiveContainer></div></div></section>}
           <section className="mt-4 rounded-2xl border border-[#dbe6e9] bg-white shadow-[0_12px_30px_rgba(28,55,70,0.04)]"><div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e7edef] p-4"><div><p className="text-sm font-bold text-[#284b60]">{workspace === "capacity" ? "Candidate site capacity" : workspace === "relocation" ? "Relocation recommendation queue" : workspace === "reports" ? "Permanent PDF report archive" : "Priority assessment queue"}</p><p className="mt-0.5 text-[10px] text-[#7c8b93]">Data status: DEMO DATA · Source: DIVA scenario dataset · Updated: {dashboardQuery.data.updatedAt}</p></div>{workspace === "reports" && <><input ref={artifactInputRef} className="hidden" type="file" accept=".geojson,.json,.csv,.zip,.pdf" onChange={event => handleArtifact(event.target.files?.[0])} /><Button onClick={() => artifactInputRef.current?.click()} disabled={uploadArtifact.isPending} variant="outline" className="h-8 rounded-lg border-[#d5e3e6] text-xs text-[#2c5d73]">{uploadArtifact.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Upload className="mr-1.5 h-3.5 w-3.5" />} Add source artifact</Button></>}</div>{workspace === "capacity" ? <div className="divide-y divide-[#edf1f2]">{analysis.candidateSites.map((site, index) => <div key={site.id} className="grid gap-3 px-4 py-3.5 md:grid-cols-[1.3fr_.8fr_.8fr_.8fr_1.3fr]"><div><p className="text-sm font-semibold text-[#294c60]">{site.name}</p><p className="mt-0.5 text-[10px] text-[#7c8d96]">{site.constraints.join(" · ")}</p></div><div><p className="text-[9px] font-bold uppercase text-[#89979e]">Available capacity</p><p className="mt-0.5 text-xs font-bold text-[#365569]">{site.availableCapacity.toLocaleString()} / {site.capacity.toLocaleString()}</p></div><div><p className="text-[9px] font-bold uppercase text-[#89979e]">Service access</p><p className="mt-0.5 text-xs font-bold text-[#365569]">{site.serviceAccess}/100</p></div><div><p className="text-[9px] font-bold uppercase text-[#89979e]">Suitability</p><p className="mt-0.5 text-xs font-bold text-[#365569]">{site.suitability}/100</p></div><div className="flex items-center justify-between gap-3"><p className="text-xs text-[#657a85]">{site.recommendation}</p><span className="rounded-full bg-[#e7f3f2] px-2 py-1 text-xs font-bold text-[#207468]">{site.score}</span></div></div>)}</div> : workspace === "reports" ? <div>{reportsQuery.data?.length ? reportsQuery.data.map(report => <div key={report.id} className="flex items-center justify-between gap-3 border-b border-[#edf1f2] px-4 py-3.5"><div><p className="text-sm font-semibold text-[#294c60]">{report.title}</p><p className="mt-0.5 text-[10px] text-[#7c8d96]">{report.id} · {report.kind === "HISTORICAL" ? "Historical validation PDF" : "Assessment PDF"} · {new Date(report.createdAt).toLocaleString()}</p></div><div className="flex items-center gap-3">{report.kind === "ASSESSMENT" && report.riskLevel ? <RiskBadge level={report.riskLevel as RiskLevel} /> : <span className="rounded-full bg-[#e9f5f7] px-2 py-1 text-[9px] font-bold text-[#1c7084]">HISTORICAL</span>}<a href={report.storageUrl} target="_blank" rel="noreferrer" className="inline-flex h-8 items-center rounded-lg border border-[#d9e4e7] px-2.5 text-xs font-semibold text-[#2b647b]"><Download className="mr-1.5 h-3.5 w-3.5" /> Download PDF</a></div></div>) : <div className="px-4 py-10 text-center"><FileText className="mx-auto h-6 w-6 text-[#8ba2ad]" /><p className="mt-2 text-sm font-semibold text-[#4f6c7c]">No stored reports yet</p><p className="mt-1 text-xs text-[#82919a]">Assessment and historical PDFs remain available here after they are written to object storage and recorded in the archive.</p></div>}</div> : <div className="overflow-x-auto"><table className="w-full min-w-[700px] text-left"><thead className="bg-[#f7fafb]"><tr className="text-[9px] font-bold uppercase tracking-[0.1em] text-[#82919b]"><th className="px-4 py-3">Assessment area</th><th className="px-4 py-3">Risk</th><th className="px-4 py-3">Population</th><th className="px-4 py-3">Primary driver</th><th className="px-4 py-3">Capacity</th><th className="px-4 py-3">Relocation</th><th className="px-4 py-3" /></tr></thead><tbody>{dashboardQuery.data.ranked.slice(0, 6).map(item => <tr key={item.area.id} className="border-t border-[#edf1f2] text-xs transition-colors hover:bg-[#f7fbfb]"><td className="px-4 py-3"><button onClick={() => selectArea(item.area.id)} className="font-semibold text-[#2c6076] hover:underline">{item.area.name}</button><p className="mt-0.5 text-[10px] text-[#7c8d96]">{item.area.district}</p></td><td className="px-4 py-3"><RiskBadge level={item.analysis.riskLevel} /></td><td className="px-4 py-3 font-semibold text-[#405d6d]">{item.area.population.toLocaleString()}</td><td className="px-4 py-3 text-[#667b86]">{item.analysis.riskFactors[0]?.label}</td><td className="px-4 py-3"><span className="font-semibold text-[#405d6d]">{item.analysis.carryingCapacityScore}</span><span className="text-[#87979e]"> / 100</span></td><td className="px-4 py-3"><RiskBadge level={item.analysis.relocationPriority} /></td><td className="px-4 py-3"><Button onClick={() => selectArea(item.area.id)} variant="ghost" size="icon" className="h-7 w-7 rounded-lg"><ChevronDown className="h-3.5 w-3.5 -rotate-90" /></Button></td></tr>)}</tbody></table></div>}</section></>}
         </div>
@@ -566,5 +675,32 @@ export default function Home() {
         {indiaContextQuery.data && workspace !== "reports" && <div className="mx-auto mt-4 max-w-[1660px]"><SelectedLocationForecast context={indiaContextQuery.data!} /><SelectedLocationReportAction context={indiaContextQuery.data!} isPending={generateSelectedLocationReport.isPending} onDownload={() => generateSelectedLocationReport.mutate(indiaContextQuery.data!)} />{generateSelectedLocationReport.error && <p role="status" className="mt-2 text-[10px] font-medium text-[#b03538]">The selected-area PDF could not be created. The on-screen location context remains available.</p>}<button type="button" onClick={() => setIsLocationDetailsOpen(current => !current)} aria-expanded={isLocationDetailsOpen} className="mt-3 flex w-full items-center justify-between rounded-xl border border-[#d8e7e9] bg-white px-4 py-3 text-left text-xs font-semibold text-[#31596c] shadow-sm hover:bg-[#f7fbfb]"><span>{locationDetailsToggleLabel(isLocationDetailsOpen)}<span className="ml-2 font-normal text-[#83939b]">Location decision context, metrics, infrastructure, and comparison row</span></span><ChevronDown className={cn("h-4 w-4 transition-transform", isLocationDetailsOpen && "rotate-180")} /></button>{isLocationDetailsOpen && <SelectedLocationForecastDetails context={indiaContextQuery.data!} />}</div>}
       </main>
     </div>
+
+    {/* ResQ Emergency SOS Modal */}
+    <SosModal
+      isOpen={isSosOpen}
+      onClose={() => setIsSosOpen(false)}
+      defaultLocation={indiaLocation ? {
+        latitude: indiaLocation.latitude,
+        longitude: indiaLocation.longitude,
+        name: indiaLocation.name,
+        district: indiaLocation.address?.district ?? indiaLocation.address?.city,
+        state: indiaLocation.address?.state,
+      } : undefined}
+    />
+
+    {/* Responder Emergency Dispatch Log Drawer */}
+    <SosResponderDrawer
+      isOpen={isResponderDrawerOpen}
+      onClose={() => setIsResponderDrawerOpen(false)}
+    />
+
+    {/* ResQ Grounded AI Assistant */}
+    <ResqAiAssistant
+      isOpen={isAiAssistantOpen}
+      onClose={() => setIsAiAssistantOpen(false)}
+      context={indiaContextQuery.data}
+      selectedLocation={indiaLocation}
+    />
   </div>;
 }

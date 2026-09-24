@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-describe("Akashvani branding configuration", () => {
+describe("ResQ branding configuration", () => {
   it("uses the configured title", () => {
-    expect(process.env.VITE_APP_TITLE).toBe("Akashvani — Disaster Intelligence Platform");
+    expect(process.env.VITE_APP_TITLE).toBe("ResQ — Disaster Intelligence Platform");
   });
 
   it("application endpoint is reachable when server is running", async () => {

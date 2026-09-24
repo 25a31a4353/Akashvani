@@ -247,9 +247,11 @@ export function AIChatBox({
                     }
                   >
                     {message.role === "assistant" && (
-                      <div className="size-8 shrink-0 mt-1 rounded-full bg-primary/10 flex items-center justify-center">
-                        <Sparkles className="size-4 text-primary" />
-                      </div>
+                      <img
+                        src="/resq-logo.png"
+                        alt="ResQ AI"
+                        className="size-8 shrink-0 mt-1 rounded-full object-contain bg-white p-0.5 shadow-sm border border-border/50"
+                      />
                     )}
 
                     <div
@@ -289,9 +291,11 @@ export function AIChatBox({
                       : undefined
                   }
                 >
-                  <div className="size-8 shrink-0 mt-1 rounded-full bg-primary/10 flex items-center justify-center">
-                    <Sparkles className="size-4 text-primary" />
-                  </div>
+                  <img
+                    src="/resq-logo.png"
+                    alt="ResQ AI"
+                    className="size-8 shrink-0 mt-1 rounded-full object-contain bg-white p-0.5 shadow-sm border border-border/50 animate-pulse"
+                  />
                   <div className="rounded-lg bg-muted px-4 py-2.5">
                     <Loader2 className="size-4 animate-spin text-muted-foreground" />
                   </div>

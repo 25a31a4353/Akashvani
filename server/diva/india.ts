@@ -160,7 +160,7 @@ export async function getIndiaLocationContext(location: IndiaLocation): Promise<
 
   const [selectedWithBoundary, environment, infrastructure, terrain] = await Promise.all([
     resolveWithin(enrichBoundary(seededLocation), 3_500, seededLocation),
-    resolveWithin(getEnvironmentalContext(seededLocation.latitude, seededLocation.longitude), 4_500, unavailableEnvironment),
+    resolveWithin(getEnvironmentalContext(seededLocation.latitude, seededLocation.longitude, seededLocation), 4_500, unavailableEnvironment),
     resolveWithin(getNearbyInfrastructure(seededLocation), 4_500, unavailableInfrastructure),
     resolveWithin(
       resolveTerrain(seededLocation.latitude, seededLocation.longitude, stateConfig?.code),
