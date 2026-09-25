@@ -25,6 +25,7 @@ import {
   buildProvenance,
 } from "./multiState";
 import { buildMultiHazardProfile } from "./hazards/engine";
+import { resolveGeologyContext } from "./hazards/data/gsiGeology";
 
 type NominatimResult = { place_id: number; display_name: string; lat: string; lon: string; type?: string; addresstype?: string; class?: string; boundingbox?: string[]; geojson?: { type: string; coordinates: unknown }; address?: Record<string, string> };
 type OpenMeteoResult = { id: number; name: string; latitude: number; longitude: number; population?: number; admin1?: string; admin2?: string; admin3?: string; admin4?: string; feature_code?: string };
@@ -300,6 +301,7 @@ export async function getIndiaLocationContext(location: IndiaLocation): Promise<
 
   const hydrology = resolveHydrology(seededLocation.latitude, seededLocation.longitude, stateConfig?.code);
   const categorizedInfra = categorizeInfrastructure(infrastructure.items);
+  const geology = await resolveGeologyContext(seededLocation.latitude, seededLocation.longitude, stateConfig?.code);
 
   let districtInfo: DistrictInfo | undefined = undefined;
   if (districtName && stateConfig) {
@@ -342,6 +344,7 @@ export async function getIndiaLocationContext(location: IndiaLocation): Promise<
     currentTemperatureC: environment.temperatureC,
     isCoastalState: stateConfig?.isCoastal,
   });
+  hazardProfile.geology = geology;
 
   const hazardContext = hazardProfile.redZone.triggers.length > 0
     ? `${hazardProfile.redZone.status} ZONE: ${hazardProfile.redZone.explainability}`
@@ -374,6 +377,16 @@ export async function getIndiaLocationContext(location: IndiaLocation): Promise<
       status: terrain.status === "AVAILABLE" ? "AVAILABLE" : "UNAVAILABLE",
       source: terrain.source,
       details: terrain.elevationMeters !== null ? `${terrain.elevationMeters}m MSL${terrain.slopeDegrees !== null ? ` · ${terrain.slopeDegrees}° slope (derived)` : ""}` : "Elevation unavailable"
+    },
+    {
+      id: "geology",
+      name: "Geology & Tectonics",
+      available: geology.available,
+      status: geology.available ? "AVAILABLE" : "UNAVAILABLE",
+      source: "GSI Bhukosh (1:2M Geology & Seismotectonic Atlas)",
+      details: geology.available
+        ? `${geology.lithology || "Geological unit mapped"}${geology.faultDistanceKm !== null ? ` · ${geology.nearestFaultName || geology.nearestFaultDesc || "Fault"} (${geology.faultDistanceKm}km)` : ""}`
+        : (geology.limitations ?? "Geology geometry unavailable at query location")
     },
     {
       id: "weather-telemetry",
@@ -435,6 +448,7 @@ export async function getIndiaLocationContext(location: IndiaLocation): Promise<
     },
     terrain,
     hydrology,
+    geology,
     categorizedInfrastructure: categorizedInfra,
     provenance,
     evidenceCoverage,

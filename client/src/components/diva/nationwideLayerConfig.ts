@@ -32,6 +32,8 @@ export const authoritativeHazardLayerControls = [
   ["hospitals", "[SUPPORT] Hospitals / Medical Support"],
   ["routes", "[PS191] Evacuation Road Route (OSRM)"],
   ["exposedHabitations", "[DERIVED] Exposed Habitations"],
+  ["gsiGeology", "[OFFICIAL] GSI Geology & Lithology (1:2M)"],
+  ["gsiTectonics", "[OFFICIAL] GSI Faults & Tectonic Lines (1:2M)"],
 ] as const;
 
 export const authoritativeHazardMapLayerVisibility = {
@@ -46,6 +48,8 @@ export const authoritativeHazardMapLayerVisibility = {
   hospitals: ["hazard-hospital-circle", "hazard-hospital-label"],
   routes: ["relocation-route-glow", "relocation-route-casing", "relocation-route-line", "relocation-origin-marker", "relocation-origin-label", "relocation-route-destination", "relocation-destination-label"],
   exposedHabitations: ["hazard-habitation-circle", "hazard-habitation-label"],
+  gsiGeology: ["national-geology"],
+  gsiTectonics: ["national-tectonics"],
   boundaries: ["boundary-line", "district-fill", "district-line", "selected-location-fill", "selected-location-line"],
   infrastructure: ["infrastructure-points"],
   liveRadar: ["live-radar"],
@@ -59,6 +63,13 @@ export const auditedLayerGroups = [
       ["boundaries", "District boundary"],
       ["population", "Population density"],
       ["terrain", "Physical terrain"],
+    ] as const,
+  },
+  {
+    label: "GSI Geology (Official / Bhukosh)",
+    items: [
+      ["gsiGeology", "GSI Geology & Lithology (1:2M)"],
+      ["gsiTectonics", "GSI Tectonic Faults & Lineaments (1:2M)"],
     ] as const,
   },
   {

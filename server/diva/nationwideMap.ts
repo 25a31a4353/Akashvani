@@ -6,6 +6,8 @@ const INDIA_IMAGE_COORDINATES: [[number, number], [number, number], [number, num
 const STATES_URL = "https://media.githubusercontent.com/media/wmgeolab/geoBoundaries/9469f09592ced973a3448cf66b6100b741b64c0d/releaseData/gbOpen/IND/ADM1/geoBoundaries-IND-ADM1_simplified.geojson";
 const populationImage = "https://worldpop.arcgis.com/arcgis/rest/services/WorldPop_Population_Density_1km/ImageServer/exportImage?bbox=68,6,98,37&bboxSR=4326&size=1200,1200&imageSR=4326&format=png32&f=image";
 const terrainImage = "https://utility.arcgis.com/usrsvcs/servers/6ff9b2ff0b2940c3bd5febf68a643a50/rest/services/WorldElevation/Terrain/ImageServer/exportImage?bbox=68,6,98,37&bboxSR=4326&size=1200,1200&imageSR=4326&format=png32&f=image";
+const geologyImage = "https://livingatlas.esri.in/server1/rest/services/Geology/Geology/MapServer/export?bbox=68,6,98,37&bboxSR=4326&size=1200,1200&layers=show:0&imageSR=4326&format=png32&transparent=true&f=image";
+const tectonicsImage = "https://livingatlas.esri.in/server1/rest/services/Geology/Tectonics/MapServer/export?bbox=68,6,98,37&bboxSR=4326&size=1200,1200&layers=show:2&imageSR=4326&format=png32&transparent=true&f=image";
 
 let statesCache: { expiresAt: number; value: GeoCollection } | null = null;
 let nationwideCache: { expiresAt: number; value: NationwideMapContext } | null = null;
@@ -21,6 +23,8 @@ export type NationwideMapContext = {
   imageCoordinates: [[number, number], [number, number], [number, number], [number, number]];
   populationImage: string;
   terrainImage: string;
+  geologyImage?: string;
+  tectonicsImage?: string;
   sources: Record<"states" | "population" | "terrain" | "geology" | "weather" | "sensitivity", string>;
   statuses: Record<"states" | "population" | "terrain" | "geology" | "weather" | "sensitivity", string>;
   hazardLayers?: ReturnType<typeof getHazardMapLayers>;
@@ -101,12 +105,12 @@ export async function getNationwideIndiaMap(): Promise<NationwideMapContext> {
   try { stateResult = await getStates(); } catch { stateResult = { expiresAt: Date.now(), value: { type: "FeatureCollection", features: [] } }; }
   const weather = await getWeather(nationalWeatherCells());
   const value: NationwideMapContext = {
-    states: stateResult.value, weather, geology, sensitivity, imageCoordinates: INDIA_IMAGE_COORDINATES, populationImage, terrainImage,
+    states: stateResult.value, weather, geology, sensitivity, imageCoordinates: INDIA_IMAGE_COORDINATES, populationImage, terrainImage, geologyImage, tectonicsImage,
     sources: {
       states: "geoBoundaries ADM1 (DataMeet India community / Election Commission of India); reference boundary year 2011",
       population: "WorldPop Population Density 100m/1km image service & Census of India 2011; people per km²; reference data years 2000–2020",
       terrain: "Esri World Elevation Terrain image service & Copernicus DEM 90m; physical-terrain visual reference",
-      geology: "Geological Survey of India (GSI) Bhukosh / NGDR; Official GSI geological data exists, but no machine-readable geometry is currently integrated",
+      geology: "Geological Survey of India (GSI) Bhukosh / NGDR & Living Atlas (1:2M Geology & Tectonics Atlas) + NRSC/GSI Bhuvan 50K Geomorphology",
       weather: "IMD Mausam District Warnings & Open-Meteo ECMWF/GFS Forecast API, current conditions and three-day modelled outlook sampled on a 3° nationwide coverage grid",
       sensitivity: "ResQ Derived Multi-Hazard Screening Pipeline (CWC + ISRO Landslide Atlas + BIS IS 1893:2016 + IMD); not official warnings or event footprints",
     },
@@ -114,7 +118,7 @@ export async function getNationwideIndiaMap(): Promise<NationwideMapContext> {
       states: stateResult.value.features.length ? "NATIONWIDE REFERENCE BOUNDARIES" : "UNAVAILABLE",
       population: "NATIONWIDE REFERENCE RASTER",
       terrain: "NATIONWIDE TERRAIN REFERENCE",
-      geology: "UNAVAILABLE — NO PROVISIONAL GEOLOGY GEOMETRY IS DISPLAYED",
+      geology: "OFFICIAL — GSI BHUKOSH VECTOR & TECTONIC ATLAS INTEGRATED",
       weather: weather.features.some(feature => feature.properties.temperatureC !== null) ? "LIVE MODELLED WEATHER, WIND + 3-DAY FORECAST COVERAGE GRID" : "UNAVAILABLE",
       sensitivity: "BROAD ANALYTICAL SENSITIVITY EXTENTS — NOT OFFICIAL ZONES, EVENT IMPACTS, OR FORECASTS",
     },

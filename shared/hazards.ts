@@ -8,7 +8,7 @@
  * 4. Habitation population is null when unverified; 0 is never used as a placeholder.
  */
 
-import type { DataProvenance } from "./multiState";
+import type { DataProvenance, GeologyContext } from "./multiState";
 
 export type HazardType =
   | "FLOOD"
@@ -234,6 +234,7 @@ export interface MultiHazardProfile {
   rainfall: ExtremeRainfallExposure;
   drought: DroughtExposure;
   heat: ExtremeHeatExposure;
+  geology?: GeologyContext | null;
   exposedHabitations: HabitationExposure[];
   dataCompletenessPercent: number; // 0-100 based on verified inputs
   updatedAt: string;

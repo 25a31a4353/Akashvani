@@ -5,6 +5,7 @@ import {
   STATE_CONFIGURATIONS,
   type TerrainContext,
   type HydrologyContext,
+  type GeologyContext,
   type CategorizedInfrastructure,
   type DataProvenance,
   type PopulationMetadata,
@@ -106,6 +107,7 @@ export type IndiaLocationContext = {
   screening: { riskScore: number | null; riskLevel: "Low" | "Moderate" | "High" | "Unavailable"; priority: "Immediate" | "High" | "Moderate" | "Low" | "Unavailable"; hazardContext: string; populationContext: string; status: string };
   terrain?: TerrainContext;
   hydrology?: HydrologyContext;
+  geology?: GeologyContext;
   categorizedInfrastructure?: CategorizedInfrastructure;
   provenance?: DataProvenance;
   evidenceCoverage?: EvidenceCoverageScore;

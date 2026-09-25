@@ -930,18 +930,60 @@ export function IndiaContextSidebar({ context, onOpenKeralaAssessment }: { conte
                 </p>
               </div>
 
-              {/* Geology Card */}
-              <div className="rounded-lg border border-[#f5dcdc] bg-[#fdf5f5] p-2 text-[8.5px]">
-                <div className="flex items-center justify-between border-b border-[#f0cccc] pb-1">
-                  <span className="font-bold uppercase text-[#882b2b]">Geology</span>
-                  <span className="rounded bg-rose-100 px-1 py-0.2 text-[7.5px] font-bold text-rose-800">
-                    UNAVAILABLE
-                  </span>
+              {/* Geology Card — GSI Bhukosh Official Vector / Reference */}
+              {context.geology?.available ? (
+                <div data-testid="selected-location-geology" className="rounded-lg border border-[#cbe4de] bg-[#f0f9f6] p-2 text-[8.5px]">
+                  <div className="flex items-center justify-between border-b border-[#b7dfd4] pb-1">
+                    <span className="font-bold uppercase text-[#14532d]">Geology — GSI Bhukosh</span>
+                    <span className="rounded bg-emerald-100 px-1 py-0.2 text-[7.5px] font-bold text-emerald-800">
+                      OFFICIAL VECTOR
+                    </span>
+                  </div>
+                  <div className="mt-1 space-y-0.5 text-[8px] text-[#1e3a2b]">
+                    <div><b>Lithology:</b> {context.geology.lithology ?? "Unclassified rock unit"}</div>
+                    {context.geology.geologicalAge && (
+                      <div><b>Geological Age:</b> {context.geology.geologicalAge}</div>
+                    )}
+                    {context.geology.formation && (
+                      <div><b>Formation / Group:</b> {context.geology.formation}</div>
+                    )}
+                    {context.geology.tectonicContext && (
+                      <div><b>Structural / Tectonic:</b> {context.geology.tectonicContext}</div>
+                    )}
+                    {context.geology.geomorphology && (
+                      <div><b>Geomorphology (1:50K):</b> {context.geology.geomorphology}</div>
+                    )}
+                    <div className="pt-0.5 text-[7px] text-[#4b7a60] flex items-center justify-between border-t border-[#d4ede4] mt-1">
+                      <span>Scale: {context.geology.scale}</span>
+                      <span>Source: Geological Survey of India</span>
+                    </div>
+                  </div>
                 </div>
-                <p className="mt-1 text-[8px] text-[#803d3d]">
-                  Official GSI geological data exists (National Geoscience Data Repository / Bhukosh), but no unauthenticated machine-readable vector geometry is currently integrated. No provisional geometry is fabricated.
-                </p>
-              </div>
+              ) : context.geology?.confidence === "GSI_WMS_REFERENCE" ? (
+                <div data-testid="selected-location-geology" className="rounded-lg border border-[#d9e6f2] bg-[#f4f8fd] p-2 text-[8.5px]">
+                  <div className="flex items-center justify-between border-b border-[#c2daf0] pb-1">
+                    <span className="font-bold uppercase text-[#1e3a5f]">Geology — GSI Bhukosh</span>
+                    <span className="rounded bg-sky-100 px-1 py-0.2 text-[7.5px] font-bold text-sky-800">
+                      OFFICIAL WMS
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[8px] text-[#2c4c6e]">
+                    Interactive geological map available through official GSI WMS. Vector attribute query: UNAVAILABLE.
+                  </p>
+                </div>
+              ) : (
+                <div data-testid="selected-location-geology" className="rounded-lg border border-[#f5dcdc] bg-[#fdf5f5] p-2 text-[8.5px]">
+                  <div className="flex items-center justify-between border-b border-[#f0cccc] pb-1">
+                    <span className="font-bold uppercase text-[#882b2b]">Geology — GSI Bhukosh</span>
+                    <span className="rounded bg-rose-100 px-1 py-0.2 text-[7.5px] font-bold text-rose-800">
+                      UNAVAILABLE
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[8px] text-[#803d3d]">
+                    {context.geology?.limitations ?? "No machine-readable GSI geological geometry available for this query. No provisional geometry fabricated."}
+                  </p>
+                </div>
+              )}
             </div>
 
             <p className="text-[#516b77]">{context.provenance?.provenanceLabel ?? "Authoritative administrative context"}</p>

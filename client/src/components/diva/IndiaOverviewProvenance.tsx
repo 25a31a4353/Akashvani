@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { DATA_SOURCE_AUDIT_LIST, type DataSourceRecord } from "@shared/sourceRegistry";
+import type { IndiaLocationContext } from "@shared/india";
 
 interface ProvenanceCardProps {
   category: string;
@@ -88,11 +89,13 @@ export function IndiaOverviewProvenance({
   statuses = {},
   updatedAt = "Real-time",
   initialOpen = false,
+  locationContext,
 }: {
   sources?: Record<string, string>;
   statuses?: Record<string, string>;
   updatedAt?: string;
   initialOpen?: boolean;
+  locationContext?: Partial<IndiaLocationContext> | null;
 } = {}) {
   const [isOpen, setIsOpen] = useState(initialOpen);
   const [activeTab, setActiveTab] = useState<"summary" | "audit">("summary");
@@ -216,16 +219,61 @@ export function IndiaOverviewProvenance({
                 note={`${statuses?.terrain ?? "NATIONWIDE TERRAIN REFERENCE"} · Esri World Elevation Terrain image service. Derived slope computed via 5-point finite-difference spatial gradient.`}
               />
 
-              {/* Geology */}
-              <ProvenanceCard
-                testId="provenance-card-geology"
-                category="Geology"
-                source="Geological Survey of India (GSI) Bhukosh & NGDR Geoscientific Repository"
-                status="UNAVAILABLE"
-                type="OFFICIAL REFERENCE"
-                reasonIfUnavailable={statuses?.geology ?? "UNAVAILABLE — NO PROVISIONAL GEOLOGY GEOMETRY IS DISPLAYED"}
-                note="Official GSI geological data exists, but no machine-readable vector geometry is currently integrated. No provisional geometry is fabricated."
-              />
+              {/* Geology — Dynamic States A (Vector), B (WMS), C (Unavailable) */}
+              {(() => {
+                const geo = locationContext?.geology;
+                const geoStatus = statuses?.geology;
+                const isVectorAvailable = (geo && geo.available && geo.provenance === "OFFICIAL")
+                  ? true
+                  : (geoStatus ? geoStatus.includes("OFFICIAL") || geoStatus.includes("INTEGRATED") : false);
+                const isWmsOnly = (geo && geo.wmsAvailable && !geo.available)
+                  ? true
+                  : (geoStatus ? geoStatus.includes("WMS") : false);
+
+                if (isVectorAvailable) {
+                  return (
+                    <ProvenanceCard
+                      testId="provenance-card-geology"
+                      category="Geology"
+                      source={geo?.sourceOrganization ?? sources?.geology ?? "Geological Survey of India (GSI) Bhukosh & NGDR Geoscientific Repository"}
+                      status="AVAILABLE"
+                      resolution={geo?.scale ?? "1:2,000,000 (Geology & Tectonics) / 1:50,000 (Geomorphology)"}
+                      year="2024–2026"
+                      unit={`Lithology: ${geo?.lithology || "Quaternary / Bedrock"}${geo?.nearestFaultName ? ` | Fault: ${geo.nearestFaultName} (${geo.faultDistanceKm} km)` : ""}`}
+                      type="OFFICIAL — GSI BHUKOSH VECTOR"
+                      note={geo?.lithology ? `Lithology: ${geo.lithology}. Geological Unit: ${geo.geologicalUnit || geo.lithology}. Nearest Fault: ${geo.nearestFaultName || "None within 150km"} (${geo.faultDistanceKm ?? "N/A"} km). Retrieved: ${geo.retrievedAt || "Runtime"}. Scale: ${geo.scale || "1:2,000,000"}.` : (statuses?.geology ?? "GSI Bhukosh 1:2M seamless geological map, seismotectonic fault atlas, and NRSC/GSI Bhuvan 50K geomorphology actively integrated.")}
+                    />
+                  );
+                }
+
+                if (isWmsOnly) {
+                  return (
+                    <ProvenanceCard
+                      testId="provenance-card-geology"
+                      category="Geology"
+                      source={sources?.geology ?? "Geological Survey of India (GSI) Bhukosh"}
+                      status="AVAILABLE"
+                      resolution="1:2,000,000 WMS"
+                      year="2024–2026"
+                      unit="WMS Raster Visualization"
+                      type="OFFICIAL — GSI BHUKOSH WMS"
+                      note="Interactive geological map available through official GSI WMS. Vector attribute query: UNAVAILABLE."
+                    />
+                  );
+                }
+
+                return (
+                  <ProvenanceCard
+                    testId="provenance-card-geology"
+                    category="Geology"
+                    source="Geological Survey of India (GSI) Bhukosh & NGDR Geoscientific Repository"
+                    status="UNAVAILABLE"
+                    type="GSI BHUKOSH — OFFICIAL REFERENCE"
+                    reasonIfUnavailable={statuses?.geology ?? "No machine-readable GSI geological geometry available for this query. No provisional geometry fabricated."}
+                    note="No provisional geometry fabricated. Query an authoritative Indian location to resolve genuine GSI vector features."
+                  />
+                );
+              })()}
 
               {/* Weather & Wind */}
               <ProvenanceCard

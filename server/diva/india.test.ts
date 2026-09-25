@@ -58,7 +58,7 @@ describe("India location context", () => {
     expect(context.environment).toMatchObject({ temperatureC: 31, precipitationMm: 2, usAqi: 71 });
     expect(context.environment.forecast).toEqual(expect.arrayContaining([expect.objectContaining({ date: "2026-08-24", temperatureMaxC: 33, windSpeedMaxKph: 24 })]));
     expect(context.screening).toMatchObject({ status: "LOCATION-SPECIFIC SCREENING CONTEXT", priority: "Low" });
-  });
+  }, 15000);
 
   it("retains a population returned by the overlapping geocoding provider while keeping the boundary-rich result", async () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {

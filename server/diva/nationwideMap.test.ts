@@ -16,7 +16,7 @@ describe("nationwide India map", () => {
     expect(map.weather.features[0]).toMatchObject({ properties: { temperatureC: 30.5, precipitationMm: 1.2, windSpeedKph: 12, windDirectionDegrees: 145, windGustKph: 19 }, geometry: { type: "Polygon" } });
     expect(map.weather.features[0]?.properties.forecast).toEqual(expect.arrayContaining([expect.objectContaining({ date: "2026-08-24", temperatureMaxC: 31, windSpeedMaxKph: 15 })]));
     expect(map.weather.features.length).toBeGreaterThan(90);
-    expect(map.statuses).toMatchObject({ states: "NATIONWIDE REFERENCE BOUNDARIES", weather: "LIVE MODELLED WEATHER, WIND + 3-DAY FORECAST COVERAGE GRID", population: "NATIONWIDE REFERENCE RASTER", terrain: "NATIONWIDE TERRAIN REFERENCE", geology: "UNAVAILABLE — NO PROVISIONAL GEOLOGY GEOMETRY IS DISPLAYED", sensitivity: "BROAD ANALYTICAL SENSITIVITY EXTENTS — NOT OFFICIAL ZONES, EVENT IMPACTS, OR FORECASTS" });
+    expect(map.statuses).toMatchObject({ states: "NATIONWIDE REFERENCE BOUNDARIES", weather: "LIVE MODELLED WEATHER, WIND + 3-DAY FORECAST COVERAGE GRID", population: "NATIONWIDE REFERENCE RASTER", terrain: "NATIONWIDE TERRAIN REFERENCE", geology: "OFFICIAL — GSI BHUKOSH VECTOR & TECTONIC ATLAS INTEGRATED", sensitivity: "BROAD ANALYTICAL SENSITIVITY EXTENTS — NOT OFFICIAL ZONES, EVENT IMPACTS, OR FORECASTS" });
     expect(map.geology.features).toEqual([]);
     expect(map.sensitivity.features.map(feature => feature.properties.hazard)).toEqual(expect.arrayContaining(["Earthquake sensitivity", "Landslide sensitivity", "Flood sensitivity"]));
     expect(map.imageCoordinates).toEqual([[68, 37], [98, 37], [98, 6], [68, 6]]);

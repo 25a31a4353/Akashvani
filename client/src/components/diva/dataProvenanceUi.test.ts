@@ -1,12 +1,14 @@
 /** @vitest-environment jsdom */
 import React from "react";
-import { describe, expect, it } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { describe, expect, it, afterEach } from "vitest";
+import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import { IndiaOverviewProvenance } from "./IndiaOverviewProvenance";
 import { DATA_SOURCE_REGISTRY, DATA_SOURCE_AUDIT_LIST } from "@shared/sourceRegistry";
 import type { IndiaLocationContext } from "@shared/india";
 
 describe("ResQ Data Provenance UI & 22-Source Audit Registry", () => {
+  afterEach(cleanup);
+
   it("contains all 22 required audited categories in the authoritative data registry", () => {
     const requiredCategories = [
       "States",
@@ -37,11 +39,22 @@ describe("ResQ Data Provenance UI & 22-Source Audit Registry", () => {
       expect(registryCategories.has(reqCat)).toBe(true);
     }
 
-    // Verify Geology is strictly UNAVAILABLE without synthetic polygons
+    // Verify Geology is now INTEGRATED as OFFICIAL GSI reference
     const geology = DATA_SOURCE_REGISTRY.GEOLOGY_GSI;
     expect(geology).toBeDefined();
-    expect(geology.integrationStatus).toBe("UNAVAILABLE");
-    expect(geology.knownLimitations).toContain("Official GSI geological data exists, but no unauthenticated machine-readable vector geometry is currently integrated");
+    expect(geology.integrationStatus).toBe("INTEGRATED");
+    expect(geology.provenanceType).toBe("OFFICIAL");
+    expect(geology.notes).toContain("GSI Bhukosh");
+
+    // Verify sub-service registrations
+    expect(DATA_SOURCE_REGISTRY.GSI_BHUKOSH).toBeDefined();
+    expect(DATA_SOURCE_REGISTRY.GSI_GEOLOGY_50K).toBeDefined();
+    expect(DATA_SOURCE_REGISTRY.GSI_GEOLOGY_2M).toBeDefined();
+    expect(DATA_SOURCE_REGISTRY.GSI_GEOLOGY_2M.integrationStatus).toBe("INTEGRATED");
+    expect(DATA_SOURCE_REGISTRY.GSI_GEOMORPHOLOGY_50K).toBeDefined();
+    expect(DATA_SOURCE_REGISTRY.GSI_TECTONICS_FAULTS).toBeDefined();
+    expect(DATA_SOURCE_REGISTRY.GSI_TECTONICS_FAULTS.integrationStatus).toBe("INTEGRATED");
+    expect(DATA_SOURCE_REGISTRY.GSI_NGDR).toBeDefined();
 
     // Verify Population distinct metadata
     const population = DATA_SOURCE_REGISTRY.POPULATION_CENSUS_WORLDPOP;
@@ -61,7 +74,7 @@ describe("ResQ Data Provenance UI & 22-Source Audit Registry", () => {
     expect(routing.notes).toContain("Never draws straight-line fallbacks disguised as road routing");
   });
 
-  it("renders structured provenance cards including Geology UNAVAILABLE with explicit reasoning", () => {
+  it("renders structured provenance cards including Geology State C (no location selected) with no provisional geometry fabricated", () => {
     render(React.createElement(IndiaOverviewProvenance));
 
     // Open the provenance panel via its toggle button
@@ -76,15 +89,77 @@ describe("ResQ Data Provenance UI & 22-Source Audit Registry", () => {
     expect(screen.getByTestId("provenance-card-geology")).toBeDefined();
     expect(screen.getByTestId("provenance-card-sensitivity")).toBeDefined();
 
-    // Check Geology unavailable reason is explicitly displayed
+    // Check Geology State C is explicitly displayed
     const geologyCard = screen.getByTestId("provenance-card-geology");
-    expect(geologyCard.textContent).toContain("Official GSI geological data exists");
-    expect(geologyCard.textContent).toContain("UNAVAILABLE");
+    expect(geologyCard.textContent).toContain("GSI BHUKOSH — OFFICIAL REFERENCE");
+    expect(geologyCard.textContent).toContain("No provisional geometry fabricated");
 
     // Check Evidence Coverage score bar
     const evidenceCoverage = screen.getByTestId("evidence-coverage-metric");
     expect(evidenceCoverage).toBeDefined();
     expect(evidenceCoverage.textContent).toContain("Evidence Coverage Score");
+  });
+
+  it("renders State A with genuine GSI vector data when location context is present", () => {
+    const mockGeology = {
+      available: true,
+      provenance: "OFFICIAL" as const,
+      sourceOrganization: "Geological Survey of India (GSI)",
+      repository: "Bhukosh & NDSAP Living Atlas Mirror",
+      serviceName: "Geology_2M / Bhuvan_Geomorphology_50K",
+      layerName: "Geology (1:2M) / Tectonics (1:2M)",
+      scale: "1:2,000,000 / 1:50,000",
+      geometryType: "Polygon / Polyline",
+      lithology: "UNDIFF.FLUVIAL / AEOLIAN / COASTA & GLACIAL SEDIMENTS",
+      geologicalUnit: "Quaternary Alluvium",
+      formation: "Brahmaputra Alluvial Formation",
+      rockType: "Sedimentary alluvium and silt",
+      age: "QUATERNARY",
+      supergroup: null,
+      stratigraphy: "Quaternary Sediments",
+      faultPresent: true,
+      faultDistanceKm: 3.2,
+      nearestFaultName: "Fault Tectonic - Neotectonic Fault",
+      lineamentPresent: true,
+      geomorphology: "Fluvial Origin-Younger Alluvial Plain",
+      tectonicContext: "Neotectonic active fault 3.2 km from query location",
+      sourceUrl: "https://livingatlas.esri.in/server1/rest/services/Geology/Geology/MapServer/0",
+      retrievedAt: "2026-09-25T10:00:00.000Z",
+      spatialReference: "EPSG:4326",
+      featureId: "GSI-POLY-142",
+      confidence: "DIRECT_GSI_FEATURE" as const,
+      wmsAvailable: true,
+      limitations: "1:2M macro lithology; 1:50K geomorphology via NRSC/GSI Bhuvan.",
+    };
+
+    const mockCtx: Partial<IndiaLocationContext> = {
+      location: {
+        id: "DIST-AS-DIB",
+        name: "Dibrugarh",
+        displayName: "Dibrugarh, Assam, India",
+        category: "District",
+        latitude: 27.4728,
+        longitude: 94.912,
+        population: 3150,
+        populationSource: "Census of India 2011",
+        boundingBox: null,
+        boundary: null,
+        address: { state: "Assam", district: "Dibrugarh" },
+        source: "Census 2011",
+      },
+      geology: mockGeology,
+    };
+
+    render(React.createElement(IndiaOverviewProvenance, { locationContext: mockCtx as IndiaLocationContext }));
+
+    const toggleBtn = screen.getByTestId("data-provenance-toggle");
+    fireEvent.click(toggleBtn);
+
+    const geologyCard = screen.getByTestId("provenance-card-geology");
+    expect(geologyCard.textContent).toContain("OFFICIAL — GSI BHUKOSH VECTOR");
+    expect(geologyCard.textContent).toContain("UNDIFF.FLUVIAL / AEOLIAN / COASTA & GLACIAL SEDIMENTS");
+    expect(geologyCard.textContent).toContain("Fault Tectonic - Neotectonic Fault");
+    expect(geologyCard.textContent).toContain("3.2 km");
   });
 
   it("dynamically isolates and updates context when switching locations without stale data retention", () => {

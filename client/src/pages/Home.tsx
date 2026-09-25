@@ -67,6 +67,8 @@ const initialLayers: Record<string, boolean> = {
   landslideSensitivity: false,
   floodSensitivity: false,
   infrastructure: false,
+  gsiGeology: true,
+  gsiTectonics: true,
 };
 
 

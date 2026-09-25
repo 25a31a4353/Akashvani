@@ -116,6 +116,42 @@ export interface HydrologyContext {
   status: "AVAILABLE" | "UNAVAILABLE" | "REGIONAL_MAPPING";
 }
 
+export interface GeologyContext {
+  available: boolean;
+  provenance: "OFFICIAL" | "UNAVAILABLE";
+  sourceOrganization: string;
+  repository: string;
+  serviceName: string | null;
+  layerName: string | null;
+  scale: string | null;
+  geometryType: string | null;
+  lithology: string | null;
+  geologicalUnit: string | null;
+  formation: string | null;
+  rockType: string | null;
+  stratigraphy: string | null;
+  geologicalAge: string | null;
+  age?: string | null;
+  supergroup: string | null;
+  group: string | null;
+  faultPresent: boolean | null;
+  faultDistanceKm: number | null;
+  nearestFaultName: string | null;
+  nearestFaultType: string | null;
+  nearestFaultDesc: string | null;
+  lineamentPresent: boolean | null;
+  geomorphology: string | null;
+  geomorphologyScale: string | null;
+  tectonicContext: string | null;
+  sourceUrl: string | null;
+  retrievedAt: string | null;
+  spatialReference: string | null;
+  featureId: string | null;
+  confidence: "DIRECT_GSI_FEATURE" | "GSI_WMS_REFERENCE" | "UNAVAILABLE";
+  wmsAvailable?: boolean;
+  limitations?: string;
+}
+
 export interface InfrastructureFeature {
   id: string;
   name: string;
@@ -603,6 +639,7 @@ export interface NormalizedLocationContext {
   terrain: TerrainContext;
   hydrology: HydrologyContext;
   infrastructure: CategorizedInfrastructure;
+  geology?: GeologyContext;
   provenance: DataProvenance;
 }
 

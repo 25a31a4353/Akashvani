@@ -55,6 +55,8 @@ export type MapData = {
     imageCoordinates: [[number, number], [number, number], [number, number], [number, number]];
     populationImage: string;
     terrainImage: string;
+    geologyImage?: string;
+    tectonicsImage?: string;
     sources: Record<string, string>;
     statuses: Record<string, string>;
     hazardLayers?: {
@@ -117,7 +119,9 @@ function applyLayers(map: MapLibreMap, layers: MapLayerState, opacity: number, b
   const layerMap: Array<[string, string]> = [
     ["population-points", "population"], ["boundary-line", "boundaries"], ["district-fill", "boundaries"],
     ["district-line", "boundaries"], ["selected-location-fill", "boundaries"], ["selected-location-line", "boundaries"],
-    ["national-terrain", "terrain"], ["national-population", "population"], ["national-state-fill", "nationalStates"],
+    ["national-terrain", "terrain"], ["national-population", "population"],
+    ["national-geology", "gsiGeology"], ["national-tectonics", "gsiTectonics"],
+    ["national-state-fill", "nationalStates"],
     ["national-state-line", "nationalStates"], ["national-state-label", "nationalStates"], ["national-weather-fill", "liveWeather"],
     ["national-weather-line", "liveWeather"], ["national-wind-symbol", "wind"], ["live-radar", "liveRadar"],
     ["hazard-redzone-fill", "redZones"], ["hazard-redzone-line", "redZones"], ["hazard-redzone-label", "redZones"],
@@ -549,6 +553,14 @@ export function DivaMap({
         map.addSource("national-population", { type: "image", url: data.nationwide.populationImage, coordinates: data.nationwide.imageCoordinates });
         map.addLayer({ id: "national-terrain", type: "raster", source: "national-terrain", paint: { "raster-opacity": 0.48 } });
         map.addLayer({ id: "national-population", type: "raster", source: "national-population", paint: { "raster-opacity": 0.56 } });
+        if (data.nationwide.geologyImage) {
+          map.addSource("national-geology", { type: "image", url: data.nationwide.geologyImage, coordinates: data.nationwide.imageCoordinates });
+          map.addLayer({ id: "national-geology", type: "raster", source: "national-geology", paint: { "raster-opacity": 0.45 }, layout: { visibility: layers.gsiGeology ? "visible" : "none" } });
+        }
+        if (data.nationwide.tectonicsImage) {
+          map.addSource("national-tectonics", { type: "image", url: data.nationwide.tectonicsImage, coordinates: data.nationwide.imageCoordinates });
+          map.addLayer({ id: "national-tectonics", type: "raster", source: "national-tectonics", paint: { "raster-opacity": 0.65 }, layout: { visibility: layers.gsiTectonics ? "visible" : "none" } });
+        }
       }
 
       // Group 1: Base administrative boundaries and geographic context
