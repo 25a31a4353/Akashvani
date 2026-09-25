@@ -142,6 +142,9 @@ export async function computeCanonicalDecision(
   if (evidenceCoverage.coverageRatio >= 0.75) {
     confidenceScore += 0.25;
     confidenceReasons.push(`${evidenceCoverage.label} verified in multi-layer registry`);
+  } else if (evidenceCoverage.coverageRatio <= 0.35) {
+    confidenceScore -= 0.25;
+    confidenceReasons.push(`Sparse evidence coverage: only ${evidenceCoverage.label}`);
   }
   if (hazardAssessment.triggers.length > 0) {
     confidenceScore += 0.15;

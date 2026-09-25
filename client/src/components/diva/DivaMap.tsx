@@ -5,7 +5,7 @@ import type { AssessmentArea } from "@shared/diva";
 import type { IndiaLocationContext } from "@shared/india";
 import * as maplibregl from "maplibre-gl";
 import type { Map as MapLibreMap } from "maplibre-gl";
-import { AlertTriangle, ArrowRight, CheckCircle2, ChevronRight, Compass, Crosshair, Expand, Layers, LocateFixed, Map as MapIcon, Minus, Navigation, Pause, Play, Plus, Radio, RotateCcw, ShieldCheck, Sparkles, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, ChevronRight, Compass, Crosshair, Expand, Layers, LocateFixed, Map as MapIcon, Minus, Navigation, Pause, Play, Plus, Radio, RotateCcw, Send, ShieldCheck, Sparkles, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { generateZoneNavigationRoute, fetchLiveOsrmRoadRoute, type ZoneNavigationRoute } from "./zoneNavigationEngine";
 
@@ -195,9 +195,18 @@ export function DivaMap({
   const [isSimulating, setIsSimulating] = useState(false);
   const [simIndex, setSimIndex] = useState(0);
   const [activeNavigation, setActiveNavigation] = useState<ZoneNavigationRoute | null>(null);
+  const [isNavDropdownOpen, setIsNavDropdownOpen] = useState(false);
   const [internal3D, setInternal3D] = useState(false);
   const [terrain3dError, setTerrain3dError] = useState<string | null>(null);
   const [isLegendOpen, setIsLegendOpen] = useState(true);
+
+  // Reset navigation and dropdown state when location selection changes (Zero Stale State Leakage)
+  useEffect(() => {
+    setActiveNavigation(null);
+    setIsNavDropdownOpen(false);
+    setIsSimulating(false);
+    setSimIndex(0);
+  }, [data?.activeLocation?.location.id, selectedId]);
 
   const is3D = is3DMode !== undefined ? is3DMode : internal3D;
 
@@ -350,33 +359,39 @@ export function DivaMap({
     };
   }, [activeNavigation?.coordinates, simIndex]);
 
-  const sources = useMemo(() => {
-    if (!data) return null;
-    const active = data.activeLocation;
+  const currentNav = useMemo(() => {
+    if (activeNavigation) return activeNavigation;
+    const active = data?.activeLocation;
     const canonicalDecision = active?.decision;
     const canonicalMapState = canonicalDecision?.mapState;
-
-    const effectiveRoute = activeNavigation ?? (
-      canonicalMapState?.route && canonicalMapState.route.coordinates?.length > 0 ? {
-        originLabel: canonicalMapState.originMarker?.label ?? data.relocationOrigin?.name ?? "Vulnerable Habitation",
-        destinationLabel: canonicalMapState.destinationMarker?.label ?? data.relocationDestination?.name ?? "Safe Relocation Haven",
-        originCoords: canonicalMapState.originMarker?.coordinates ?? [
-          data.relocationOrigin?.longitude ?? canonicalMapState.route.coordinates[0][0],
-          data.relocationOrigin?.latitude ?? canonicalMapState.route.coordinates[0][1]
-        ] as [number, number],
-        destinationCoords: canonicalMapState.destinationMarker?.coordinates ?? [
-          data.relocationDestination?.longitude ?? canonicalMapState.route.coordinates[canonicalMapState.route.coordinates.length - 1][0],
-          data.relocationDestination?.latitude ?? canonicalMapState.route.coordinates[canonicalMapState.route.coordinates.length - 1][1]
-        ] as [number, number],
+    if (canonicalMapState?.route && canonicalMapState.route.coordinates && canonicalMapState.route.coordinates.length > 0) {
+      return {
+        originLabel: canonicalMapState.originMarker?.label ?? active?.location.name ?? "Vulnerable Habitation",
+        destinationLabel: canonicalMapState.destinationMarker?.label ?? "Safe Relocation Haven",
+        originCoords: (canonicalMapState.originMarker?.coordinates ?? [
+          data?.relocationOrigin?.longitude ?? canonicalMapState.route.coordinates[0][0],
+          data?.relocationOrigin?.latitude ?? canonicalMapState.route.coordinates[0][1]
+        ]) as [number, number],
+        destinationCoords: (canonicalMapState.destinationMarker?.coordinates ?? [
+          data?.relocationDestination?.longitude ?? canonicalMapState.route.coordinates[canonicalMapState.route.coordinates.length - 1][0],
+          data?.relocationDestination?.latitude ?? canonicalMapState.route.coordinates[canonicalMapState.route.coordinates.length - 1][1]
+        ]) as [number, number],
         coordinates: canonicalMapState.route.coordinates,
-        distanceKm: canonicalMapState.route.distanceKm,
+        distanceKm: canonicalMapState.route.distanceKm ?? 0,
         travelTimeMinutes: canonicalMapState.route.durationMinutes ?? 0,
         isRoadRoute: canonicalMapState.route.isRoadRoute,
+        routingSource: "OSRM_LIVE_NETWORK" as const,
+        routingStatus: canonicalMapState.route.isRoadRoute ? ("AVAILABLE" as const) : ("ROAD_ROUTING_UNAVAILABLE" as const),
+        timestamp: canonicalDecision?.decisionTimestamp ?? new Date().toISOString(),
         classification: (canonicalMapState.riskTier === "GREEN" ? "ORANGE" : canonicalMapState.riskTier) as any,
         hazardType: canonicalMapState.primaryHazard,
         safeRole: canonicalMapState.destinationMarker?.role ?? "Safe Relocation Facility",
-      } : (data.relocationRoute && data.relocationRoute.coordinates?.length > 0 ? {
-        originLabel: data.relocationRoute.originLabel ?? "Vulnerable Habitation",
+        capacity: canonicalMapState.destinationMarker?.capacity ?? null,
+      };
+    }
+    if (data?.relocationRoute && data.relocationRoute.coordinates && data.relocationRoute.coordinates.length > 0) {
+      return {
+        originLabel: data.relocationRoute.originLabel ?? active?.location.name ?? "Vulnerable Habitation",
         destinationLabel: data.relocationRoute.destinationLabel ?? "Safe Relocation Haven",
         originCoords: [
           data.relocationOrigin?.longitude ?? data.relocationRoute.coordinates[0][0],
@@ -390,12 +405,24 @@ export function DivaMap({
         distanceKm: data.relocationRoute.distanceKm ?? 0,
         travelTimeMinutes: data.relocationRoute.travelTimeMinutes ?? 0,
         isRoadRoute: data.relocationRoute.isRoadRoute !== false,
+        routingSource: "VERIFIED_ROAD_CORRIDOR" as const,
+        routingStatus: "AVAILABLE" as const,
+        timestamp: new Date().toISOString(),
         classification: "RED" as const,
         hazardType: data.relocationOrigin?.hazardType ?? "Critical Vulnerable Habitation",
         safeRole: data.relocationDestination?.role ?? "Safe Relocation Shelter",
-      } : null)
-    );
+      };
+    }
+    return null;
+  }, [activeNavigation, data?.activeLocation, data?.relocationRoute, data?.relocationOrigin, data?.relocationDestination]);
 
+  const sources = useMemo(() => {
+    if (!data) return null;
+    const active = data.activeLocation;
+    const canonicalDecision = active?.decision;
+    const canonicalMapState = canonicalDecision?.mapState;
+
+    const effectiveRoute = currentNav;
     const routeCoords = effectiveRoute?.coordinates ?? [];
     const midCoord = routeCoords.length > 1 ? routeCoords[Math.floor(routeCoords.length / 2)] : null;
     return {
@@ -1108,8 +1135,8 @@ export function DivaMap({
 
   const fitNavigationRoute = useCallback(() => {
     const map = mapRef.current;
-    if (!map || !activeNavigation || activeNavigation.coordinates.length < 2) return;
-    const coords = activeNavigation.coordinates;
+    if (!map || !currentNav || currentNav.coordinates.length < 2) return;
+    const coords = currentNav.coordinates;
     let minLon = coords[0][0], maxLon = coords[0][0];
     let minLat = coords[0][1], maxLat = coords[0][1];
     for (const [lon, lat] of coords) {
@@ -1119,10 +1146,10 @@ export function DivaMap({
       maxLat = Math.max(maxLat, lat);
     }
     map.fitBounds([[minLon, minLat], [maxLon, maxLat]], {
-      padding: { top: 140, bottom: 90, left: 80, right: 80 },
+      padding: { top: 120, bottom: 90, left: 80, right: 80 },
       duration: 850,
     });
-  }, [activeNavigation]);
+  }, [currentNav]);
 
   useEffect(() => {
     const handleCustomRoute = (event: Event) => {
@@ -1199,152 +1226,178 @@ export function DivaMap({
       <div className="pointer-events-none absolute bottom-4 left-4 z-10 flex items-center gap-1.5 rounded-lg border border-[#415c67] bg-[#081720]/90 px-2.5 py-1.5 text-[10px] font-bold tracking-[0.08em] text-[#add7b0] shadow-lg backdrop-blur"><Crosshair className="h-3.5 w-3.5" /> INDIA LOCATION CONTEXT</div>
 
 
-      {/* ── GOOGLE MAPS STYLE NAVIGATION DROPDOWN (APPEARS WHEN RED/ORANGE ZONE IS CLICKED) ─── */}
-      {activeNavigation && (
-        <div
-          data-testid="evacuation-route-badge"
-          className="absolute top-3 left-3 right-3 sm:left-4 sm:right-auto sm:w-[410px] z-30 overflow-hidden rounded-2xl border border-[#38bdf8]/50 bg-[#071826]/96 text-[#e2e8f0] shadow-[0_24px_64px_rgba(0,0,0,0.75)] backdrop-blur-xl transition-all duration-300 animate-in slide-in-from-top-4"
-        >
-          <div className="flex items-center justify-between border-b border-[#1e3a5f] bg-gradient-to-r from-[#0369a1] via-[#0284c7] to-[#0ea5e9] px-3.5 py-2.5 text-white shadow-md">
-            <div className="flex items-center gap-2 min-w-0">
-              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-white/20">
-                <Navigation className="h-3.5 w-3.5 text-white animate-pulse" />
-              </div>
-              <span className="text-[11px] font-black tracking-wider uppercase truncate">Google Maps Navigation</span>
-              <span className={cn(
-                "rounded px-1.5 py-0.5 text-[8.5px] font-black uppercase tracking-wider text-white shrink-0",
-                activeNavigation.classification === "RED" ? "bg-[#dc2626]" : "bg-[#ea580c]"
-              )}>
-                {activeNavigation.classification} ZONE
-              </span>
-            </div>
-            <div className="flex items-center gap-1.5 shrink-0">
-              <span className="flex items-center gap-1 rounded bg-[#16a34a] px-1.5 py-0.5 text-[8.5px] font-black uppercase tracking-wider text-white">
-                <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
-                LIVE
-              </span>
-              <button
-                onClick={() => setActiveNavigation(null)}
-                className="ml-1 rounded-lg p-1 text-white/80 hover:bg-white/20 hover:text-white transition-colors"
-                aria-label="Close navigation dropdown and hide route"
-                title="Hide route"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-
-          <div className="p-3.5">
-            {/* Primary navigation stat: Big Driving Time & Distance */}
-            <div className="flex items-baseline justify-between border-b border-[#1e293b] pb-2.5">
-              <div>
-                <span className="text-3xl font-black text-white tracking-tight">
-                  ~{activeNavigation.travelTimeMinutes} min
-                </span>
-                <span className="ml-2 text-sm font-extrabold text-[#38bdf8]">
-                  ({activeNavigation.distanceKm} km)
-                </span>
-              </div>
-              {activeNavigation.isRoadRoute ? (
-                <span className="rounded-full bg-[#10b981]/20 px-2.5 py-1 text-[10px] font-bold text-[#34d399] border border-[#10b981]/40">
-                  Road Route ({activeNavigation.routingSource === "OSRM_LIVE_NETWORK" ? "OSRM Live" : "Verified Corridor"})
-                </span>
-              ) : (
-                <span className="rounded-full bg-[#f59e0b]/20 px-2.5 py-1 text-[10px] font-bold text-[#fbbf24] border border-[#f59e0b]/40">
-                  Road Geometry Unavailable · Geodesic Fallback
-                </span>
-              )}
-            </div>
-
-            {/* Origin & Destination visual flow */}
-            <div className="mt-3 space-y-2 text-xs">
-              <div className="flex items-center gap-2.5">
-                <span className={cn(
-                  "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-black text-white shadow-md",
-                  activeNavigation.classification === "RED" ? "bg-[#dc2626]" : "bg-[#ea580c]"
-                )}>
-                  📍
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-white truncate">{activeNavigation.originLabel}</p>
-                  <p className="text-[9.5px] font-bold text-[#f87171] uppercase leading-tight">
-                    {activeNavigation.classification} ZONE ORIGIN · EVACUATION POINT
-                  </p>
-                </div>
-              </div>
-
-              <div className="ml-2.5 flex items-center gap-1.5 border-l-2 border-dashed border-[#38bdf8]/55 pl-3.5 py-0.5">
-                <ArrowRight className="h-3 w-3 shrink-0 text-[#38bdf8]" />
-                <span className="text-[10px] font-medium text-[#7dd3fc]">
-                  {activeNavigation.distanceKm} km {activeNavigation.isRoadRoute ? "via road" : "direct line"} · ~{activeNavigation.travelTimeMinutes} min {activeNavigation.isRoadRoute ? "driving" : "est. transit"}
-                </span>
-              </div>
-
-              <div className="flex items-center gap-2.5">
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#16a34a] text-[10px] font-black text-white shadow-md">
-                  🏁
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-white truncate">{activeNavigation.destinationLabel}</p>
-                  <p className="text-[9.5px] font-bold text-[#4ade80] uppercase leading-tight">
-                    GREEN ZONE SAFE HAVEN · {activeNavigation.safeRole ?? "Safe Relocation Center"}
-                    {activeNavigation.capacity ? ` · Cap: ~${activeNavigation.capacity.toLocaleString()} (${activeNavigation.capacityStatus ?? "ESTIMATED"})` : " · Cap: Unregistered"}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Simulation progress indicator */}
-            {isSimulating && (
-              <div className="mt-2.5 flex items-center gap-2 rounded-lg bg-[#0c2a38] px-2.5 py-1.5 border border-[#164e63]">
-                <span className="h-2 w-2 rounded-full bg-[#38bdf8] animate-ping" />
-                <span className="text-[10px] font-semibold text-[#7dd3fc]">
-                  Evacuation flow: {Math.round(((simIndex + 1) / Math.max(activeNavigation.coordinates.length, 1)) * 100)}% complete
-                </span>
-              </div>
+      {/* ── COMPACT COLLAPSIBLE NAVIGATION CONTROL (MAP UX FIX #1) ─── */}
+      {currentNav && (
+        <div data-testid="safest-road-control-wrapper" className="absolute top-4 left-4 z-30 flex flex-col items-start gap-1.5 max-w-[360px]">
+          {/* Compact Trigger Button */}
+          <button
+            data-testid="safest-road-toggle-btn"
+            onClick={() => setIsNavDropdownOpen(prev => !prev)}
+            aria-expanded={isNavDropdownOpen}
+            aria-label="Toggle Safest Road Route Navigation"
+            className={cn(
+              "group flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold shadow-2xl backdrop-blur-xl transition-all duration-200 border cursor-pointer",
+              isNavDropdownOpen
+                ? "bg-[#0b2436] border-cyan-400/70 text-cyan-200 shadow-cyan-950/50"
+                : "bg-[#071926]/92 border-[#224458] text-[#d8eaf0] hover:bg-[#0c2c40] hover:border-cyan-500/50 hover:text-white"
             )}
-
-            {/* Interactive Navigation Action Buttons */}
-            <div className="mt-3.5 flex items-center gap-2 pt-2.5 border-t border-[#1e293b]">
-              <Button
-                onClick={fitNavigationRoute}
-                size="sm"
-                className="h-8 flex-1 rounded-xl bg-[#0284c7] hover:bg-[#0369a1] text-white text-[11px] font-bold shadow-md gap-1.5 transition-colors"
-              >
-                <Compass className="h-3.5 w-3.5" />
-                Fit Route
-              </Button>
-              <Button
-                onClick={() => {
-                  if (isSimulating) {
-                    setIsSimulating(false);
-                  } else {
-                    setSimIndex(0);
-                    setIsSimulating(true);
-                  }
-                }}
-                variant="outline"
-                size="sm"
-                className={cn(
-                  "h-8 rounded-xl text-[11px] font-bold border-[#38bdf8]/40 gap-1.5 transition-colors",
-                  isSimulating
-                    ? "bg-[#ef4444] text-white border-transparent hover:bg-[#dc2626]"
-                    : "bg-[#0b1e2f] text-[#38bdf8] hover:bg-[#13324d]"
-                )}
-              >
-                {isSimulating ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-                {isSimulating ? "Stop" : "Simulate"}
-              </Button>
-              <Button
-                onClick={() => setActiveNavigation(null)}
-                variant="ghost"
-                size="sm"
-                className="h-8 rounded-xl text-[11px] font-semibold text-[#94a3b8] hover:bg-[#1e293b] hover:text-white"
-              >
-                Hide Route
-              </Button>
+          >
+            {/* Paper-plane style navigation icon */}
+            <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-lg bg-cyan-500/20 text-cyan-400 group-hover:bg-cyan-500/30">
+              <Send className="h-3 w-3 -rotate-45" />
             </div>
-          </div>
+            <span className="font-extrabold tracking-wide">Safest Road</span>
+            <span className={cn(
+              "rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider",
+              currentNav.classification === "RED"
+                ? "bg-red-950 border border-red-500/40 text-red-300"
+                : "bg-amber-950 border border-amber-500/40 text-amber-300"
+            )}>
+              ~{currentNav.travelTimeMinutes} min
+            </span>
+            <ChevronDown className={cn("h-3.5 w-3.5 transition-transform duration-200 text-cyan-400/80", isNavDropdownOpen && "rotate-180")} />
+          </button>
+
+          {/* Compact Dropdown Panel */}
+          {isNavDropdownOpen && (
+            <div
+              data-testid="evacuation-route-badge"
+              className="w-[340px] overflow-hidden rounded-2xl border border-[#244b63] bg-[#071826]/98 text-[#e2e8f0] shadow-[0_20px_50px_rgba(0,0,0,0.85)] backdrop-blur-2xl transition-all duration-200 animate-in fade-in slide-in-from-top-2"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-[#1b384c] bg-gradient-to-r from-[#0a273b] to-[#103750] px-3.5 py-2.5">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Navigation className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
+                  <span className="text-[11px] font-black tracking-wider uppercase text-cyan-100 truncate">
+                    Verified Evacuation Corridor
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className={cn(
+                    "rounded px-1.5 py-0.5 text-[8.5px] font-black uppercase tracking-wider text-white",
+                    currentNav.classification === "RED" ? "bg-red-600" : "bg-orange-600"
+                  )}>
+                    {currentNav.classification} ZONE
+                  </span>
+                  <button
+                    onClick={() => setIsNavDropdownOpen(false)}
+                    className="rounded-lg p-1 text-[#94a3b8] hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+                    aria-label="Close dropdown"
+                    title="Close"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Body */}
+              <div className="p-3 space-y-2.5">
+                {/* Distance & Time summary */}
+                <div className="flex items-baseline justify-between border-b border-[#163142] pb-2">
+                  <div>
+                    <span className="text-2xl font-black text-white tracking-tight">
+                      ~{currentNav.travelTimeMinutes} min
+                    </span>
+                    <span className="ml-2 text-xs font-bold text-cyan-400">
+                      ({currentNav.distanceKm} km)
+                    </span>
+                  </div>
+                  {currentNav.isRoadRoute ? (
+                    <span className="rounded-full bg-emerald-950/80 px-2 py-0.5 text-[9px] font-bold text-emerald-300 border border-emerald-500/40">
+                      OSRM Road Route
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-amber-950/80 px-2 py-0.5 text-[9px] font-bold text-amber-300 border border-amber-500/40">
+                      Geodesic Proxy
+                    </span>
+                  )}
+                </div>
+
+                {/* Origin -> Destination Flow */}
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex items-start gap-2">
+                    <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-red-600 text-[8px] font-black text-white">
+                      📍
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-white truncate text-[11px]">{currentNav.originLabel}</p>
+                      <p className="text-[9px] font-bold text-red-400 uppercase">Vulnerable Origin</p>
+                    </div>
+                  </div>
+
+                  <div className="ml-2 flex items-center gap-1.5 border-l border-dashed border-cyan-500/40 pl-3 py-0.5 text-[10px] text-cyan-300 font-medium">
+                    <ArrowRight className="h-2.5 w-2.5 shrink-0 text-cyan-400" />
+                    <span>{currentNav.distanceKm} km {currentNav.isRoadRoute ? "via road network" : "direct line"}</span>
+                  </div>
+
+                  <div className="flex items-start gap-2">
+                    <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-[8px] font-black text-white">
+                      🏁
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-white truncate text-[11px]">{currentNav.destinationLabel}</p>
+                      <p className="text-[9px] font-bold text-emerald-400 uppercase">
+                        Safe Relocation Destination {currentNav.capacity ? `· Cap ~${currentNav.capacity.toLocaleString()}` : ""}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Simulation indicator */}
+                {isSimulating && (
+                  <div className="flex items-center gap-2 rounded-lg bg-[#0c2a38] px-2.5 py-1 border border-[#164e63]">
+                    <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 animate-ping" />
+                    <span className="text-[9.5px] font-semibold text-cyan-300">
+                      Evacuation simulation: {Math.round(((simIndex + 1) / Math.max(currentNav.coordinates.length, 1)) * 100)}%
+                    </span>
+                  </div>
+                )}
+
+                {/* Action Buttons */}
+                <div className="flex items-center gap-2 pt-2 border-t border-[#163142]">
+                  <Button
+                    onClick={fitNavigationRoute}
+                    size="sm"
+                    className="h-7 flex-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-[10.5px] font-bold shadow-md gap-1 cursor-pointer"
+                  >
+                    <Compass className="h-3 w-3" />
+                    Fit Route
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      if (isSimulating) {
+                        setIsSimulating(false);
+                      } else {
+                        setSimIndex(0);
+                        setIsSimulating(true);
+                      }
+                    }}
+                    variant="outline"
+                    size="sm"
+                    className={cn(
+                      "h-7 rounded-lg text-[10.5px] font-bold border-cyan-500/40 gap-1 cursor-pointer",
+                      isSimulating
+                        ? "bg-red-600 text-white hover:bg-red-500"
+                        : "bg-[#0b202e] text-cyan-300 hover:bg-[#13324d]"
+                    )}
+                  >
+                    {isSimulating ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+                    {isSimulating ? "Stop" : "Simulate"}
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setIsNavDropdownOpen(false);
+                    }}
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 rounded-lg text-[10.5px] font-semibold text-[#94a3b8] hover:bg-[#132c3d] hover:text-white cursor-pointer"
+                  >
+                    Collapse
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

@@ -36,19 +36,41 @@ export const SEISMIC_PROVENANCE: DataProvenance = {
  * State & District defaults for official seismic zones according to IS 1893:2016
  */
 export const STATE_SEISMIC_DEFAULTS: Record<string, { zone: "ZONE_V" | "ZONE_IV" | "ZONE_III" | "ZONE_II"; factor: number; pga: number; desc: string }> = {
+  // ── Zone V States (Very High Damage Risk — MSK IX+) ─────────────────────────
   AS: { zone: "ZONE_V", factor: 0.36, pga: 0.36, desc: "Entire state of Assam is officially designated Zone V (Very High Damage Risk, MSK IX+)" },
   MZ: { zone: "ZONE_V", factor: 0.36, pga: 0.36, desc: "Entire state of Mizoram is officially designated Zone V (Very High Damage Risk, Indo-Burma subduction)" },
+  MN: { zone: "ZONE_V", factor: 0.36, pga: 0.36, desc: "Manipur is entirely Zone V per BIS IS 1893:2016 (Indo-Burma subduction zone)" },
+  NL: { zone: "ZONE_V", factor: 0.36, pga: 0.36, desc: "Nagaland is Zone V per BIS IS 1893:2016 (Northeast active fault belt)" },
+  TR: { zone: "ZONE_V", factor: 0.36, pga: 0.36, desc: "Tripura is Zone V per BIS IS 1893:2016 (active fold-thrust belt)" },
+  ML: { zone: "ZONE_V", factor: 0.36, pga: 0.36, desc: "Meghalaya is Zone V per BIS IS 1893:2016 (Shillong Plateau active fault zone)" },
+  AR: { zone: "ZONE_V", factor: 0.36, pga: 0.36, desc: "Arunachal Pradesh is Zone V per BIS IS 1893:2016 (Himalayan frontal thrust belt)" },
+  SK: { zone: "ZONE_V", factor: 0.36, pga: 0.36, desc: "Sikkim is Zone V per BIS IS 1893:2016 (Eastern Himalayan seismic belt)" },
+  // UK (Uttarakhand) — BIS IS 1893:2016 designates the Garhwal & Kumaon Himalayan
+  // zone (Chamoli, Pithoragarh, Rudraprayag, Uttarkashi, Tehri) as Zone V.
+  UK: { zone: "ZONE_V", factor: 0.36, pga: 0.36, desc: "Uttarakhand Himalayan belt (Chamoli, Joshimath, Rudraprayag, Pithoragarh) is officially Zone V (BIS IS 1893:2016, MSK IX+)" },
+  // HP (Himachal Pradesh) — Chamba, Kangra, Kinnaur, Kullu, Lahaul & Spiti are Zone V
+  HP: { zone: "ZONE_V", factor: 0.36, pga: 0.36, desc: "High Himalayan districts (Chamba, Kangra, Kullu, Kinnaur) are Zone V; Simla/Hamirpur Zone IV" },
+  // ── Zone IV States (High Damage Risk — MSK VIII) ──────────────────────────
   BR: { zone: "ZONE_IV", factor: 0.24, pga: 0.24, desc: "North Bihar plain bordering Nepal is Zone V; central/south Bihar (Patna, Khagaria) is Zone IV" },
   UP: { zone: "ZONE_IV", factor: 0.24, pga: 0.24, desc: "Terai belt and eastern alluvial plains (Gorakhpur, Ballia) are Zone IV (High Damage Risk)" },
+  DL: { zone: "ZONE_IV", factor: 0.24, pga: 0.24, desc: "Delhi is officially Zone IV per BIS IS 1893:2016 (Punjab plains seismic belt)" },
+  PB: { zone: "ZONE_IV", factor: 0.24, pga: 0.24, desc: "Punjab is Zone IV per BIS IS 1893:2016 (Himalayan frontal fault system)" },
+  HR: { zone: "ZONE_IV", factor: 0.24, pga: 0.24, desc: "Haryana (northern districts) is Zone IV per BIS IS 1893:2016" },
+  WB: { zone: "ZONE_IV", factor: 0.24, pga: 0.24, desc: "West Bengal northern foothill districts are Zone V; Kolkata plain is Zone III/IV" },
+  // ── Zone III States (Moderate Damage Risk — MSK VII) ─────────────────────
   MH: { zone: "ZONE_III", factor: 0.16, pga: 0.16, desc: "Mumbai/Konkan and Koyna fault corridor are Zone IV/III; eastern plateau is Zone II/III" },
   KL: { zone: "ZONE_III", factor: 0.16, pga: 0.16, desc: "Kerala (Wayanad, Idukki, Alappuzha) is officially designated Zone III (Moderate Damage Risk, MSK VII)" },
   AP: { zone: "ZONE_III", factor: 0.16, pga: 0.16, desc: "Coastal Godavari/Krishna belt is Zone III; interior plateaus are Zone II" },
+  TG: { zone: "ZONE_III", factor: 0.16, pga: 0.16, desc: "Telangana (formerly part of AP) is Zone II/III; Hyderabad is Zone II" },
   TN: { zone: "ZONE_III", factor: 0.16, pga: 0.16, desc: "Chennai coastal corridor and Western Ghats (Nilgiris) are Zone III; southern plains are Zone II" },
   KA: { zone: "ZONE_III", factor: 0.16, pga: 0.16, desc: "Coastal and Malnad districts (Kodagu) are Zone III; Bayaluseeme interior is Zone II" },
   OD: { zone: "ZONE_III", factor: 0.16, pga: 0.16, desc: "Coastal Mahanadi delta (Puri, Kendrapara) is Zone III; interior plateaus are Zone II" },
   JH: { zone: "ZONE_III", factor: 0.16, pga: 0.16, desc: "Northern fringe is Zone IV; Chota Nagpur plateau (Ranchi) is Zone II/III" },
+  GJ: { zone: "ZONE_III", factor: 0.16, pga: 0.16, desc: "Gujarat mainland is Zone III; Kutch is Zone V; Saurashtra is Zone III" },
+  // ── Zone II States (Low Damage Risk — MSK VI or less) ────────────────────
   CT: { zone: "ZONE_II", factor: 0.10, pga: 0.10, desc: "Chhattisgarh (Raipur, Bastar) is predominantly Zone II (Low Damage Risk, stable shield)" },
-  RJ: { zone: "ZONE_II", factor: 0.10, pga: 0.10, desc: "Western desert (Jodhpur, Jaipur) is Zone II; southwest Kutch border is Zone III/IV" },
+  RJ: { zone: "ZONE_II", factor: 0.10, pga: 0.10, desc: "Western desert (Jodhpur, Jaipur) is Zone II per BIS IS 1893:2016; southwest Kutch border is Zone III/IV" },
+  MP: { zone: "ZONE_II", factor: 0.10, pga: 0.10, desc: "Madhya Pradesh central plateau is Zone II (stable Deccan shield); Narmada-Son valley may reach Zone III" },
 };
 
 /**

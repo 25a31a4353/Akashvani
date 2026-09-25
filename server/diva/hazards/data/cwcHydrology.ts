@@ -311,6 +311,52 @@ export const HISTORICAL_FLOOD_POLYGONS: HistoricalFloodPolygon[] = [
       [76.3, 9.2]
     ]],
   },
+  // Upper Krishna River Flood Corridor — Sangli, Kolhapur, Miraj (Maharashtra)
+  // Ground truth: CWC Irwin Bridge (Sangli) gauge records catastrophic flooding in
+  // 2019 (900+ villages inundated) and 2021 (Almaatti backwater effect + Koyna discharge).
+  // NRSC satellite mapping confirmed 100,000+ affected in 2019 event alone.
+  {
+    id: "FL-MH-KRISHNA-SANGLI",
+    name: "Upper Krishna Riverine Flood Corridor (Sangli–Miraj–Kolhapur)",
+    basin: "Krishna Basin",
+    stateCode: "MH",
+    frequencyTier: "HIGH_FREQUENCY",
+    returnPeriodYears: 3,
+    coordinates: [[
+      [74.1, 16.5], [74.8, 16.5], [75.0, 17.0], [74.8, 17.2],
+      [74.2, 17.1], [74.0, 16.8], [74.1, 16.5]
+    ]],
+  },
+  // Coromandel Coastal Flood Plain — Chennai, Cuddalore (Tamil Nadu)
+  // Ground truth: 2015 Chennai mega-floods (Adyar/Cooum rivers + NE monsoon surge);
+  // recurrent NE monsoon inundation (2023, 2021, 2019 events confirmed by NRSC).
+  {
+    id: "FL-TN-COROMANDEL",
+    name: "Coromandel Coastal Inundation Zone (Chennai–Cuddalore)",
+    basin: "East Flowing Rivers",
+    stateCode: "TN",
+    frequencyTier: "HIGH_FREQUENCY",
+    returnPeriodYears: 3,
+    coordinates: [[
+      [79.8, 11.6], [80.4, 11.6], [80.5, 13.3], [79.9, 13.3],
+      [79.8, 11.6]
+    ]],
+  },
+  // Gangetic West Bengal — Hooghly / Damodar Delta Floodplain
+  // CWC: Hooghly at Tribeni reaches Warning/Danger Level in heavy monsoon years;
+  // Damodar Valley Corporation dam release causes downstream inundation.
+  {
+    id: "FL-WB-HOOGHLY-DELTA",
+    name: "Hooghly–Damodar Confluence Floodplain (West Bengal)",
+    basin: "Ganga Basin",
+    stateCode: "WB",
+    frequencyTier: "MODERATE",
+    returnPeriodYears: 5,
+    coordinates: [[
+      [87.8, 22.0], [88.5, 22.0], [88.5, 23.5], [87.6, 23.5],
+      [87.8, 22.0]
+    ]],
+  },
 ];
 
 /**

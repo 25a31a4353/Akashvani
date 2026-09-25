@@ -49,7 +49,7 @@ const initialLayers: Record<string, boolean> = {
   nationalStates: true,
   boundaries: true,
   population: false,
-  terrain: true,
+  terrain: false, // Default OFF on fresh load (manually toggleable in Layers menu)
   redZones: true,
   routes: true,
   exposedHabitations: true,
@@ -67,7 +67,7 @@ const initialLayers: Record<string, boolean> = {
   landslideSensitivity: false,
   floodSensitivity: false,
   infrastructure: false,
-  gsiGeology: true,
+  gsiGeology: false, // Default OFF on fresh load (manually toggleable in Layers menu)
   gsiTectonics: true,
 };
 
