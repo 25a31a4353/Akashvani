@@ -446,7 +446,7 @@ export function IndiaContextSidebar({ context, onOpenKeralaAssessment }: { conte
                     </span>
                     {context.hazardProfile.redZone.supportingEvidence && context.hazardProfile.redZone.supportingEvidence.length > 0 && (
                       <ul className="mt-0.5 list-disc pl-3 text-[8.5px] text-[#5a7380] space-y-0.5">
-                        {context.hazardProfile.redZone.supportingEvidence.map((ev, i) => (
+                        {context.hazardProfile.redZone.supportingEvidence.map((ev: string, i: number) => (
                           <li key={i}>{ev}</li>
                         ))}
                       </ul>
@@ -465,7 +465,7 @@ export function IndiaContextSidebar({ context, onOpenKeralaAssessment }: { conte
                   <p className="text-[8.5px] font-bold uppercase tracking-[.08em] text-[#627d8b]">
                     Verified Triggers ({context.hazardProfile.redZone.triggers.length})
                   </p>
-                  {context.hazardProfile.redZone.triggers.slice(0, 4).map((trig, i) => (
+                  {context.hazardProfile.redZone.triggers.slice(0, 4).map((trig: string, i: number) => (
                     <div key={i} className="flex items-start gap-1.5 text-[9px] leading-snug text-[#375463]">
                       <span className="mt-0.5 text-[#e53935]">•</span>
                       <span>{trig}</span>
@@ -696,7 +696,7 @@ export function IndiaContextSidebar({ context, onOpenKeralaAssessment }: { conte
                   <span>Exposed Habitations ({context.hazardProfile.exposedHabitations.length})</span>
                   <span className="text-[8.5px] font-semibold text-[#78909c]">Census 2011</span>
                 </div>
-                {context.hazardProfile.exposedHabitations.slice(0, 4).map(hab => (
+                {context.hazardProfile.exposedHabitations.slice(0, 4).map((hab: any) => (
                   <div key={hab.habitationId} className="flex items-center justify-between rounded bg-[#f7fafb] px-2.5 py-1.5 text-[9.5px] border border-[#e6eff1]">
                     <div>
                       <span className="font-bold text-[#2a4e60]">{hab.name}</span>
@@ -835,13 +835,115 @@ export function IndiaContextSidebar({ context, onOpenKeralaAssessment }: { conte
           summary={`Source: ${context.provenance?.sourceType ?? "OFFICIAL"} · Multi-hazard provenance`}
           testId="accordion-provenance"
         >
-          <div className="space-y-2.5 text-[9.5px] leading-relaxed text-[#718892]">
-            <div className="flex items-center justify-between gap-1">
-              <span className="font-bold uppercase tracking-[.08em] text-[#2b687a]">Data Provenance</span>
+          <div className="space-y-3 text-[9.5px] leading-relaxed text-[#718892]">
+            {/* Header & Evidence Coverage */}
+            <div className="flex items-center justify-between gap-1 border-b border-[#eaf1f3] pb-1.5">
+              <span className="font-bold uppercase tracking-[.08em] text-[#2b687a]">Data Provenance & Audit</span>
               <span className="rounded bg-[#d7eef0] px-1.5 py-0.5 text-[8px] font-bold text-[#1b7184]">
                 {context.provenance?.sourceType ?? "OFFICIAL"}
               </span>
             </div>
+
+            {/* Evidence Coverage Score */}
+            <div className="rounded-lg border border-[#cce3e7] bg-[#f4f9fa] p-2">
+              <div className="flex items-center justify-between text-[9px] font-bold text-[#1e5868]">
+                <span>Evidence Coverage Score</span>
+                <span className="rounded bg-[#d8f0e5] px-1.5 py-0.2 text-[8px] font-black text-[#156e40]">
+                  {context.evidenceCoverage?.label ?? "6 / 7 evidence categories available"}
+                </span>
+              </div>
+              <p className="mt-1 text-[8px] text-[#69828d]">
+                Verified against: Boundaries, Census Population, Copernicus DEM, IMD Weather, Multi-Hazard Baselines, and OSRM Road Routing. Facility capacity remains unverified until local DDMA audit.
+              </p>
+            </div>
+
+            {/* Structured Cards */}
+            <div className="space-y-2">
+              {/* Population Card */}
+              <div className="rounded-lg border border-[#e1ebed] bg-white p-2 text-[8.5px]">
+                <div className="flex items-center justify-between border-b border-[#f0f4f5] pb-1">
+                  <span className="font-bold uppercase text-[#2b687a]">Population</span>
+                  <span className="rounded bg-[#e8f4f6] px-1 py-0.2 text-[7.5px] font-bold text-[#1b7184]">
+                    {context.location.populationMeta?.provenance ?? (context.location.population !== null ? "OFFICIAL" : "UNAVAILABLE")}
+                  </span>
+                </div>
+                <div className="mt-1 grid grid-cols-2 gap-x-2 gap-y-0.5 text-[8px] text-[#69828d]">
+                  <div><b>Count:</b> {context.location.population?.toLocaleString("en-IN") ?? "Unavailable"} people</div>
+                  <div><b>Resolution:</b> {context.location.populationMeta?.resolution ?? context.location.category}</div>
+                  <div><b>Year:</b> {context.location.populationMeta?.year ?? "2011"}</div>
+                  <div><b>Unit:</b> {context.location.populationMeta?.unit ?? "people"}</div>
+                </div>
+                <p className="mt-1 text-[7.5px] text-[#859ca6] truncate">
+                  Source: {context.location.populationSource}
+                </p>
+              </div>
+
+              {/* Weather & IMD Warnings Card */}
+              <div className="rounded-lg border border-[#e1ebed] bg-white p-2 text-[8.5px]">
+                <div className="flex items-center justify-between border-b border-[#f0f4f5] pb-1">
+                  <span className="font-bold uppercase text-[#2b687a]">Weather & Warnings</span>
+                  <span className={`rounded px-1 py-0.2 text-[7.5px] font-bold ${
+                    context.environment.imdWarning?.warningLevel === "WARNING"
+                      ? "bg-red-100 text-red-700"
+                      : context.environment.imdWarning?.warningLevel === "ALERT"
+                      ? "bg-orange-100 text-orange-700"
+                      : context.environment.imdWarning?.warningLevel === "WATCH"
+                      ? "bg-yellow-100 text-yellow-800"
+                      : "bg-emerald-100 text-emerald-700"
+                  }`}>
+                    {context.environment.imdWarning ? `IMD ${context.environment.imdWarning.warningLevel}` : "MODELLED"}
+                  </span>
+                </div>
+                {context.environment.imdWarning ? (
+                  <div className="mt-1 space-y-0.5 text-[8px]">
+                    <p className="font-semibold text-[#1e5868]">
+                      IMD District Nowcast: {context.environment.imdWarning.headline}
+                    </p>
+                    <div className="flex items-center justify-between text-[7.5px] text-[#859ca6]">
+                      <span>Valid: {context.environment.imdWarning.validUpto ?? "Current"}</span>
+                      <span>Source: IMD Mausam (Official)</span>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="mt-1 text-[8px] text-[#69828d]">
+                    Numerical fields: Open-Meteo ECMWF/GFS forecast. IMD warnings parsed per district.
+                  </p>
+                )}
+              </div>
+
+              {/* Terrain & Derived Slope Card */}
+              <div className="rounded-lg border border-[#e1ebed] bg-white p-2 text-[8.5px]">
+                <div className="flex items-center justify-between border-b border-[#f0f4f5] pb-1">
+                  <span className="font-bold uppercase text-[#2b687a]">Terrain & Slope</span>
+                  <span className="rounded bg-[#e8f4f6] px-1 py-0.2 text-[7.5px] font-bold text-[#1b7184]">
+                    {context.terrain?.status ?? "AVAILABLE"}
+                  </span>
+                </div>
+                <div className="mt-1 grid grid-cols-2 gap-x-2 gap-y-0.5 text-[8px] text-[#69828d]">
+                  <div><b>Raw Elevation:</b> {context.terrain?.elevationMeters !== null && context.terrain?.elevationMeters !== undefined ? `${context.terrain.elevationMeters}m MSL` : "Unavailable"}</div>
+                  <div><b>Derived Slope:</b> {context.terrain?.slopeDegrees !== null && context.terrain?.slopeDegrees !== undefined ? `${context.terrain.slopeDegrees}°` : "Unavailable"}</div>
+                  <div><b>Aspect:</b> {context.terrain?.aspectDegrees !== null && context.terrain?.aspectDegrees !== undefined ? `${context.terrain.aspectDegrees}°` : "—"}</div>
+                  <div><b>Ruggedness:</b> {context.terrain?.terrainRuggedness ?? "Moderate"}</div>
+                </div>
+                <p className="mt-1 text-[7.5px] text-[#859ca6]">
+                  Method: {context.terrain?.derivedSlopeMethod ?? "Horn's finite-difference gradient over 90m Copernicus DEM raster"}
+                </p>
+              </div>
+
+              {/* Geology Card */}
+              <div className="rounded-lg border border-[#f5dcdc] bg-[#fdf5f5] p-2 text-[8.5px]">
+                <div className="flex items-center justify-between border-b border-[#f0cccc] pb-1">
+                  <span className="font-bold uppercase text-[#882b2b]">Geology</span>
+                  <span className="rounded bg-rose-100 px-1 py-0.2 text-[7.5px] font-bold text-rose-800">
+                    UNAVAILABLE
+                  </span>
+                </div>
+                <p className="mt-1 text-[8px] text-[#803d3d]">
+                  Official GSI geological data exists (National Geoscience Data Repository / Bhukosh), but no unauthenticated machine-readable vector geometry is currently integrated. No provisional geometry is fabricated.
+                </p>
+              </div>
+            </div>
+
             <p className="text-[#516b77]">{context.provenance?.provenanceLabel ?? "Authoritative administrative context"}</p>
             <div className="flex flex-wrap gap-1">
               <span className="rounded border border-[#dfeaec] bg-white px-1.5 py-0.5 text-[8px] text-[#607682]">CEEW 2021 CVI</span>

@@ -1,0 +1,604 @@
+/**
+ * ResQ Data Provenance & Authoritative Data Registry
+ *
+ * Centralized registry of all data sources, provenance tiers, spatial/temporal resolutions,
+ * units, engine usages, update frequencies, fallbacks, and known limitations.
+ *
+ * Standardized Provenance Classes:
+ *   OFFICIAL       — Official Government / Regulatory body dataset
+ *   OBSERVED       — Direct sensor, station, or field measurement
+ *   LIVE_API       — Retrieved live via authenticated or monitored API at runtime
+ *   FORECAST       — Predictive meteorological or early warning projection
+ *   MODELLED       — Numerical simulation, dasymetric raster, or atmospheric model
+ *   DERIVED        — Multi-criteria geospatial analysis or screening index
+ *   REFERENCE      — Baseline geographic or structural regulatory framework
+ *   FIXTURE        — Vetted offline fallback baseline for testing & continuity
+ *   USER_UPLOADED  — Operator-provided field telemetry or GIS vector
+ *   UNAVAILABLE    — Authoritative source exists but machine-readable geometry is not integrated
+ */
+
+import type { SourceClassification } from "./multiState";
+
+export type SourceProvenanceType = SourceClassification;
+
+export interface DataSourceRecord {
+  id: string;
+  category: string;
+  name: string;
+  provider: string;
+  url: string | null;
+  version: string | null;
+  spatialResolution: string | null;
+  temporalCoverage: string | null;
+  updateFrequency: string | null;
+  units: string | null;
+  license: string | null;
+  retrievedAt: string | null;
+  provenanceType: SourceProvenanceType;
+  observedOrModelled: "OBSERVED" | "MODELLED" | "DERIVED" | "REFERENCE" | "REGULATORY" | "FORECAST" | "UNAVAILABLE";
+  isUsedByDecisionEngine: boolean;
+  engineUsageDescription: string;
+  fallbackSource: string | null;
+  knownLimitations: string | null;
+  integrationStatus: "INTEGRATED" | "DOCUMENTED_NOT_INTEGRATED" | "PARTIAL" | "UNAVAILABLE";
+  notes: string | null;
+}
+
+// ─── 22 Audited Data Source Records ──────────────────────────────────────────
+
+export const DATA_SOURCE_REGISTRY: Record<string, DataSourceRecord> = {
+  // 1. States
+  STATES_GEOBOUNDARIES: {
+    id: "STATES_GEOBOUNDARIES",
+    category: "States",
+    name: "geoBoundaries India ADM1 Administrative Boundaries",
+    provider: "William & Mary geoLab / DataMeet India Community",
+    url: "https://www.geoboundaries.org/country/IND/",
+    version: "gbOpen ADM1 (2020 edition, Delimitation baseline)",
+    spatialResolution: "State administrative polygon boundaries",
+    temporalCoverage: "Reference year 2011 / 2020 boundary release",
+    updateFrequency: "Static reference (updated on administrative boundary changes)",
+    units: "Geographic coordinates (WGS84 EPSG:4326)",
+    license: "Open Database License (ODbL 1.0)",
+    retrievedAt: "2026-09-01",
+    provenanceType: "REFERENCE",
+    observedOrModelled: "REFERENCE",
+    isUsedByDecisionEngine: true,
+    engineUsageDescription: "Provides state boundary clipping, regional configuration, and multi-state selection extents.",
+    fallbackSource: "Nominatim OpenStreetMap state boundaries",
+    knownLimitations: "2011 boundary alignments may differ slightly from latest Union Territory reorganizations.",
+    integrationStatus: "INTEGRATED",
+    notes: "Authoritative reference boundary for nationwide state context.",
+  },
+
+  // 2. Population
+  POPULATION_CENSUS_WORLDPOP: {
+    id: "POPULATION_CENSUS_WORLDPOP",
+    category: "Population",
+    name: "Census of India 2011 & WorldPop Global High-Resolution Population Grids",
+    provider: "Registrar General & Census Commissioner of India / WorldPop (Univ of Southampton)",
+    url: "https://censusindia.gov.in / https://www.worldpop.org",
+    version: "Census 2011 Primary Census Abstract & WorldPop India 100m/1km unconstrained 2020",
+    spatialResolution: "Village/Settlement point (Census), District polygon (Census), ~100m/1km raster grid (WorldPop)",
+    temporalCoverage: "2011 (Census) / 2020 (WorldPop)",
+    updateFrequency: "Decennial (Census) / Annual modelled projections (WorldPop)",
+    units: "people (Census count) / people per km² (WorldPop density)",
+    license: "Government of India Open Data License (GOIDL) / CC BY 4.0",
+    retrievedAt: "2026-09-04",
+    provenanceType: "OFFICIAL",
+    observedOrModelled: "OBSERVED",
+    isUsedByDecisionEngine: true,
+    engineUsageDescription: "Provides verified habitation population exposure, district capacity ratios, and shelter capacity bounds.",
+    fallbackSource: "Unverified habitation marker (strictly null population; never converted to zero)",
+    knownLimitations: "2011 Census is historical baseline; WorldPop 100m is statistical dasymetric disaggregation, not a house-to-house census.",
+    integrationStatus: "INTEGRATED",
+    notes: "Distinctly stores population count, density, and metadata without mixing variables.",
+  },
+
+  // 3. Terrain
+  TERRAIN_ESRI_COPERNICUS: {
+    id: "TERRAIN_ESRI_COPERNICUS",
+    category: "Terrain",
+    name: "Copernicus Digital Elevation Model (GLO-90) & Esri World Elevation",
+    provider: "European Space Agency (ESA) / Airbus Defence & Space / Esri",
+    url: "https://spacedata.copernicus.eu / https://elevation.arcgis.com",
+    version: "Copernicus DEM GLO-90 & Esri World Elevation Terrain service",
+    spatialResolution: "90 m spatial raster grid (Copernicus) / multi-resolution tiles (Esri)",
+    temporalCoverage: "2011–2015 TanDEM-X radar mission baseline",
+    updateFrequency: "Static reference",
+    units: "Meters above sea level (WGS84 EGM96)",
+    license: "Copernicus Open Access / Esri Master License",
+    retrievedAt: "2026-09-01",
+    provenanceType: "REFERENCE",
+    observedOrModelled: "REFERENCE",
+    isUsedByDecisionEngine: true,
+    engineUsageDescription: "Physiographic classification, terrain ruggedness, elevation relief, and raw elevation queries.",
+    fallbackSource: "Regional physiographic baseline",
+    knownLimitations: "Canopy elevation interference in dense tropical forests (DSM rather than pure bare-earth DTM).",
+    integrationStatus: "INTEGRATED",
+    notes: "Serves as physical terrain visual reference on map and base elevation layer.",
+  },
+
+  // 4. Geology
+  GEOLOGY_GSI: {
+    id: "GEOLOGY_GSI",
+    category: "Geology",
+    name: "Geological Survey of India (GSI) NGDR & Bhukosh Geoscientific Repository",
+    provider: "Geological Survey of India, Ministry of Mines, Government of India",
+    url: "https://bhukosh.gsi.gov.in / https://www.gsi.gov.in",
+    version: "GSI 1:2,000,000 Seamless Geological Map & National Lineament Tectonic Atlas",
+    spatialResolution: "1:2,000,000 regional scale",
+    temporalCoverage: "Continuous geoscientific compilation (latest NGDR 2024 update)",
+    updateFrequency: "Periodic government release",
+    units: "Lithological & chronostratigraphic classification units",
+    license: "Official Government Publication",
+    retrievedAt: "2026-09-01",
+    provenanceType: "OFFICIAL",
+    observedOrModelled: "REFERENCE",
+    isUsedByDecisionEngine: false,
+    engineUsageDescription: "Documented as OFFICIAL REFERENCE supporting context. No provisional geometry is fabricated.",
+    fallbackSource: null,
+    knownLimitations: "Official GSI geological data exists, but no unauthenticated machine-readable vector geometry is currently integrated.",
+    integrationStatus: "UNAVAILABLE",
+    notes: "Strictly labeled UNAVAILABLE per audit. No synthetic polygons are created.",
+  },
+
+  // 5. Weather & Wind
+  WEATHER_WIND_IMD_OPENMETEO: {
+    id: "WEATHER_WIND_IMD_OPENMETEO",
+    category: "Weather & wind",
+    name: "IMD Mausam District Nowcasts & Warnings + Open-Meteo ECMWF/GFS NWP",
+    provider: "India Meteorological Department (IMD) / Open-Meteo",
+    url: "https://mausam.imd.gov.in / https://open-meteo.com",
+    version: "IMD District Nowcast/Warning Service + ECMWF IFS 0.25° & GFS seamless blend",
+    spatialResolution: "District-level (IMD Warnings) / ~3 km spatial grid (Numerical NWP)",
+    temporalCoverage: "Real-time 3-hourly nowcasts, 24-hourly warnings, 7-day numerical forecast",
+    updateFrequency: "Hourly/3-hourly (IMD) / 4 times daily (NWP)",
+    units: "Temperature (°C), Precipitation (mm, mm/hr), Wind Speed (km/h), Wind Direction (°), Gust (km/h)",
+    license: "IMD Public Data / CC BY 4.0 Open-Meteo",
+    retrievedAt: "Dynamic / Live",
+    provenanceType: "LIVE_API",
+    observedOrModelled: "OBSERVED",
+    isUsedByDecisionEngine: true,
+    engineUsageDescription: "Real-time rainfall threshold triggering, gale wind detection, and heatwave indexing.",
+    fallbackSource: "Open-Meteo numerical weather prediction",
+    knownLimitations: "api.imd.gov.in requires IP whitelist; live district warnings parsed from public Mausam operational feeds.",
+    integrationStatus: "INTEGRATED",
+    notes: "Clearly separates OBSERVED IMD nowcasts, FORECAST IMD warnings, and MODELLED NWP fields.",
+  },
+
+  // 6. Sensitivity
+  SENSITIVITY_SCREENING: {
+    id: "SENSITIVITY_SCREENING",
+    category: "Sensitivity",
+    name: "ResQ Derived Multi-Hazard Analytical Screening Extents",
+    provider: "ResQ Spatial Decision Engine (integrating CWC, ISRO, IMD, BIS data)",
+    url: null,
+    version: "ResQ Phase 3.4 Screening Framework",
+    spatialResolution: "Regional screening envelopes & coordinate point intersections",
+    temporalCoverage: "Operational decision-support state (synchronized with active hazards)",
+    updateFrequency: "Real-time per evaluated location",
+    units: "Screening scores (0–100), composite hazard tiers",
+    license: "Internal Analytical Algorithm",
+    retrievedAt: "Real-time",
+    provenanceType: "DERIVED",
+    observedOrModelled: "DERIVED",
+    isUsedByDecisionEngine: true,
+    engineUsageDescription: "Provides multi-hazard prioritization, trigger explainability, and evacuation readiness ranking.",
+    fallbackSource: null,
+    knownLimitations: "Analytical screening only; strictly NOT an official warning or observed disaster footprint.",
+    integrationStatus: "INTEGRATED",
+    notes: "Explicitly designated as DERIVED FLOOD/LANDSLIDE/COASTAL SCREENING.",
+  },
+
+  // 7. Hazards
+  HAZARDS_MATRIX: {
+    id: "HAZARDS_MATRIX",
+    category: "Hazards",
+    name: "ResQ Integrated Multi-Hazard Assessment Engine",
+    provider: "ResQ Multi-Agency Pipeline (CWC, GSI/ISRO, IMD, BIS)",
+    url: null,
+    version: "Phase 3.4 Multi-Hazard Matrix",
+    spatialResolution: "Habitation & district resolution",
+    temporalCoverage: "1900–2026",
+    updateFrequency: "Synchronous with location and forecast refresh",
+    units: "Hazard status tiers (CRITICAL, HIGH, MODERATE, LOW, UNAVAILABLE)",
+    license: "Integrated Multi-Agency Baseline",
+    retrievedAt: "Real-time",
+    provenanceType: "DERIVED",
+    observedOrModelled: "DERIVED",
+    isUsedByDecisionEngine: true,
+    engineUsageDescription: "Computes Red/Orange/Green Zone classification, multi-hazard triggers, and relief priority.",
+    fallbackSource: "Historical hazard vulnerability baseline",
+    knownLimitations: "Multi-hazard compounding effects are modeled deterministically using verified physical thresholds.",
+    integrationStatus: "INTEGRATED",
+    notes: "Drives all decision support panels, map badge tiers, and relocation triggers.",
+  },
+
+  // 8. Facilities
+  FACILITIES_OSM_CURATED: {
+    id: "FACILITIES_OSM_CURATED",
+    category: "Facilities",
+    name: "OpenStreetMap Emergency Infrastructure & Curated Shelter Baseline",
+    provider: "OpenStreetMap Foundation (via Overpass API) / ResQ Curated Baseline",
+    url: "https://overpass-api.de",
+    version: "Live Overpass Queries + Curated 13-State Shelter Baseline",
+    spatialResolution: "Point features (coordinates)",
+    temporalCoverage: "Continuously updated (OSM) / 2026 Curated Baseline",
+    updateFrequency: "Live API with 1h server cache",
+    units: "Facility count, point coordinates",
+    license: "Open Database License (ODbL 1.0)",
+    retrievedAt: "Runtime",
+    provenanceType: "LIVE_API",
+    observedOrModelled: "OBSERVED",
+    isUsedByDecisionEngine: true,
+    engineUsageDescription: "Discovers relocation candidates, shelters, schools, and medical facilities near affected zones.",
+    fallbackSource: "Curated 13-state baseline emergency shelter directory",
+    knownLimitations: "OSM does NOT publish verified shelter capacity; hospital ≠ evacuation shelter.",
+    integrationStatus: "INTEGRATED",
+    notes: "Distinguishes HOSPITAL_MEDICAL_SUPPORT from EMERGENCY_SHELTER; capacity is null unless audited.",
+  },
+
+  // 9. Routing
+  ROUTING_OSRM: {
+    id: "ROUTING_OSRM",
+    category: "Routing",
+    name: "Project OSRM Driving Road Network Engine",
+    provider: "Project OSRM / OpenStreetMap Road Graph",
+    url: "https://router.project-osrm.org",
+    version: "OSRM v5 (car driving profile)",
+    spatialResolution: "Road vector network geometry",
+    temporalCoverage: "Current OSM road network",
+    updateFrequency: "Continuous",
+    units: "Distance (km), Duration (minutes), Coordinates polyline",
+    license: "Open Database License (ODbL 1.0)",
+    retrievedAt: "Runtime",
+    provenanceType: "LIVE_API",
+    observedOrModelled: "DERIVED",
+    isUsedByDecisionEngine: true,
+    engineUsageDescription: "Calculates realistic evacuation transit corridors, road distance, and travel time.",
+    fallbackSource: "Verified road corridor baseline; strictly marked UNAVAILABLE if road routing fails.",
+    knownLimitations: "Does not model dynamic monsoon waterlogging or sudden landslide debris blocks unless flagged.",
+    integrationStatus: "INTEGRATED",
+    notes: "Never draws straight-line fallbacks disguised as road routing.",
+  },
+
+  // 10. Elevation
+  ELEVATION_COPERNICUS: {
+    id: "ELEVATION_COPERNICUS",
+    category: "Elevation",
+    name: "Copernicus Digital Elevation Model 90m (GLO-90)",
+    provider: "European Space Agency (ESA) & Open-Meteo Elevation Service",
+    url: "https://api.open-meteo.com/v1/elevation",
+    version: "Copernicus DEM GLO-90",
+    spatialResolution: "90 meters (~3 arc-seconds)",
+    temporalCoverage: "2011–2015 radar mission baseline",
+    updateFrequency: "Static reference",
+    units: "Meters above sea level (MSL)",
+    license: "Copernicus Open Access",
+    retrievedAt: "Runtime with 24h server cache",
+    provenanceType: "REFERENCE",
+    observedOrModelled: "OBSERVED",
+    isUsedByDecisionEngine: true,
+    engineUsageDescription: "Supplies raw elevation and feeds the 5-point finite-difference spatial slope algorithm.",
+    fallbackSource: "Regional physiographic elevation profile",
+    knownLimitations: "Radar bounce smoothing over narrow gorges and building canopies.",
+    integrationStatus: "INTEGRATED",
+    notes: "Raw elevation is strictly separated from derived slope and analytical sensitivity.",
+  },
+
+  // 11. Rainfall
+  RAINFALL_IMD_NWP: {
+    id: "RAINFALL_IMD_NWP",
+    category: "Rainfall",
+    name: "IMD District Rainfall Monitoring & ECMWF Precipitation Telemetry",
+    provider: "India Meteorological Department / Open-Meteo",
+    url: "https://mausam.imd.gov.in / https://open-meteo.com",
+    version: "IMD Observed District Nowcasts & ECMWF 7-Day Precipitation Outlook",
+    spatialResolution: "District station reports (IMD) / 3 km spatial grid (ECMWF)",
+    temporalCoverage: "Current hourly accumulation & 7-day forecast sum",
+    updateFrequency: "Hourly / Daily",
+    units: "Millimeters (mm), mm/hr",
+    license: "IMD Public Data / CC BY 4.0",
+    retrievedAt: "Live / Real-time",
+    provenanceType: "OFFICIAL",
+    observedOrModelled: "OBSERVED",
+    isUsedByDecisionEngine: true,
+    engineUsageDescription: "Drives flash flood warning thresholds and rainfall-induced landslide kinematic triggers.",
+    fallbackSource: "Modelled precipitation sum",
+    knownLimitations: "Micro-cloudburst events (<1 km) can fall between regional telemetry stations.",
+    integrationStatus: "INTEGRATED",
+    notes: "Clearly labels IMD rainfall warnings vs modelled ECMWF forecast sums.",
+  },
+
+  // 12. Cyclone
+  CYCLONE_IMD_IBTRACS: {
+    id: "CYCLONE_IMD_IBTRACS",
+    category: "Cyclone",
+    name: "IMD Cyclone Warning Division & NOAA IBTrACS Historical Tracks",
+    provider: "India Meteorological Department / NOAA NCEI",
+    url: "https://rsmcnewdelhi.imd.gov.in / https://www.ncei.noaa.gov/products/international-best-track-archive",
+    version: "IBTrACS v04r00 (1891–2023) & IMD RSMC Cyclone Bulletins",
+    spatialResolution: "6-hourly track coordinate fixes & intensity radii",
+    temporalCoverage: "1891–2024",
+    updateFrequency: "Event-based (Active disturbance) / Annual (IBTrACS historical)",
+    units: "Maximum sustained wind (km/h), Central pressure (hPa), Track coordinates",
+    license: "Public Domain / Official Government Data",
+    retrievedAt: "2026-09-01",
+    provenanceType: "OFFICIAL",
+    observedOrModelled: "OBSERVED",
+    isUsedByDecisionEngine: true,
+    engineUsageDescription: "Historical cyclone track proximity analysis, coastal storm surge risk buffers.",
+    fallbackSource: "10 km coastal vulnerability buffer",
+    knownLimitations: "High-resolution storm surge inundation models are marked UNAVAILABLE unless published by INCOIS.",
+    integrationStatus: "INTEGRATED",
+    notes: "Separate historical track, current cyclone, forecast track, and storm surge.",
+  },
+
+  // 13. Landslide
+  LANDSLIDE_ISRO_GSI: {
+    id: "LANDSLIDE_ISRO_GSI",
+    category: "Landslide",
+    name: "National Landslide Atlas of India (ISRO / NRSC / GSI)",
+    provider: "National Remote Sensing Centre (NRSC / ISRO) & Geological Survey of India (GSI)",
+    url: "https://www.gsi.gov.in / https://bhuvan.nrsc.gov.in",
+    version: "ISRO Landslide Atlas 2023 Edition (147 Susceptible Districts)",
+    spatialResolution: "District macro-zonation ranking & historical event point coordinates",
+    temporalCoverage: "Historical events 1998–2022",
+    updateFrequency: "Periodic official atlas releases",
+    units: "Susceptibility ranking (1–147), historical event point coordinates, slope threshold (°)",
+    license: "Official Government Publication",
+    retrievedAt: "2026-09-01",
+    provenanceType: "OFFICIAL",
+    observedOrModelled: "REFERENCE",
+    isUsedByDecisionEngine: true,
+    engineUsageDescription: "Landslide Red Zone designation, slope kinematic trigger (>15°–25°), and historical event proximity.",
+    fallbackSource: "Regional physiographic slope baseline",
+    knownLimitations: "Macro-zonation does not replace site-specific geotechnical borehole shear testing.",
+    integrationStatus: "INTEGRATED",
+    notes: "Distinguishes landslide inventory (events) from susceptibility (Atlas ranking).",
+  },
+
+  // 14. Flood
+  FLOOD_CWC_NRSC: {
+    id: "FLOOD_CWC_NRSC",
+    category: "Flood",
+    name: "Central Water Commission (CWC) & NRSC Bhuvan Flood Inundation Atlas",
+    provider: "Central Water Commission, Ministry of Jal Shakti / NRSC, ISRO",
+    url: "https://ffs.india-water.gov.in / https://bhuvan.nrsc.gov.in",
+    version: "CWC River Gauge Network Thresholds & NRSC Multi-Year Flood Inundation Baseline",
+    spatialResolution: "Gauge station coordinates (point) and historical inundation extents (polygon)",
+    temporalCoverage: "1970–2024 hydrological records",
+    updateFrequency: "Daily (Monsoon season) / Multi-year satellite archive",
+    units: "Water level in meters (MSL), warning level, danger level, highest flood level (HFL)",
+    license: "Official Government Data — Public Domain",
+    retrievedAt: "2026-09-01",
+    provenanceType: "OFFICIAL",
+    observedOrModelled: "OBSERVED",
+    isUsedByDecisionEngine: true,
+    engineUsageDescription: "Flood Red Zone designation, river breach proximity, gauge danger thresholds, and inundation flag.",
+    fallbackSource: "Basin hydrological proximity",
+    knownLimitations: "River gauge readings represent point stages; 2D hydrodynamic flow is coupled with DEM slope screening.",
+    integrationStatus: "INTEGRATED",
+    notes: "Separates river gauge observation from historical flood extent and modeled screening.",
+  },
+
+  // 15. Seismic
+  SEISMIC_BIS_IS1893: {
+    id: "SEISMIC_BIS_IS1893",
+    category: "Seismic",
+    name: "Bureau of Indian Standards IS 1893 (Part 1) Seismic Zonation",
+    provider: "Bureau of Indian Standards (BIS), Government of India",
+    url: "https://www.bis.gov.in",
+    version: "IS 1893:2016 (Part 1) — Sixth Revision",
+    spatialResolution: "Administrative seismic zone polygons (Zone II to Zone V)",
+    temporalCoverage: "2016 regulatory standard (regulatory)",
+    updateFrequency: "Decadal regulatory revision",
+    units: "Seismic Zone Factor Z (0.10 to 0.36), Peak Ground Acceleration (PGA) baseline",
+    license: "BIS Standard — Regulatory Baseline",
+    retrievedAt: "2026-09-01",
+    provenanceType: "OFFICIAL",
+    observedOrModelled: "REGULATORY",
+    isUsedByDecisionEngine: true,
+    engineUsageDescription: "Structural baseline risk weighting and multi-hazard compound vulnerability screening.",
+    fallbackSource: "National seismic zonation baseline",
+    knownLimitations: "Macro-zonation does not replace site-specific geotechnical microzonation or Vs30 shear-wave velocity.",
+    integrationStatus: "INTEGRATED",
+    notes: "Strictly labeled REGULATORY REFERENCE — NOT an observed earthquake footprint.",
+  },
+
+  // 16. Erosion
+  EROSION_NCCR_ASDMA: {
+    id: "EROSION_NCCR_ASDMA",
+    category: "Erosion",
+    name: "National Centre for Coastal Research (NCCR) Shoreline Atlas & ASDMA Registers",
+    provider: "NCCR (Ministry of Earth Sciences) & State Disaster Management Authorities",
+    url: "https://www.nccr.gov.in",
+    version: "Shoreline Change Atlas of India (1990–2018) & ASDMA Riverbank Erosion Database",
+    spatialResolution: "Coastal transects & riverbank breach vulnerability zones",
+    temporalCoverage: "1990–2024",
+    updateFrequency: "Periodic coastal/river survey releases",
+    units: "Erosion rate (m/yr), breach risk tier (CRITICAL, HIGH, MODERATE)",
+    license: "Official Government Data",
+    retrievedAt: "2026-09-01",
+    provenanceType: "OFFICIAL",
+    observedOrModelled: "OBSERVED",
+    isUsedByDecisionEngine: true,
+    engineUsageDescription: "Riverbank erosion triggers for Brahmaputra settlements and coastal erosion screening.",
+    fallbackSource: "Hydrological riverbank distance buffer",
+    knownLimitations: "Riverbank morphological migration occurs rapidly during single high-discharge monsoon events.",
+    integrationStatus: "INTEGRATED",
+    notes: "Identifies irreversible land loss zones distinct from temporary inundation.",
+  },
+
+  // 17. Drought
+  DROUGHT_NADAMS_IMD: {
+    id: "DROUGHT_NADAMS_IMD",
+    category: "Drought",
+    name: "National Agricultural Drought Assessment and Monitoring System (NADAMS)",
+    provider: "Mahalanobis National Crop Forecast Centre (MNCFC) & IMD",
+    url: "https://ncfc.gov.in",
+    version: "NADAMS Bi-Weekly Agricultural Drought Bulletin & IMD SPI",
+    spatialResolution: "District / Sub-district",
+    temporalCoverage: "Bi-weekly monitoring during Kharif & Rabi seasons",
+    updateFrequency: "Fortnightly",
+    units: "Standardized Precipitation Index (SPI), NDVI vegetation anomaly",
+    license: "Official Government Publication",
+    retrievedAt: "2026-09-01",
+    provenanceType: "OFFICIAL",
+    observedOrModelled: "DERIVED",
+    isUsedByDecisionEngine: false,
+    engineUsageDescription: "Supporting contextual screening for arid regions and groundwater stress.",
+    fallbackSource: "IMD rainfall deficiency index",
+    knownLimitations: "Slow-onset seasonal hazard; does not generate rapid evacuation directives.",
+    integrationStatus: "INTEGRATED",
+    notes: "Classified as supporting agricultural risk context.",
+  },
+
+  // 18. Heat
+  HEAT_IMD_NDMA: {
+    id: "HEAT_IMD_NDMA",
+    category: "Heat",
+    name: "IMD Heatwave Action Framework & Temperature Telemetry",
+    provider: "India Meteorological Department / National Disaster Management Authority (NDMA)",
+    url: "https://mausam.imd.gov.in / https://ndma.gov.in",
+    version: "National Heat Action Plan Thresholds & ECMWF 2m Maximum Temperature",
+    spatialResolution: "Station / District",
+    temporalCoverage: "Summer monitoring season (March–June)",
+    updateFrequency: "Daily 11:30 & 16:30 IST bulletins",
+    units: "Dry-bulb temperature (°C), Apparent temperature (°C)",
+    license: "Official Guidelines & Open-Meteo Telemetry",
+    retrievedAt: "Real-time",
+    provenanceType: "OFFICIAL",
+    observedOrModelled: "OBSERVED",
+    isUsedByDecisionEngine: true,
+    engineUsageDescription: "Triggers heatwave advisories, apparent temperature warnings, and cooling shelter directives.",
+    fallbackSource: "Modelled apparent temperature index",
+    knownLimitations: "Wet-bulb globe temperature (WBGT) requires micro-meteorological solar radiation sensors not available everywhere.",
+    integrationStatus: "INTEGRATED",
+    notes: "Distinguishes observed station heatwaves from modelled apparent temperature forecasts.",
+  },
+
+  // 19. Exposure
+  EXPOSURE_RESQ_SPATIAL: {
+    id: "EXPOSURE_RESQ_SPATIAL",
+    category: "Exposure",
+    name: "ResQ Spatial Habitation & Infrastructure Exposure Engine",
+    provider: "ResQ Spatial Decision Engine",
+    url: null,
+    version: "Phase 3.4 Spatial Exposure Intersection",
+    spatialResolution: "Habitation coordinates and hazard extent intersection",
+    temporalCoverage: "Real-time per evaluated hazard state",
+    updateFrequency: "Synchronous with location load",
+    units: "Exposed population count, exposed facility count, exposure tier",
+    license: "Internal Analytical Algorithm",
+    retrievedAt: "Real-time",
+    provenanceType: "DERIVED",
+    observedOrModelled: "DERIVED",
+    isUsedByDecisionEngine: true,
+    engineUsageDescription: "Pairs vulnerable settlements with active hazard footprints and computes exposure scores.",
+    fallbackSource: "District-level macro exposure estimate",
+    knownLimitations: "Exact building-by-building footprint intersection requires complete building vector polygons.",
+    integrationStatus: "INTEGRATED",
+    notes: "Derived from authoritative Census population and CWC/ISRO hazard extents.",
+  },
+
+  // 20. Relocation
+  RELOCATION_MCDA_ENGINE: {
+    id: "RELOCATION_MCDA_ENGINE",
+    category: "Relocation",
+    name: "ResQ Multi-Criteria Decision Analysis (MCDA) Relocation Engine",
+    provider: "ResQ Spatial Decision Engine",
+    url: null,
+    version: "Phase 3.4 Relocation & Safe Haven Engine",
+    spatialResolution: "Origin settlement to destination shelter pairs",
+    temporalCoverage: "Operational decision-support state",
+    updateFrequency: "Real-time upon origin/hazard selection",
+    units: "Suitability score (0–100), transit distance (km), travel time (min)",
+    license: "Internal Decision Support Algorithm",
+    retrievedAt: "Real-time",
+    provenanceType: "DERIVED",
+    observedOrModelled: "DERIVED",
+    isUsedByDecisionEngine: true,
+    engineUsageDescription: "Selects preferred safe-haven candidates outside active hazard zones and generates evacuation routes.",
+    fallbackSource: "Nearest vetted administrative campus",
+    knownLimitations: "Provides decision support to disaster commanders; field route closures must be verified on-ground.",
+    integrationStatus: "INTEGRATED",
+    notes: "Never creates artificial green polygons; evaluates real candidate facilities.",
+  },
+
+  // 21. Capacity
+  CAPACITY_DDMA_CURATED: {
+    id: "CAPACITY_DDMA_CURATED",
+    category: "Capacity",
+    name: "District Disaster Management Authority (DDMA) Shelter Capacity Baseline",
+    provider: "ResQ Curation & State Disaster Management Authorities",
+    url: "https://ndma.gov.in",
+    version: "Phase 3.4 Audited Shelter Capacity Registry",
+    spatialResolution: "Facility point",
+    temporalCoverage: "2024–2026 audited contingency registers",
+    updateFrequency: "Annual revision / Event-based audit",
+    units: "Maximum sheltered occupants (persons), capacity status",
+    license: "Official Government Disaster Management Plans",
+    retrievedAt: "2026-09-04",
+    provenanceType: "OFFICIAL",
+    observedOrModelled: "OBSERVED",
+    isUsedByDecisionEngine: true,
+    engineUsageDescription: "Prevents shelter overcrowding; constrains evacuation allocations to verified capacities.",
+    fallbackSource: "Strictly marked UNAVAILABLE (never assumed or fabricated)",
+    knownLimitations: "Only verified multi-purpose cyclone/flood shelters have audited capacities; raw OSM nodes have capacity = null.",
+    integrationStatus: "PARTIAL",
+    notes: "Never fabricates capacity; strictly null when unverified.",
+  },
+
+  // 22. Derived Slope vs Raw Elevation
+  DERIVED_SLOPE_ELEVATION: {
+    id: "DERIVED_SLOPE_ELEVATION",
+    category: "Elevation",
+    name: "5-Point Spatial Elevation Gradient & Horn's Topographic Slope",
+    provider: "ResQ Terrain Analysis Engine (Copernicus DEM 90m inputs)",
+    url: null,
+    version: "Horn's Topographic Finite-Difference Algorithm (1981)",
+    spatialResolution: "90 m baseline cross-grid",
+    temporalCoverage: "Synchronous with location load",
+    updateFrequency: "Real-time per evaluated coordinate",
+    units: "Slope degrees (°), Aspect degrees (°), Relief (m)",
+    license: "Internal Topographic Pipeline",
+    retrievedAt: "Real-time",
+    provenanceType: "DERIVED",
+    observedOrModelled: "DERIVED",
+    isUsedByDecisionEngine: true,
+    engineUsageDescription: "Drives landslide slope kinematic triggers (>15°–25°) and low-lying flood ponding screening (<2°).",
+    fallbackSource: "Strictly null if 5-point gradient cannot be retrieved (never invented)",
+    knownLimitations: "Resolution is constrained by the 90m Copernicus DEM grid baseline.",
+    integrationStatus: "INTEGRATED",
+    notes: "Clearly distinguishes raw elevation (Copernicus DEM) from derived slope (Horn's gradient).",
+  },
+};
+
+// ─── Lookup helpers ───────────────────────────────────────────────────────────
+
+export function getDataSource(id: string): DataSourceRecord | undefined {
+  return DATA_SOURCE_REGISTRY[id];
+}
+
+export function getAllDataSources(): DataSourceRecord[] {
+  return Object.values(DATA_SOURCE_REGISTRY);
+}
+
+export function getSourceProvenanceLabel(id: string): string {
+  const src = DATA_SOURCE_REGISTRY[id];
+  if (!src) return "Source unknown";
+  return `${src.name} (${src.provider}) — ${src.provenanceType}`;
+}
+
+export const DATA_SOURCE_AUDIT_LIST: DataSourceRecord[] = Object.values(DATA_SOURCE_REGISTRY);
+
+export const SOURCE_LABELS = {
+  CENSUS_2011_DISTRICT: "Census of India 2011 — District-Level Population",
+  CENSUS_2011_HABITATION: "Census of India 2011 — Village / Habitation Population",
+  HABITATIONS_CURATED: "ResQ Curated Habitation Records — 13-State Baseline",
+  WORLDPOP_100M: "WorldPop India Population Grid 2020 (100m)",
+  OSM_OVERPASS: "OpenStreetMap Overpass API",
+  OSRM_ROUTING: "Project OSRM Driving Route API",
+} as const;

@@ -47,7 +47,7 @@ export function buildResqAssistantContext(
     classificationZone: indiaCtx?.hazardProfile?.redZone.status ?? indiaCtx?.screening.riskLevel?.toUpperCase() ?? "SCREENING",
     classificationScore: indiaCtx?.hazardProfile?.redZone.score ?? indiaCtx?.screening.riskScore ?? null,
     classificationReasons: indiaCtx?.hazardProfile?.redZone.primaryDriverReason ? [indiaCtx.hazardProfile.redZone.primaryDriverReason] : [],
-    exposedHabitations: indiaCtx?.hazardProfile?.exposedHabitations.map(h => ({
+    exposedHabitations: indiaCtx?.hazardProfile?.exposedHabitations.map((h: any) => ({
       name: h.name,
       population: h.population,
       exposureLevel: h.exposureLevel,

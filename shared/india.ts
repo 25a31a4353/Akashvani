@@ -1,15 +1,18 @@
 export * from "./multiState";
 export * from "./hazards";
-import type {
-  TerrainContext,
-  HydrologyContext,
-  CategorizedInfrastructure,
-  DataProvenance,
-  StateConfig,
-  DistrictInfo,
-} from "./multiState";
-import { STATE_CONFIGURATIONS } from "./multiState";
 import type { MultiHazardProfile, RedZoneAssessment } from "./hazards";
+import {
+  STATE_CONFIGURATIONS,
+  type TerrainContext,
+  type HydrologyContext,
+  type CategorizedInfrastructure,
+  type DataProvenance,
+  type PopulationMetadata,
+  type ImdWarningContext,
+  type EvidenceCoverageScore,
+  type StateConfig,
+  type DistrictInfo,
+} from "./multiState";
 
 export type IndiaBoundary = { type: "Feature"; properties: Record<string, unknown>; geometry: { type: string; coordinates: unknown } } | null;
 
@@ -22,6 +25,7 @@ export type IndiaLocation = {
   longitude: number;
   population: number | null;
   populationSource: string;
+  populationMeta?: PopulationMetadata;
   boundingBox: [number, number, number, number] | null;
   boundary: IndiaBoundary;
   address: { state?: string; district?: string; city?: string; locality?: string };
@@ -81,6 +85,16 @@ export type EnvironmentalContext = {
   observedAt: string | null;
   forecast: ForecastDayDetailed[];
   predictions?: WeatherPredictionReport;
+  imdWarning?: ImdWarningContext | null;
+  telemetryType?: {
+    temperature: "MODELLED";
+    wind: "MODELLED";
+    precipitation: "MODELLED" | "OBSERVED";
+    airQuality: "MODELLED";
+    warning: "OFFICIAL_WARNING" | "OFFICIAL_NOWCAST" | "UNAVAILABLE";
+  };
+  validPeriod?: string;
+  retrievedAt?: string;
   source: string;
   status: string;
 };
@@ -94,6 +108,7 @@ export type IndiaLocationContext = {
   hydrology?: HydrologyContext;
   categorizedInfrastructure?: CategorizedInfrastructure;
   provenance?: DataProvenance;
+  evidenceCoverage?: EvidenceCoverageScore;
   stateConfig?: StateConfig;
   districtInfo?: DistrictInfo;
   hazardProfile?: MultiHazardProfile;

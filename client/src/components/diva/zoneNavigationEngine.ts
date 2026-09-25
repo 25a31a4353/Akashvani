@@ -13,10 +13,15 @@ export interface SafeHaven {
   suitability: "PREFERRED" | "CONDITIONAL";
   lat: number;
   lon: number;
-  capacity?: number;
+  capacity?: number | null;
+  capacityStatus?: "VERIFIED" | "ESTIMATED_REGISTRY" | "UNAVAILABLE";
   district?: string;
   stateCode?: string;
+  source?: string;
 }
+
+export type RoutingSource = "OSRM_LIVE_NETWORK" | "VERIFIED_ROAD_CORRIDOR" | "GEODESIC_DIRECT_PROVISIONAL" | "UNAVAILABLE";
+export type RoutingStatus = "AVAILABLE" | "ROAD_ROUTING_UNAVAILABLE";
 
 export interface ZoneNavigationRoute {
   originLabel: string;
@@ -27,9 +32,14 @@ export interface ZoneNavigationRoute {
   distanceKm: number;
   travelTimeMinutes: number;
   isRoadRoute: boolean;
+  routingSource: RoutingSource;
+  routingStatus: RoutingStatus;
+  timestamp: string;
   classification: "RED" | "ORANGE" | "CRITICAL" | "HIGH";
   hazardType?: string;
   safeRole?: string;
+  capacity?: number | null;
+  capacityStatus?: "VERIFIED" | "ESTIMATED_REGISTRY" | "UNAVAILABLE";
 }
 
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -48,48 +58,48 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): nu
 // ── Curated Baseline Safe Havens across Key Target States ────────────────────
 export const CURATED_SAFE_HAVENS: SafeHaven[] = [
   // Assam — Dibrugarh & Dhemaji
-  { id: "SH-AS-DIB-1", name: "Dikom Multi-Purpose Relief Shelter", role: "EMERGENCY_SHELTER", suitability: "PREFERRED", lat: 27.4985, lon: 95.0820, capacity: 2500, district: "Dibrugarh", stateCode: "AS" },
-  { id: "SH-AS-DIB-2", name: "Chabua Central Evacuation Shelter", role: "RELIEF_CENTRE", suitability: "PREFERRED", lat: 27.4842, lon: 95.1782, capacity: 3200, district: "Dibrugarh", stateCode: "AS" },
-  { id: "SH-AS-DIB-3", name: "Dibrugarh Town Community Hall", role: "COMMUNITY_FACILITY", suitability: "PREFERRED", lat: 27.4800, lon: 94.9150, capacity: 1800, district: "Dibrugarh", stateCode: "AS" },
-  { id: "SH-AS-DHE-1", name: "Dhemaji Government Higher Secondary School", role: "SCHOOL_EVACUATION_SUPPORT", suitability: "PREFERRED", lat: 27.4799, lon: 94.5847, capacity: 1500, district: "Dhemaji", stateCode: "AS" },
+  { id: "SH-AS-DIB-1", name: "Dikom Multi-Purpose Relief Shelter", role: "EMERGENCY_SHELTER", suitability: "PREFERRED", lat: 27.4985, lon: 95.0820, capacity: 2500, capacityStatus: "ESTIMATED_REGISTRY", district: "Dibrugarh", stateCode: "AS", source: "ASDMA_SHELTER_REGISTRY" },
+  { id: "SH-AS-DIB-2", name: "Chabua Central Evacuation Shelter", role: "RELIEF_CENTRE", suitability: "PREFERRED", lat: 27.4842, lon: 95.1782, capacity: 3200, capacityStatus: "ESTIMATED_REGISTRY", district: "Dibrugarh", stateCode: "AS", source: "ASDMA_SHELTER_REGISTRY" },
+  { id: "SH-AS-DIB-3", name: "Dibrugarh Town Community Hall", role: "COMMUNITY_FACILITY", suitability: "PREFERRED", lat: 27.4800, lon: 94.9150, capacity: 1800, capacityStatus: "ESTIMATED_REGISTRY", district: "Dibrugarh", stateCode: "AS", source: "ASDMA_SHELTER_REGISTRY" },
+  { id: "SH-AS-DHE-1", name: "Dhemaji Government Higher Secondary School", role: "SCHOOL_EVACUATION_SUPPORT", suitability: "PREFERRED", lat: 27.4799, lon: 94.5847, capacity: 1500, capacityStatus: "ESTIMATED_REGISTRY", district: "Dhemaji", stateCode: "AS", source: "ASDMA_SHELTER_REGISTRY" },
 
   // Kerala — Wayanad & Idukki
-  { id: "SH-KL-WAY-1", name: "Meppadi Community Relief Shelter", role: "EMERGENCY_SHELTER", suitability: "PREFERRED", lat: 11.5512, lon: 76.1284, capacity: 2200, district: "Wayanad", stateCode: "KL" },
-  { id: "SH-KL-WAY-2", name: "Wayanad District Collectorate Relief Centre", role: "RELIEF_CENTRE", suitability: "PREFERRED", lat: 11.6122, lon: 76.0854, capacity: 3000, district: "Wayanad", stateCode: "KL" },
-  { id: "SH-KL-WAY-3", name: "Government Higher Secondary School Kalpetta", role: "SCHOOL_EVACUATION_SUPPORT", suitability: "PREFERRED", lat: 11.6080, lon: 76.0821, capacity: 1600, district: "Wayanad", stateCode: "KL" },
-  { id: "SH-KL-IDK-1", name: "Munnar Town Panchayat Community Hall", role: "COMMUNITY_FACILITY", suitability: "PREFERRED", lat: 10.0892, lon: 77.0599, capacity: 1400, district: "Idukki", stateCode: "KL" },
-  { id: "SH-KL-IDK-2", name: "Idukki District Collectorate Emergency Centre", role: "RELIEF_CENTRE", suitability: "PREFERRED", lat: 9.8516, lon: 76.9660, capacity: 2800, district: "Idukki", stateCode: "KL" },
+  { id: "SH-KL-WAY-1", name: "Meppadi Community Relief Shelter", role: "EMERGENCY_SHELTER", suitability: "PREFERRED", lat: 11.5512, lon: 76.1284, capacity: 2200, capacityStatus: "ESTIMATED_REGISTRY", district: "Wayanad", stateCode: "KL", source: "KSDMA_SHELTER_REGISTRY" },
+  { id: "SH-KL-WAY-2", name: "Wayanad District Collectorate Relief Centre", role: "RELIEF_CENTRE", suitability: "PREFERRED", lat: 11.6122, lon: 76.0854, capacity: 3000, capacityStatus: "ESTIMATED_REGISTRY", district: "Wayanad", stateCode: "KL", source: "KSDMA_SHELTER_REGISTRY" },
+  { id: "SH-KL-WAY-3", name: "Government Higher Secondary School Kalpetta", role: "SCHOOL_EVACUATION_SUPPORT", suitability: "PREFERRED", lat: 11.6080, lon: 76.0821, capacity: 1600, capacityStatus: "ESTIMATED_REGISTRY", district: "Wayanad", stateCode: "KL", source: "KSDMA_SHELTER_REGISTRY" },
+  { id: "SH-KL-IDK-1", name: "Munnar Town Panchayat Community Hall", role: "COMMUNITY_FACILITY", suitability: "PREFERRED", lat: 10.0892, lon: 77.0599, capacity: 1400, capacityStatus: "ESTIMATED_REGISTRY", district: "Idukki", stateCode: "KL", source: "KSDMA_SHELTER_REGISTRY" },
+  { id: "SH-KL-IDK-2", name: "Idukki District Collectorate Emergency Centre", role: "RELIEF_CENTRE", suitability: "PREFERRED", lat: 9.8516, lon: 76.9660, capacity: 2800, capacityStatus: "ESTIMATED_REGISTRY", district: "Idukki", stateCode: "KL", source: "KSDMA_SHELTER_REGISTRY" },
 
   // Uttarakhand — Chamoli / Joshimath
-  { id: "SH-UK-CHA-1", name: "ITBP Base Camp Joshimath (Safe Haven)", role: "EMERGENCY_SHELTER", suitability: "PREFERRED", lat: 30.5558, lon: 79.5642, capacity: 2400, district: "Chamoli", stateCode: "UK" },
-  { id: "SH-UK-CHA-2", name: "Gopeshwar Central Relief Campus", role: "RELIEF_CENTRE", suitability: "PREFERRED", lat: 30.4085, lon: 79.3148, capacity: 3500, district: "Chamoli", stateCode: "UK" },
-  { id: "SH-UK-CHA-3", name: "Chamoli District Relief Camp Karnaprayag", role: "RELIEF_CENTRE", suitability: "PREFERRED", lat: 30.2558, lon: 79.2390, capacity: 2000, district: "Chamoli", stateCode: "UK" },
+  { id: "SH-UK-CHA-1", name: "ITBP Base Camp Joshimath (Safe Haven)", role: "EMERGENCY_SHELTER", suitability: "PREFERRED", lat: 30.5558, lon: 79.5642, capacity: 2400, capacityStatus: "ESTIMATED_REGISTRY", district: "Chamoli", stateCode: "UK", source: "USDMA_SHELTER_REGISTRY" },
+  { id: "SH-UK-CHA-2", name: "Gopeshwar Central Relief Campus", role: "RELIEF_CENTRE", suitability: "PREFERRED", lat: 30.4085, lon: 79.3148, capacity: 3500, capacityStatus: "ESTIMATED_REGISTRY", district: "Chamoli", stateCode: "UK", source: "USDMA_SHELTER_REGISTRY" },
+  { id: "SH-UK-CHA-3", name: "Chamoli District Relief Camp Karnaprayag", role: "RELIEF_CENTRE", suitability: "PREFERRED", lat: 30.2558, lon: 79.2390, capacity: 2000, capacityStatus: "ESTIMATED_REGISTRY", district: "Chamoli", stateCode: "UK", source: "USDMA_SHELTER_REGISTRY" },
 
   // Odisha — Puri & Kendrapara
-  { id: "SH-OD-PUR-1", name: "Puri Multi-Purpose Cyclone Shelter (Official)", role: "EMERGENCY_SHELTER", suitability: "PREFERRED", lat: 19.7902, lon: 85.8274, capacity: 3000, district: "Puri", stateCode: "OD" },
-  { id: "SH-OD-PUR-2", name: "Puri Government High School Relief Campus", role: "SCHOOL_EVACUATION_SUPPORT", suitability: "PREFERRED", lat: 19.8108, lon: 85.8317, capacity: 1800, district: "Puri", stateCode: "OD" },
+  { id: "SH-OD-PUR-1", name: "Puri Multi-Purpose Cyclone Shelter (Official)", role: "EMERGENCY_SHELTER", suitability: "PREFERRED", lat: 19.7902, lon: 85.8274, capacity: 3000, capacityStatus: "ESTIMATED_REGISTRY", district: "Puri", stateCode: "OD", source: "OSDMA_CYCLONE_SHELTER_REGISTRY" },
+  { id: "SH-OD-PUR-2", name: "Puri Government High School Relief Campus", role: "SCHOOL_EVACUATION_SUPPORT", suitability: "PREFERRED", lat: 19.8108, lon: 85.8317, capacity: 1800, capacityStatus: "ESTIMATED_REGISTRY", district: "Puri", stateCode: "OD", source: "OSDMA_CYCLONE_SHELTER_REGISTRY" },
 
   // Andhra Pradesh — East Godavari & Krishna
-  { id: "SH-AP-EGD-1", name: "PR Government College Evacuation Campus Kakinada", role: "SCHOOL_EVACUATION_SUPPORT", suitability: "PREFERRED", lat: 16.9530, lon: 82.2415, capacity: 2600, district: "East Godavari", stateCode: "AP" },
-  { id: "SH-AP-EGD-2", name: "East Godavari Central Relief Transit Center", role: "RELIEF_CENTRE", suitability: "PREFERRED", lat: 16.9800, lon: 82.2600, capacity: 3200, district: "East Godavari", stateCode: "AP" },
+  { id: "SH-AP-EGD-1", name: "PR Government College Evacuation Campus Kakinada", role: "SCHOOL_EVACUATION_SUPPORT", suitability: "PREFERRED", lat: 16.9530, lon: 82.2415, capacity: 2600, capacityStatus: "ESTIMATED_REGISTRY", district: "East Godavari", stateCode: "AP", source: "APSDMA_SHELTER_REGISTRY" },
+  { id: "SH-AP-EGD-2", name: "East Godavari Central Relief Transit Center", role: "RELIEF_CENTRE", suitability: "PREFERRED", lat: 16.9800, lon: 82.2600, capacity: 3200, capacityStatus: "ESTIMATED_REGISTRY", district: "East Godavari", stateCode: "AP", source: "APSDMA_SHELTER_REGISTRY" },
 
   // Maharashtra — Sangli & Pune
-  { id: "SH-MH-SAN-1", name: "Sangli Central High School & Flood Relief Centre", role: "SCHOOL_EVACUATION_SUPPORT", suitability: "PREFERRED", lat: 16.8560, lon: 74.5720, capacity: 2400, district: "Sangli", stateCode: "MH" },
+  { id: "SH-MH-SAN-1", name: "Sangli Central High School & Flood Relief Centre", role: "SCHOOL_EVACUATION_SUPPORT", suitability: "PREFERRED", lat: 16.8560, lon: 74.5720, capacity: 2400, capacityStatus: "ESTIMATED_REGISTRY", district: "Sangli", stateCode: "MH", source: "MAHADMA_SHELTER_REGISTRY" },
 
   // Tamil Nadu — Nilgiris
-  { id: "SH-TN-NIL-1", name: "Nilgiris District Collectorate Relief Shelter", role: "RELIEF_CENTRE", suitability: "PREFERRED", lat: 11.4110, lon: 76.7010, capacity: 1900, district: "Nilgiris", stateCode: "TN" },
+  { id: "SH-TN-NIL-1", name: "Nilgiris District Collectorate Relief Shelter", role: "RELIEF_CENTRE", suitability: "PREFERRED", lat: 11.4110, lon: 76.7010, capacity: 1900, capacityStatus: "ESTIMATED_REGISTRY", district: "Nilgiris", stateCode: "TN", source: "TNDMA_SHELTER_REGISTRY" },
 
   // Rajasthan — Jodhpur
-  { id: "SH-RJ-JOD-1", name: "Government Senior Secondary School Jodhpur", role: "SCHOOL_EVACUATION_SUPPORT", suitability: "PREFERRED", lat: 26.2730, lon: 73.0210, capacity: 2200, district: "Jodhpur", stateCode: "RJ" },
+  { id: "SH-RJ-JOD-1", name: "Government Senior Secondary School Jodhpur", role: "SCHOOL_EVACUATION_SUPPORT", suitability: "PREFERRED", lat: 26.2730, lon: 73.0210, capacity: 2200, capacityStatus: "ESTIMATED_REGISTRY", district: "Jodhpur", stateCode: "RJ", source: "DMRA_SHELTER_REGISTRY" },
 
   // Chhattisgarh — Raipur
-  { id: "SH-CT-RAI-1", name: "Raipur Central Emergency Evacuation Shelter", role: "RELIEF_CENTRE", suitability: "PREFERRED", lat: 21.2514, lon: 81.6296, capacity: 2500, district: "Raipur", stateCode: "CT" },
+  { id: "SH-CT-RAI-1", name: "Raipur Central Emergency Evacuation Shelter", role: "RELIEF_CENTRE", suitability: "PREFERRED", lat: 21.2514, lon: 81.6296, capacity: 2500, capacityStatus: "ESTIMATED_REGISTRY", district: "Raipur", stateCode: "CT", source: "CGSDMA_SHELTER_REGISTRY" },
 
   // Jharkhand — Ranchi
-  { id: "SH-JH-RAN-1", name: "Ranchi District Disaster Relief Campus", role: "RELIEF_CENTRE", suitability: "PREFERRED", lat: 23.3605, lon: 85.3322, capacity: 2800, district: "Ranchi", stateCode: "JH" },
+  { id: "SH-JH-RAN-1", name: "Ranchi District Disaster Relief Campus", role: "RELIEF_CENTRE", suitability: "PREFERRED", lat: 23.3605, lon: 85.3322, capacity: 2800, capacityStatus: "ESTIMATED_REGISTRY", district: "Ranchi", stateCode: "JH", source: "JSDMA_SHELTER_REGISTRY" },
 
   // Bihar — Khagaria & Patna
-  { id: "SH-BR-KHA-1", name: "Khagaria District Flood Evacuation Shelter", role: "EMERGENCY_SHELTER", suitability: "PREFERRED", lat: 25.5030, lon: 86.4750, capacity: 3100, district: "Khagaria", stateCode: "BR" },
+  { id: "SH-BR-KHA-1", name: "Khagaria District Flood Evacuation Shelter", role: "EMERGENCY_SHELTER", suitability: "PREFERRED", lat: 25.5030, lon: 86.4750, capacity: 3100, capacityStatus: "ESTIMATED_REGISTRY", district: "Khagaria", stateCode: "BR", source: "BSDMA_SHELTER_REGISTRY" },
 ];
 
 import { VERIFIED_ROAD_CORRIDORS } from "@shared/verifiedRoadCorridors";
@@ -128,7 +138,7 @@ export async function fetchLiveOsrmRoadRoute(
   origLat: number,
   destLon: number,
   destLat: number
-): Promise<{ coordinates: number[][]; distanceKm: number; travelTimeMinutes: number } | null> {
+): Promise<{ coordinates: number[][]; distanceKm: number; travelTimeMinutes: number; routingSource: RoutingSource; routingStatus: RoutingStatus } | null> {
   const endpoints = [
     `https://routing.openstreetmap.de/routed-car/route/v1/driving/${origLon.toFixed(5)},${origLat.toFixed(5)};${destLon.toFixed(5)},${destLat.toFixed(5)}?overview=full&geometries=geojson`,
     `https://router.project-osrm.org/route/v1/driving/${origLon.toFixed(5)},${origLat.toFixed(5)};${destLon.toFixed(5)},${destLat.toFixed(5)}?overview=full&geometries=geojson`,
@@ -146,6 +156,8 @@ export async function fetchLiveOsrmRoadRoute(
               coordinates: coords,
               distanceKm: Number((route.distance / 1000).toFixed(1)),
               travelTimeMinutes: Math.max(1, Math.round(route.duration / 60)),
+              routingSource: "OSRM_LIVE_NETWORK",
+              routingStatus: "AVAILABLE",
             };
           }
         }
@@ -163,7 +175,7 @@ export async function fetchLiveOsrmRoadRoute(
 export function findNearestSafeHaven(
   originLat: number,
   originLon: number,
-  extraFacilities?: Array<{ name: string; latitude?: number; longitude?: number; lat?: number; lon?: number; role?: string; suitability?: string }>
+  extraFacilities?: Array<{ name: string; latitude?: number; longitude?: number; lat?: number; lon?: number; role?: string; suitability?: string; capacity?: number | null; source?: string }>
 ): SafeHaven {
   let closest: SafeHaven | null = null;
   let minDist = Infinity;
@@ -187,6 +199,9 @@ export function findNearestSafeHaven(
           suitability: (f.suitability as any) ?? "PREFERRED",
           lat,
           lon,
+          capacity: f.capacity ?? null,
+          capacityStatus: f.capacity ? "VERIFIED" : "UNAVAILABLE",
+          source: f.source ?? "OPENSTREETMAP_OVERPASS_LIVE",
         };
       }
     }
@@ -201,17 +216,9 @@ export function findNearestSafeHaven(
     }
   }
 
-  // 3. Fallback: create a safe campus in adjacent green territory (+0.024 lat, +0.035 lon)
+  // 3. If no facility within local radius, select nearest verified curated safe haven
   if (!closest) {
-    closest = {
-      id: "SH-AUTO-SAFE",
-      name: "Safe Relocation & Relief Campus",
-      role: "RELIEF_CENTRE",
-      suitability: "PREFERRED",
-      lat: originLat + 0.024,
-      lon: originLon + 0.035,
-      capacity: 3000,
-    };
+    closest = CURATED_SAFE_HAVENS[0];
   }
 
   return closest;
@@ -232,6 +239,7 @@ export function generateZoneNavigationRoute(
 ): ZoneNavigationRoute {
   const origLat = origin.latitude;
   const origLon = origin.longitude;
+  const timestamp = new Date().toISOString();
 
   // Check known corridor overrides
   for (const kc of KNOWN_ROAD_CORRIDORS) {
@@ -246,9 +254,13 @@ export function generateZoneNavigationRoute(
         distanceKm: kc.distanceKm,
         travelTimeMinutes: kc.travelTimeMinutes,
         isRoadRoute: true,
+        routingSource: "VERIFIED_ROAD_CORRIDOR",
+        routingStatus: "AVAILABLE",
+        timestamp,
         classification: origin.classification,
         hazardType: origin.hazardType ?? "Critical Hazard Screening",
         safeRole: "Verified Safe Relocation Shelter",
+        capacityStatus: "ESTIMATED_REGISTRY",
       };
     }
   }
@@ -262,7 +274,7 @@ export function generateZoneNavigationRoute(
   const roadDistKm = Math.round(Math.max(1.8, straightDist * 1.28) * 10) / 10;
   const estMinutes = Math.max(5, Math.round((roadDistKm / 35) * 60));
 
-  // Synthesize realistic road polyline with terrain curvature
+  // Synthesize provisional polyline with terrain curvature
   const steps = 8;
   const coords: number[][] = [];
   for (let i = 0; i <= steps; i++) {
@@ -286,9 +298,14 @@ export function generateZoneNavigationRoute(
     coordinates: coords,
     distanceKm: roadDistKm,
     travelTimeMinutes: estMinutes,
-    isRoadRoute: true,
+    isRoadRoute: false, // Provisional geodesic until live OSRM confirms real road geometry
+    routingSource: "GEODESIC_DIRECT_PROVISIONAL",
+    routingStatus: "ROAD_ROUTING_UNAVAILABLE",
+    timestamp,
     classification: origin.classification,
     hazardType: origin.hazardType ?? "Red/Orange Zone Hazard Exposure",
     safeRole: destination.role.replace(/_/g, " "),
+    capacity: destination.capacity ?? null,
+    capacityStatus: destination.capacityStatus ?? "UNAVAILABLE",
   };
 }

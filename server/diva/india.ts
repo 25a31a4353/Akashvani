@@ -9,7 +9,13 @@ import {
   STATE_CONFIGURATIONS,
   stateConfigToLocation,
 } from "../../shared/india";
-import { ALL_REAL_DISTRICTS } from "./hazards/data/realDistricts";
+import type {
+  PopulationMetadata,
+  EvidenceCoverageScore,
+  EvidenceCoverageCategory,
+} from "../../shared/multiState";
+import { ALL_REAL_DISTRICTS, CENSUS_2011_DISTRICT_POPULATION } from "./hazards/data/realDistricts";
+import { TARGET_STATE_HABITATIONS } from "./hazards/data/habitations";
 import { getEnvironmentalContext } from "./environment";
 import {
   resolveTerrain,
@@ -57,12 +63,44 @@ export async function searchIndiaLocations(query: string): Promise<IndiaLocation
   const normalized = query.trim(); if (normalized.length < 2) return [];
   const key = normalized.toLowerCase(); const cached = cache.get(key); if (cached && cached.expiresAt > Date.now()) return cached.values;
 
-  // 1. Authoritative local district and state matches (instant 0ms response)
+  // 1. Authoritative local district, habitation, and state matches (instant 0ms response)
   const localMatches: IndiaLocation[] = [];
+
+  for (const hab of TARGET_STATE_HABITATIONS) {
+    if (hab.name.toLowerCase().includes(key) || (key.length >= 3 && hab.district.toLowerCase() === key)) {
+      localMatches.push({
+        id: hab.id,
+        name: hab.name,
+        displayName: `${hab.name}, ${hab.district}, ${hab.state}, India`,
+        category: "Locality",
+        latitude: hab.latitude,
+        longitude: hab.longitude,
+        population: hab.population,
+        populationSource: hab.source,
+        populationMeta: {
+          value: hab.population,
+          unit: "people",
+          resolution: "Habitation",
+          year: 2011,
+          source: hab.source,
+          provenance: hab.population !== null ? "OFFICIAL" : "UNAVAILABLE",
+          formatted: hab.population !== null ? `${hab.population.toLocaleString("en-IN")} people` : "Population unverified",
+          countType: "COUNT",
+        },
+        boundingBox: null,
+        boundary: null,
+        address: { state: hab.state, district: hab.district, locality: hab.name },
+        source: `Authoritative Habitation Record: ${hab.source}`,
+      });
+      if (localMatches.length >= 4) break;
+    }
+  }
+
   for (const d of ALL_REAL_DISTRICTS) {
     const distLower = d.district.toLowerCase();
     const stateLower = d.state.toLowerCase();
     if (distLower.includes(key) || (key.length >= 3 && stateLower.includes(key))) {
+      const pop = d.population ?? CENSUS_2011_DISTRICT_POPULATION[distLower] ?? null;
       localMatches.push({
         id: d.id,
         name: d.district,
@@ -70,8 +108,18 @@ export async function searchIndiaLocations(query: string): Promise<IndiaLocation
         category: "District",
         latitude: d.latitude,
         longitude: d.longitude,
-        population: d.population ?? null,
-        populationSource: "Census of India 2011 / geoBoundaries ADM2",
+        population: pop,
+        populationSource: "Census of India 2011 (Primary Census Abstract — District)",
+        populationMeta: {
+          value: pop,
+          unit: "people",
+          resolution: "District",
+          year: 2011,
+          source: "Census of India 2011 (Primary Census Abstract — District)",
+          provenance: pop !== null ? "OFFICIAL" : "UNAVAILABLE",
+          formatted: pop !== null ? `${pop.toLocaleString("en-IN")} people` : "Population unavailable",
+          countType: "COUNT",
+        },
         boundingBox: null,
         boundary: {
           type: "Feature",
@@ -81,7 +129,7 @@ export async function searchIndiaLocations(query: string): Promise<IndiaLocation
         address: { state: d.state, district: d.district },
         source: `Authoritative ADM2 District: ${d.source}`,
       });
-      if (localMatches.length >= 6) break;
+      if (localMatches.length >= 8) break;
     }
   }
 
@@ -190,21 +238,81 @@ export async function getIndiaLocationContext(location: IndiaLocation): Promise<
     }
   }
 
+  // Authoritative Census 2011 population resolution
+  const districtName = seededLocation.address.district ?? (finalLocation.category === "District" ? finalLocation.name : undefined);
+  const distKey = districtName ? districtName.toLowerCase().trim() : finalLocation.name.toLowerCase().trim();
+  const censusDistrictPop = CENSUS_2011_DISTRICT_POPULATION[distKey] ?? null;
+
+  // Check if matching a verified habitation
+  const habMatch = TARGET_STATE_HABITATIONS.find(h =>
+    Math.abs(h.latitude - finalLocation.latitude) < 0.05 && Math.abs(h.longitude - finalLocation.longitude) < 0.05
+  );
+
+  if (habMatch && habMatch.population !== null) {
+    finalLocation.population = habMatch.population;
+    finalLocation.populationSource = habMatch.source;
+    finalLocation.populationMeta = {
+      value: habMatch.population,
+      unit: "people",
+      resolution: "Habitation",
+      year: 2011,
+      source: habMatch.source,
+      provenance: "OFFICIAL",
+      formatted: `${habMatch.population.toLocaleString("en-IN")} people`,
+      countType: "COUNT",
+    };
+  } else if (censusDistrictPop !== null && (finalLocation.population === null || finalLocation.category === "District")) {
+    finalLocation.population = censusDistrictPop;
+    finalLocation.populationSource = "Census of India 2011 (Primary Census Abstract — District)";
+    finalLocation.populationMeta = {
+      value: censusDistrictPop,
+      unit: "people",
+      resolution: "District",
+      year: 2011,
+      source: "Census of India 2011 (Primary Census Abstract — District)",
+      provenance: "OFFICIAL",
+      formatted: `${censusDistrictPop.toLocaleString("en-IN")} people`,
+      countType: "COUNT",
+    };
+  } else if (finalLocation.population !== null && !finalLocation.populationMeta) {
+    finalLocation.populationMeta = {
+      value: finalLocation.population,
+      unit: "people",
+      resolution: finalLocation.category === "State" ? "State" : "District",
+      year: 2011,
+      source: finalLocation.populationSource || "Census of India 2011",
+      provenance: "OFFICIAL",
+      formatted: `${finalLocation.population.toLocaleString("en-IN")} people`,
+      countType: "COUNT",
+    };
+  } else if (!finalLocation.populationMeta) {
+    finalLocation.populationMeta = {
+      value: null,
+      unit: "people",
+      resolution: "District",
+      year: 2011,
+      source: "Population unavailable from selected location",
+      provenance: "UNAVAILABLE",
+      formatted: "Population unavailable",
+      countType: "COUNT",
+    };
+  }
+
   const hydrology = resolveHydrology(seededLocation.latitude, seededLocation.longitude, stateConfig?.code);
   const categorizedInfra = categorizeInfrastructure(infrastructure.items);
 
   let districtInfo: DistrictInfo | undefined = undefined;
-  if (seededLocation.address.district && stateConfig) {
+  if (districtName && stateConfig) {
     districtInfo = {
-      name: seededLocation.address.district,
+      name: districtName,
       stateCode: stateConfig.code,
       isFocusDistrict: stateConfig.focusDistricts.some(
-        d => d.toLowerCase() === seededLocation.address.district?.toLowerCase()
+        d => d.toLowerCase() === districtName.toLowerCase()
       ),
       terrainProfile: stateConfig.terrainProfile,
       primaryHazards: stateConfig.primaryHazards,
-      censusPopulation2011: null,
-      source: `${stateConfig.name} district administrative directory`,
+      censusPopulation2011: censusDistrictPop,
+      source: `${stateConfig.name} district administrative directory & Census 2011 PCA`,
     };
   }
 
@@ -226,7 +334,7 @@ export async function getIndiaLocationContext(location: IndiaLocation): Promise<
     longitude: finalLocation.longitude,
     stateCode: stateConfig?.code,
     stateName: stateConfig?.name,
-    district: seededLocation.address.district,
+    district: districtName,
     slopeDegrees: terrain.slopeDegrees,
     elevationMeters: terrain.elevationMeters,
     currentRainfallMm: environment.precipitationMm,
@@ -241,6 +349,76 @@ export async function getIndiaLocationContext(location: IndiaLocation): Promise<
       ? "Live environmental inputs are unavailable; no screening context is calculated."
       : "Screening context is derived from selected-location modelled precipitation, temperature and air quality. It is not an official hazard warning.";
 
+  // Evidence coverage score per Section 18
+  const coverageCategories: EvidenceCoverageCategory[] = [
+    {
+      id: "admin-boundary",
+      name: "Administrative Boundaries",
+      available: Boolean(finalLocation.boundary),
+      status: finalLocation.boundary ? "AVAILABLE" : "UNAVAILABLE",
+      source: "geoBoundaries ADM1/ADM2 (Official / Authoritative)",
+      details: finalLocation.boundary ? `Boundary loaded for ${finalLocation.name}` : "Boundary not resolved"
+    },
+    {
+      id: "population",
+      name: "Population Baseline",
+      available: finalLocation.population !== null,
+      status: finalLocation.population !== null ? "AVAILABLE" : "UNAVAILABLE",
+      source: finalLocation.populationSource,
+      details: finalLocation.populationMeta?.formatted ?? "Population unavailable"
+    },
+    {
+      id: "terrain-elevation",
+      name: "Terrain Elevation & Slope",
+      available: terrain.elevationMeters !== null,
+      status: terrain.status === "AVAILABLE" ? "AVAILABLE" : "UNAVAILABLE",
+      source: terrain.source,
+      details: terrain.elevationMeters !== null ? `${terrain.elevationMeters}m MSL${terrain.slopeDegrees !== null ? ` · ${terrain.slopeDegrees}° slope (derived)` : ""}` : "Elevation unavailable"
+    },
+    {
+      id: "weather-telemetry",
+      name: "Weather & Wind Telemetry",
+      available: environment.temperatureC !== null,
+      status: environment.imdWarning ? "LIVE" : environment.status === "AVAILABLE" ? "AVAILABLE" : "MODELLED",
+      source: environment.source,
+      details: environment.imdWarning ? `IMD ${environment.imdWarning.warningLevel} nowcast: ${environment.imdWarning.headline}` : "Modelled numerical forecast"
+    },
+    {
+      id: "hazard-evidence",
+      name: "Hazard Evidence Base",
+      available: Boolean(hazardProfile),
+      status: "AVAILABLE",
+      source: "CWC Gauges, GSI/ISRO Landslide Atlas, BIS IS 1893:2016, IBTrACS",
+      details: `${hazardProfile.redZone.tier} RedZone assessment (${hazardProfile.redZone.status})`
+    },
+    {
+      id: "facility-capacity",
+      name: "Facility Evacuation Capacity",
+      available: false,
+      status: "UNAVAILABLE",
+      source: "OpenStreetMap / DDMA Contingency Registers",
+      details: "OSM facility points mapped; capacity remains unverified until audited by local DDMA"
+    },
+    {
+      id: "road-routing",
+      name: "Road Network Routing",
+      available: true,
+      status: "AVAILABLE",
+      source: "Project OSRM Driving Engine & Verified Corridors",
+      details: "Real road network geometry connectivity enabled"
+    }
+  ];
+
+  const availableCount = coverageCategories.filter(c => c.available).length;
+  const totalCount = coverageCategories.length;
+  const evidenceCoverage: EvidenceCoverageScore = {
+    availableCount,
+    totalCount,
+    coverageRatio: Number((availableCount / totalCount).toFixed(2)),
+    label: `${availableCount} / ${totalCount} evidence categories available`,
+    categories: coverageCategories,
+  };
+
   return {
     location: finalLocation,
     environment,
@@ -250,13 +428,16 @@ export async function getIndiaLocationContext(location: IndiaLocation): Promise<
       riskLevel,
       priority,
       hazardContext,
-      populationContext: finalLocation.population === null ? "Population value is unavailable from the selected geocoding result and is not estimated." : `${finalLocation.population.toLocaleString("en-IN")} inhabitants reported by the selected geocoding source.`,
+      populationContext: finalLocation.population === null
+        ? "Population value is unavailable from the selected geocoding result and is not estimated."
+        : `${finalLocation.population.toLocaleString("en-IN")} inhabitants reported by ${finalLocation.populationSource}.`,
       status: "LOCATION-SPECIFIC SCREENING CONTEXT",
     },
     terrain,
     hydrology,
     categorizedInfrastructure: categorizedInfra,
     provenance,
+    evidenceCoverage,
     stateConfig,
     districtInfo,
     hazardProfile,

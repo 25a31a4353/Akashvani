@@ -17,10 +17,13 @@ export type SourceClassification =
   | "OFFICIAL"
   | "OBSERVED"
   | "LIVE_API"
+  | "FORECAST"
   | "MODELLED"
   | "DERIVED"
+  | "REFERENCE"
   | "FIXTURE"
-  | "USER_UPLOADED";
+  | "USER_UPLOADED"
+  | "UNAVAILABLE";
 
 export interface DataProvenance {
   sourceName: string;
@@ -33,14 +36,65 @@ export interface DataProvenance {
   provenanceLabel: string;
 }
 
+export interface PopulationMetadata {
+  value: number | null;
+  unit: "people" | "people/km²" | "people/pixel" | "households";
+  resolution: "Habitation" | "Village" | "District" | "State" | "100m raster" | "1km raster";
+  year: number | string;
+  source: string;
+  provenance: SourceClassification;
+  formatted: string;
+  countType: "COUNT" | "DENSITY" | "RASTER_SAMPLE" | "STATE_TOTAL";
+}
+
 export interface TerrainContext {
   elevationMeters: number | null;
   slopeDegrees: number | null;
+  aspectDegrees?: number | null;
+  reliefMeters?: number | null;
+  terrainRuggedness?: string;
+  isLowLying?: boolean;
+  slopeRiskContext?: string;
   terrainClass: string;
   source: string;
+  elevationSource?: string;
+  elevationResolution?: string;
+  derivedSlopeSource?: string;
+  derivedSlopeMethod?: string;
   timestamp: string | null;
   confidence: "HIGH" | "MEDIUM" | "LOW" | "UNAVAILABLE";
   status: "AVAILABLE" | "UNAVAILABLE" | "MODELLED_ESTIMATE";
+}
+
+export interface ImdWarningContext {
+  district: string;
+  state?: string;
+  warningColor: string;
+  warningLevel: "NO_WARNING" | "WATCH" | "ALERT" | "WARNING";
+  headline: string;
+  details: string;
+  issuedAt: string | null;
+  validUpto: string | null;
+  source: string;
+  sourceUrl: string;
+  provenance: "OFFICIAL";
+}
+
+export interface EvidenceCoverageCategory {
+  id: string;
+  name: string;
+  available: boolean;
+  status: "AVAILABLE" | "LIVE" | "UNAVAILABLE" | "MODELLED";
+  source: string;
+  details?: string;
+}
+
+export interface EvidenceCoverageScore {
+  availableCount: number;
+  totalCount: number;
+  coverageRatio: number;
+  label: string;
+  categories: EvidenceCoverageCategory[];
 }
 
 export interface NearbyWaterBody {

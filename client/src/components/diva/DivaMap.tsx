@@ -305,6 +305,9 @@ export function DivaMap({
             distanceKm: liveRoad.distanceKm,
             travelTimeMinutes: liveRoad.travelTimeMinutes,
             isRoadRoute: true,
+            routingSource: liveRoad.routingSource,
+            routingStatus: liveRoad.routingStatus,
+            timestamp: new Date().toISOString(),
           };
         });
       }
@@ -1128,70 +1131,6 @@ export function DivaMap({
       {data?.activeLocation?.location.boundary && <div data-testid="map-boundary-status" className="pointer-events-none absolute bottom-14 left-4 z-10 rounded-lg border border-[#415c67] bg-[#081720]/90 px-2.5 py-1.5 text-[10px] font-semibold text-[#c6dadd]">Boundary rendered · {data.activeLocation.location.name} state extent</div>}
       <div className="pointer-events-none absolute bottom-4 left-4 z-10 flex items-center gap-1.5 rounded-lg border border-[#415c67] bg-[#081720]/90 px-2.5 py-1.5 text-[10px] font-bold tracking-[0.08em] text-[#add7b0] shadow-lg backdrop-blur"><Crosshair className="h-3.5 w-3.5" /> INDIA LOCATION CONTEXT</div>
 
-      {/* Live Weather & Predictive Hazard Floating Map HUD */}
-      {data?.activeLocation?.environment && (
-        <div
-          data-testid="map-live-weather-hud"
-          className={cn(
-            "absolute z-25 hidden md:flex flex-col gap-2 rounded-2xl border border-[#3e606e]/80 bg-[#091b26]/95 p-3 text-white shadow-2xl backdrop-blur-md max-w-xs transition-all",
-            activeNavigation ? "bottom-16 left-4" : "left-4 top-4"
-          )}
-        >
-          <div className="flex items-center justify-between gap-2 border-b border-[#1c3642] pb-2">
-            <div className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
-              <span className="text-[10px] font-black uppercase tracking-wider text-[#7dd3fc]">
-                Live Weather Telemetry
-              </span>
-            </div>
-            <span className="rounded bg-[#123140] px-1.5 py-0.5 text-[9px] font-semibold text-[#8eb2c2]">
-              {data.activeLocation.location.name}
-            </span>
-          </div>
-
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-black tracking-tight text-white">
-                {data.activeLocation.environment.temperatureC !== null
-                  ? `${Math.round(data.activeLocation.environment.temperatureC)}°C`
-                  : "—"}
-              </span>
-              {data.activeLocation.environment.apparentTemperatureC != null && (
-                <span className="text-[10px] text-[#f97316] font-bold">
-                  (Feels {Math.round(data.activeLocation.environment.apparentTemperatureC)}°)
-                </span>
-              )}
-            </div>
-            <div className="flex flex-col items-end text-right">
-              <span className="text-xs font-bold text-[#e2e8f0]">
-                {data.activeLocation.environment.weatherDescription ?? "Fair Weather"}
-              </span>
-              <span className="text-[9px] text-[#94a3b8]">
-                💨 {data.activeLocation.environment.windSpeedKph ? `${Math.round(data.activeLocation.environment.windSpeedKph)} km/h` : "Calm"} · 🌧️ {data.activeLocation.environment.precipitationMm ?? 0} mm
-              </span>
-            </div>
-          </div>
-
-          {/* Predictive Warning Banner if any problem detected */}
-          {data.activeLocation.environment.predictions?.predictedProblems?.[0] && (
-            <div
-              className={cn(
-                "flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-[10px] font-bold border",
-                data.activeLocation.environment.predictions.overallRiskLevel === "CRITICAL"
-                  ? "bg-red-950/80 border-red-500/60 text-red-300 animate-pulse"
-                  : data.activeLocation.environment.predictions.overallRiskLevel === "HIGH"
-                  ? "bg-orange-950/80 border-orange-500/60 text-orange-300"
-                  : "bg-amber-950/80 border-amber-500/60 text-amber-300"
-              )}
-            >
-              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">
-                {data.activeLocation.environment.predictions.predictedProblems[0].title}
-              </span>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* ── GOOGLE MAPS STYLE NAVIGATION DROPDOWN (APPEARS WHEN RED/ORANGE ZONE IS CLICKED) ─── */}
       {activeNavigation && (
@@ -1239,9 +1178,15 @@ export function DivaMap({
                   ({activeNavigation.distanceKm} km)
                 </span>
               </div>
-              <span className="rounded-full bg-[#10b981]/20 px-2.5 py-1 text-[10px] font-bold text-[#34d399] border border-[#10b981]/40">
-                Fastest Road Route
-              </span>
+              {activeNavigation.isRoadRoute ? (
+                <span className="rounded-full bg-[#10b981]/20 px-2.5 py-1 text-[10px] font-bold text-[#34d399] border border-[#10b981]/40">
+                  Road Route ({activeNavigation.routingSource === "OSRM_LIVE_NETWORK" ? "OSRM Live" : "Verified Corridor"})
+                </span>
+              ) : (
+                <span className="rounded-full bg-[#f59e0b]/20 px-2.5 py-1 text-[10px] font-bold text-[#fbbf24] border border-[#f59e0b]/40">
+                  Road Geometry Unavailable · Geodesic Fallback
+                </span>
+              )}
             </div>
 
             {/* Origin & Destination visual flow */}
@@ -1264,7 +1209,7 @@ export function DivaMap({
               <div className="ml-2.5 flex items-center gap-1.5 border-l-2 border-dashed border-[#38bdf8]/55 pl-3.5 py-0.5">
                 <ArrowRight className="h-3 w-3 shrink-0 text-[#38bdf8]" />
                 <span className="text-[10px] font-medium text-[#7dd3fc]">
-                  {activeNavigation.distanceKm} km via road · ~{activeNavigation.travelTimeMinutes} min driving
+                  {activeNavigation.distanceKm} km {activeNavigation.isRoadRoute ? "via road" : "direct line"} · ~{activeNavigation.travelTimeMinutes} min {activeNavigation.isRoadRoute ? "driving" : "est. transit"}
                 </span>
               </div>
 
@@ -1276,6 +1221,7 @@ export function DivaMap({
                   <p className="font-semibold text-white truncate">{activeNavigation.destinationLabel}</p>
                   <p className="text-[9.5px] font-bold text-[#4ade80] uppercase leading-tight">
                     GREEN ZONE SAFE HAVEN · {activeNavigation.safeRole ?? "Safe Relocation Center"}
+                    {activeNavigation.capacity ? ` · Cap: ~${activeNavigation.capacity.toLocaleString()} (${activeNavigation.capacityStatus ?? "ESTIMATED"})` : " · Cap: Unregistered"}
                   </p>
                 </div>
               </div>
