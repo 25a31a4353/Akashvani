@@ -97,9 +97,13 @@ function ContextStat({ label, value, detail, icon: Icon }: { label: string; valu
 }
 
 export function SelectedLocationPriorityQueue({ context }: { context: IndiaLocationContext }) {
-  const { location, screening, environment } = context;
+  const { location, screening, environment, decision } = context;
   const next = environment.forecast[0];
   const geoScore = context.hazardProfile?.redZone.score ?? 50;
+
+  const effectiveTier = decision?.responsePriority.priorityLevel ?? (screening.priority === "Immediate" ? "RED" : screening.priority === "High" ? "ORANGE" : screening.priority === "Moderate" ? "YELLOW" : "GREEN");
+  const effectiveScore = decision?.responsePriority.priorityScore ?? screening.riskScore ?? 50;
+
   return (
     <section data-testid="selected-location-priority-queue" className="mt-4 overflow-hidden rounded-2xl border border-[#c7e0e5] bg-white shadow-[0_12px_30px_rgba(28,55,70,0.05)]">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#e2edef] p-4">
@@ -109,14 +113,86 @@ export function SelectedLocationPriorityQueue({ context }: { context: IndiaLocat
           <p className="mt-0.5 text-[10px] text-[#738891]">Independent evaluation of physical vulnerability vs. real-time weather stress.</p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="rounded-full bg-[#f1f5f9] px-2 py-0.5 text-[9px] font-bold text-[#475569] border border-[#cbd5e1]">
-            COMPOSITE TRIAGE
-          </span>
-          <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${badgeClass(screening.priority)}`}>
-            {screening.priority.toUpperCase()} PRIORITY
+          {decision ? (
+            <span className="rounded-full bg-[#f1f5f9] px-2 py-0.5 text-[9px] font-bold text-[#475569] border border-[#cbd5e1]">
+              CANONICAL DECISION V2
+            </span>
+          ) : (
+            <span className="rounded-full bg-[#f1f5f9] px-2 py-0.5 text-[9px] font-bold text-[#475569] border border-[#cbd5e1]">
+              COMPOSITE TRIAGE
+            </span>
+          )}
+          <span className={cn(
+            "rounded-full px-2.5 py-1 text-[10px] font-bold",
+            effectiveTier === "HIGH" || effectiveTier === "RED" ? "bg-red-100 text-red-800 border border-red-200" :
+            effectiveTier === "MEDIUM" || effectiveTier === "ORANGE" ? "bg-orange-100 text-orange-800 border border-orange-200" :
+            effectiveTier === "LOW" || effectiveTier === "GREEN" ? "bg-emerald-100 text-emerald-800 border border-emerald-200" :
+            badgeClass(screening.priority)
+          )}>
+            {effectiveTier} PRIORITY ({effectiveScore}/100)
           </span>
         </div>
       </div>
+
+      {/* Canonical 5-Component Response Priority Breakdown (when available) */}
+      {decision && (
+        <div className="border-b border-[#e2edef] bg-[#f8fafc] p-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[9px] font-bold uppercase tracking-[0.1em] text-[#334155]">
+              Audited 5-Component Response Priority (0–100)
+            </span>
+            <span className="text-[8px] text-[#64748b]">
+              ID: {decision.decisionId} · Hash: {decision.decisionSnapshotHash.slice(0, 10)}...
+            </span>
+          </div>
+          <div className="grid grid-cols-5 gap-2 text-center">
+            <div className="rounded-lg bg-white p-2 border border-[#e2e8f0]">
+              <p className="text-[8px] font-bold uppercase text-[#64748b]">Hazard</p>
+              <p className="mt-0.5 text-sm font-bold text-[#b91c1c]">{decision.responsePriority.components.hazardSeverity.normalizedValue}<span className="text-[9px] font-normal text-[#94a3b8]">/30</span></p>
+              <p className="text-[7.5px] text-[#64748b] truncate">{decision.hazardAssessment.primaryHazard}</p>
+            </div>
+            <div className="rounded-lg bg-white p-2 border border-[#e2e8f0]">
+              <p className="text-[8px] font-bold uppercase text-[#64748b]">Exposure</p>
+              <p className="mt-0.5 text-sm font-bold text-[#b45309]">{decision.responsePriority.components.populationExposure.normalizedValue}<span className="text-[9px] font-normal text-[#94a3b8]">/20</span></p>
+              <p className="text-[7.5px] text-[#64748b] truncate">{decision.exposureAssessment.populationValue != null ? `${decision.exposureAssessment.populationValue.toLocaleString("en-IN")}` : "Unverified"}</p>
+            </div>
+            <div className="rounded-lg bg-white p-2 border border-[#e2e8f0]">
+              <p className="text-[8px] font-bold uppercase text-[#64748b]">Vulnerability</p>
+              <p className="mt-0.5 text-sm font-bold text-[#4338ca]">{decision.responsePriority.components.vulnerability.normalizedValue}<span className="text-[9px] font-normal text-[#94a3b8]">/20</span></p>
+              <p className="text-[7.5px] text-[#64748b] truncate">{decision.vulnerabilityAssessment.status}</p>
+            </div>
+            <div className="rounded-lg bg-white p-2 border border-[#e2e8f0]">
+              <p className="text-[8px] font-bold uppercase text-[#64748b]">Capacity Deficit</p>
+              <p className="mt-0.5 text-sm font-bold text-[#059669]">{decision.responsePriority.components.capacityDeficit.normalizedValue}<span className="text-[9px] font-normal text-[#94a3b8]">/15</span></p>
+              <p className="text-[7.5px] text-[#64748b] truncate">{decision.capacityAssessment.capacityStatus}</p>
+            </div>
+            <div className="rounded-lg bg-white p-2 border border-[#e2e8f0]">
+              <p className="text-[8px] font-bold uppercase text-[#64748b]">Accessibility</p>
+              <p className="mt-0.5 text-sm font-bold text-[#0284c7]">{decision.responsePriority.components.accessibility.normalizedValue}<span className="text-[9px] font-normal text-[#94a3b8]">/15</span></p>
+              <p className="text-[7.5px] text-[#64748b] truncate">{decision.accessibilityAssessment.status}</p>
+            </div>
+          </div>
+          {/* Destination Safety + Road Route */}
+          <div className="mt-2 grid grid-cols-2 gap-2 text-[9px]">
+            <div className="rounded bg-white p-2 border border-[#e2e8f0]">
+              <span className="text-[#64748b] block font-medium">Verified Relocation Destination:</span>
+              <strong className="text-[#15803d] font-bold block truncate">{decision.relocationAssessment.bestCandidate?.name ?? "No verified haven"}</strong>
+              <span className={cn(
+                "inline-block mt-0.5 text-[8px] font-bold px-1.5 py-0.2 rounded",
+                decision.relocationAssessment.destinationSafety.destinationSafetyStatus === "SAFE" ? "bg-emerald-100 text-emerald-800" :
+                decision.relocationAssessment.destinationSafety.destinationSafetyStatus === "CONDITIONAL" ? "bg-amber-100 text-amber-800" :
+                "bg-rose-100 text-rose-800"
+              )}>Safety: {decision.relocationAssessment.destinationSafety.destinationSafetyStatus}</span>
+            </div>
+            <div className="rounded bg-white p-2 border border-[#e2e8f0]">
+              <span className="text-[#64748b] block font-medium">Road Route Navigation:</span>
+              <strong className="text-[#0284c7] font-bold block">{decision.routingAssessment.distanceKm ?? 0} km · {decision.routingAssessment.durationMinutes ?? 0} min</strong>
+              <span className="text-[8px] text-[#64748b] block truncate">{decision.routingAssessment.sourceNote}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="grid gap-px bg-[#e7eff1] sm:grid-cols-4">
         <div className="bg-white p-3">
           <div className="flex items-center justify-between">
@@ -153,16 +229,19 @@ export function SelectedLocationPriorityQueue({ context }: { context: IndiaLocat
       </div>
       <div className="flex items-start gap-2 bg-[#f7fbfb] p-3 text-[10px] leading-relaxed text-[#627d88]">
         <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#1d768c]" />
-        <span><strong>Triage Rationale:</strong> {screening.hazardContext}</span>
+        <span><strong>Triage Rationale:</strong> {decision ? decision.explanation.whyThisPriority : screening.hazardContext}</span>
       </div>
     </section>
   );
 }
 
 export function SelectedLocationPriorityDecisionTable({ context }: { context: IndiaLocationContext }) {
-  const { location, screening, environment } = context;
+  const { location, screening, environment, decision } = context;
   const next = environment.forecast[0];
-  return <section data-testid="selected-location-decision-table" className="mt-3 overflow-hidden rounded-2xl border border-[#c9e1e6] bg-white shadow-[0_10px_24px_rgba(28,55,70,0.04)]"><div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#e3edef] p-3.5"><div><p className="text-[10px] font-bold uppercase tracking-[.12em] text-[#1d788d]">Selected-area comparison row</p><p className="mt-0.5 text-[10px] text-[#718792]">This row is recomputed from the active India selection, not a retained scenario record.</p></div><span className={`rounded-full px-2 py-1 text-[9px] font-bold ${badgeClass(screening.priority)}`}>{screening.priority.toUpperCase()}</span></div><div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left"><thead className="bg-[#f6fafb]"><tr className="text-[9px] font-bold uppercase tracking-[.1em] text-[#82919b]"><th className="px-4 py-2.5">Selected area</th><th className="px-4 py-2.5">Priority</th><th className="px-4 py-2.5">Population</th><th className="px-4 py-2.5">Screening score</th><th className="px-4 py-2.5">Next forecast</th><th className="px-4 py-2.5">Status</th></tr></thead><tbody><tr data-testid="selected-location-decision-row" className="border-t border-[#edf1f2] text-xs"><td className="px-4 py-3"><p className="font-semibold text-[#2c6076]">{location.name}</p><p className="mt-0.5 text-[10px] text-[#7c8d96]">{location.category} · {location.address.state ?? "India"}</p></td><td className="px-4 py-3 font-semibold text-[#405d6d]">{screening.priority}</td><td className="px-4 py-3 font-semibold text-[#405d6d]">{location.population?.toLocaleString("en-IN") ?? "Unavailable"}</td><td className="px-4 py-3 text-[#667b86]">{screening.riskScore === null ? "Unavailable" : `${screening.riskScore}/100`}</td><td className="px-4 py-3 text-[#667b86]">{next ? `${next.temperatureMinC ?? "—"}–${next.temperatureMaxC ?? "—"}°C · ${next.precipitationProbability ?? "—"}% rain` : "Forecast unavailable"}</td><td className="px-4 py-3 text-[10px] text-[#667b86]">{environment.status}<br />Updated {environment.observedAt ? new Date(environment.observedAt).toLocaleString("en-IN") : "unavailable"}</td></tr></tbody></table></div></section>;
+  const priorityLabel = decision?.responsePriority.priorityLevel ?? screening.priority;
+  const scoreDisplay = decision ? `${decision.responsePriority.priorityScore}/100` : (screening.riskScore === null ? "Unavailable" : `${screening.riskScore}/100`);
+
+  return <section data-testid="selected-location-decision-table" className="mt-3 overflow-hidden rounded-2xl border border-[#c9e1e6] bg-white shadow-[0_10px_24px_rgba(28,55,70,0.04)]"><div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#e3edef] p-3.5"><div><p className="text-[10px] font-bold uppercase tracking-[.12em] text-[#1d788d]">Selected-area comparison row</p><p className="mt-0.5 text-[10px] text-[#718792]">Canonical decision object state from active India selection.</p></div><span className={`rounded-full px-2 py-1 text-[9px] font-bold ${badgeClass(screening.priority)}`}>{priorityLabel.toUpperCase()}</span></div><div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left"><thead className="bg-[#f6fafb]"><tr className="text-[9px] font-bold uppercase tracking-[.1em] text-[#82919b]"><th className="px-4 py-2.5">Selected area</th><th className="px-4 py-2.5">Priority</th><th className="px-4 py-2.5">Population</th><th className="px-4 py-2.5">Screening score</th><th className="px-4 py-2.5">Next forecast</th><th className="px-4 py-2.5">Status</th></tr></thead><tbody><tr data-testid="selected-location-decision-row" className="border-t border-[#edf1f2] text-xs"><td className="px-4 py-3"><p className="font-semibold text-[#2c6076]">{location.name}</p><p className="mt-0.5 text-[10px] text-[#7c8d96]">{location.category} · {location.address.state ?? "India"}</p></td><td className="px-4 py-3 font-semibold text-[#405d6d]">{priorityLabel}</td><td className="px-4 py-3 font-semibold text-[#405d6d]">{location.population?.toLocaleString("en-IN") ?? "Unavailable"}</td><td className="px-4 py-3 text-[#667b86]">{scoreDisplay}</td><td className="px-4 py-3 text-[#667b86]">{next ? `${next.temperatureMinC ?? "—"}–${next.temperatureMaxC ?? "—"}°C · ${next.precipitationProbability ?? "—"}% rain` : "Forecast unavailable"}</td><td className="px-4 py-3 text-[10px] text-[#667b86]">{environment.status}<br />Updated {environment.observedAt ? new Date(environment.observedAt).toLocaleString("en-IN") : "unavailable"}</td></tr></tbody></table></div></section>;
 }
 
 export function SelectedLocationForecast({ context }: { context: IndiaLocationContext }) {
@@ -803,6 +882,7 @@ export function IndiaContextSidebar({ context, onOpenKeralaAssessment }: { conte
                     : "UNAVAILABLE"
                 }
                 stateCode={realDistrict.stateCode}
+                decision={context.decision}
               />
             </div>
           ) : (
@@ -1009,7 +1089,9 @@ export function IndiaContextSidebar({ context, onOpenKeralaAssessment }: { conte
 
 export function IndiaLocationSummaryStrip({ context }: { context: IndiaLocationContext }) {
   const next = context.environment.forecast[0];
-  const riskScore = context.screening.riskScore === null ? "Unavailable" : `${context.screening.riskScore}/100`;
+  const decision = context.decision;
+  const effectiveTier = decision?.responsePriority.priorityLevel ?? context.screening.priority;
+  const riskScore = decision ? `${decision.responsePriority.priorityScore}/100` : (context.screening.riskScore === null ? "Unavailable" : `${context.screening.riskScore}/100`);
   const locationPath = [context.location.address.locality, context.location.address.city, context.location.address.district, context.location.address.state].filter(Boolean).filter((value, index, values) => values.indexOf(value) === index).join(" · ") || "India";
   const contextLive = context.environment.status === "LIVE MODELLED ENVIRONMENTAL CONTEXT";
   return (
@@ -1019,7 +1101,17 @@ export function IndiaLocationSummaryStrip({ context }: { context: IndiaLocationC
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-[10px] font-bold uppercase tracking-[.16em] text-[#9edbe5]">Location decision context</p>
             <span className="rounded-full border border-[#6aa3ae]/50 bg-[#1b4659] px-2 py-0.5 text-[9px] font-semibold text-[#d7eef0]">Selected search result</span>
-            {context.redZone && (
+            {decision ? (
+              <span className={`rounded-full px-2.5 py-0.5 text-[9px] font-extrabold tracking-wide uppercase ${
+                decision.responsePriority.priorityLevel === "HIGH"
+                  ? "bg-[#fee2e2] text-[#b91c1c]"
+                  : decision.responsePriority.priorityLevel === "MEDIUM"
+                    ? "bg-[#ffedd5] text-[#c2410c]"
+                    : "bg-[#dcfce7] text-[#15803d]"
+              }`}>
+                CANONICAL {decision.responsePriority.priorityLevel} PRIORITY ({decision.hazardAssessment.primaryHazard})
+              </span>
+            ) : context.redZone ? (
               <span className={`rounded-full px-2.5 py-0.5 text-[9px] font-extrabold tracking-wide uppercase ${
                 context.redZone.status === "RED"
                   ? "bg-[#fee2e2] text-[#b91c1c]"
@@ -1031,16 +1123,22 @@ export function IndiaLocationSummaryStrip({ context }: { context: IndiaLocationC
               }`}>
                 {context.redZone.status} ZONE ({context.redZone.primaryHazard})
               </span>
-            )}
+            ) : null}
           </div>
           <h2 id="location-decision-context-title" className="mt-1.5 text-xl font-bold tracking-tight">{context.location.name}</h2>
           <p className="mt-1 text-[11px] text-[#c3d7dc]">{context.location.category} · {locationPath}</p>
-          <p className="mt-3 max-w-3xl text-[11px] leading-relaxed text-[#d2e1e4]">{context.screening.hazardContext}</p>
+          <p className="mt-3 max-w-3xl text-[11px] leading-relaxed text-[#d2e1e4]">{decision ? decision.explanation.whyThisPriority : context.screening.hazardContext}</p>
         </div>
         <div className="rounded-xl border border-white/15 bg-white/10 p-3">
-          <p className="text-[9px] font-bold uppercase tracking-[.12em] text-[#b9dce1]">Screening risk</p>
-          <p className={`mt-1 text-2xl font-bold ${context.screening.riskLevel === "High" ? "text-[#ff8d88]" : context.screening.riskLevel === "Moderate" ? "text-[#ffd87a]" : context.screening.riskLevel === "Low" ? "text-[#7ce39a]" : "text-[#c5d5d9]"}`}>{riskScore}</p>
-          <span className={`mt-2 inline-flex rounded-full px-2 py-1 text-[9px] font-bold uppercase tracking-[.08em] ${badgeClass(context.screening.priority)}`}>{context.screening.priority} priority</span>
+          <p className="text-[9px] font-bold uppercase tracking-[.12em] text-[#b9dce1]">Decision priority</p>
+          <p className={`mt-1 text-2xl font-bold ${
+            effectiveTier === "HIGH" || effectiveTier === "Immediate" || effectiveTier === "High" || (context.screening.riskLevel as string) === "High"
+              ? "text-[#ff8d88]"
+              : effectiveTier === "MEDIUM" || effectiveTier === "Moderate" || (context.screening.riskLevel as string) === "Moderate"
+                ? "text-[#ffd87a]"
+                : "text-[#7ce39a]"
+          }`}>{riskScore}</p>
+          <span className={`mt-2 inline-flex rounded-full px-2 py-1 text-[9px] font-bold uppercase tracking-[.08em] ${badgeClass(context.screening.priority)}`}>{effectiveTier} priority</span>
         </div>
       </div>
       <div className="grid gap-2 p-3 sm:grid-cols-2 lg:grid-cols-6">

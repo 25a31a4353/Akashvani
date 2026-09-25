@@ -35,17 +35,65 @@ export function buildResqAssistantContext(
   }
   const indiaCtx = context as IndiaLocationContext | undefined;
   const loc = indiaCtx?.location ?? selectedLocation;
+
+  if (indiaCtx?.decision) {
+    const d = indiaCtx.decision;
+    return {
+      locationName: loc?.name ?? d.location.name,
+      category: loc?.category ?? d.location.category ?? "District",
+      district: loc?.address?.district ?? loc?.address?.city ?? d.location.address?.district ?? d.location.address?.city,
+      state: loc?.address?.state ?? d.location.address?.state,
+      latitude: loc?.latitude ?? d.location.latitude,
+      longitude: loc?.longitude ?? d.location.longitude,
+      primaryHazard: d.hazardAssessment.primaryHazard,
+      secondaryHazards: d.hazardAssessment.secondaryHazards,
+      classificationZone: d.recommendedAction.tier,
+      classificationScore: d.responsePriority.priorityScore,
+      classificationReasons: [d.explanation.whyThisHazard, d.explanation.whyThisPriority],
+      exposedHabitations: d.exposureAssessment.selectedOriginHabitation ? [{
+        name: d.exposureAssessment.selectedOriginHabitation.name,
+        population: d.exposureAssessment.selectedOriginHabitation.population,
+        exposureLevel: d.exposureAssessment.selectedOriginHabitation.exposureLevel,
+        hazardType: d.exposureAssessment.selectedOriginHabitation.hazardType,
+        distanceKm: 0,
+      }] : [],
+      relocationPriority: d.recommendedAction.tier,
+      facilitiesAvailable: d.capacityAssessment.totalNearbyFacilities,
+      facilityCapacityVerified: d.capacityAssessment.capacityVerified,
+      facilityCapacityNote: d.capacityAssessment.notes,
+      selectedDestination: d.relocationAssessment.bestCandidate ? {
+        name: d.relocationAssessment.bestCandidate.name,
+        role: d.relocationAssessment.bestCandidate.facilityRole,
+        suitability: d.relocationAssessment.destinationSafety.destinationSafetyStatus === "SAFE" ? "PREFERRED" : d.relocationAssessment.destinationSafety.destinationSafetyStatus,
+        distanceKm: d.routingAssessment.distanceKm,
+      } : null,
+      evacuationRoute: {
+        isRoadRoute: d.routingAssessment.isRoadRoute,
+        distanceKm: d.routingAssessment.distanceKm,
+        travelTimeMinutes: d.routingAssessment.durationMinutes,
+        sourceNote: d.routingAssessment.sourceNote,
+      },
+      weatherConditions: indiaCtx?.environment ? {
+        temperatureC: indiaCtx.environment.temperatureC,
+        precipitationMm: indiaCtx.environment.precipitationMm,
+        airQualityAqi: indiaCtx.environment.usAqi,
+        status: indiaCtx.environment.status,
+      } : undefined,
+      unavailableData: d.uncertainty.reasons,
+    };
+  }
+
   return {
     locationName: loc?.name ?? "Selected Location",
-    category: loc?.category,
+    category: loc?.category ?? "District",
     district: loc?.address?.district ?? loc?.address?.city,
     state: loc?.address?.state,
-    latitude: loc?.latitude ?? 20.5937,
-    longitude: loc?.longitude ?? 78.9629,
-    primaryHazard: indiaCtx?.hazardProfile?.redZone.primaryHazard ?? indiaCtx?.screening.hazardContext,
-    secondaryHazards: [],
-    classificationZone: indiaCtx?.hazardProfile?.redZone.status ?? indiaCtx?.screening.riskLevel?.toUpperCase() ?? "SCREENING",
-    classificationScore: indiaCtx?.hazardProfile?.redZone.score ?? indiaCtx?.screening.riskScore ?? null,
+    latitude: loc?.latitude,
+    longitude: loc?.longitude,
+    primaryHazard: indiaCtx?.hazardProfile?.redZone.primaryHazard ?? indiaCtx?.screening.hazardContext?.split(" ")[0] ?? "Screening Hazard",
+    secondaryHazards: indiaCtx?.hazardProfile?.redZone.secondaryHazards ?? [],
+    classificationZone: indiaCtx?.hazardProfile?.redZone.status ?? (indiaCtx?.screening.priority === "Immediate" ? "RED" : "ORANGE"),
+    classificationScore: indiaCtx?.hazardProfile?.redZone.score ?? indiaCtx?.screening.riskScore ?? 50,
     classificationReasons: indiaCtx?.hazardProfile?.redZone.primaryDriverReason ? [indiaCtx.hazardProfile.redZone.primaryDriverReason] : [],
     exposedHabitations: indiaCtx?.hazardProfile?.exposedHabitations.map((h: any) => ({
       name: h.name,

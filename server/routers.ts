@@ -94,6 +94,7 @@ export const appRouter = router({
       defaultLocation: publicProcedure.query(() => andhraPradeshDefault),
       search: publicProcedure.input(z.object({ query: z.string().trim().min(2).max(120) })).query(({ input }) => searchIndiaLocations(input.query)),
       context: publicProcedure.input(indiaLocationSchema).query(({ input }) => getIndiaLocationContext(input)),
+      decision: publicProcedure.input(indiaLocationSchema).query(async ({ input }) => (await getIndiaLocationContext(input)).decision),
       nationwideMap: publicProcedure.query(() => getNationwideIndiaMap()),
       states: publicProcedure.query(() => getAllStates()),
       state: publicProcedure.input(z.object({ code: z.string().min(2).max(10) })).query(async ({ input }) => {

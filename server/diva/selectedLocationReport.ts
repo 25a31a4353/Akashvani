@@ -116,30 +116,36 @@ export async function buildSelectedLocationPdf(context: IndiaLocationContext) {
     doc.on("error", reject);
     doc.on("end", () => resolve(Buffer.concat(chunks)));
 
+    const decision = context.decision;
+    const effectiveRiskLevel = decision ? (decision.responsePriority.priorityLevel === "HIGH" ? "High" : decision.responsePriority.priorityLevel === "MEDIUM" ? "Moderate" : "Low") : screening.riskLevel;
+    const effectiveScoreStr = decision ? `${decision.responsePriority.priorityScore}/100` : (screening.riskScore === null ? "—" : `${screening.riskScore}/100`);
+    const effectivePriorityStr = decision ? `${decision.responsePriority.priorityLevel}` : screening.priority;
+    const decisionNote = decision ? ` · Canonical Decision: ${decision.decisionId} [${decision.decisionSnapshotHash.slice(0, 8)}]` : "";
+
     doc.rect(0, 0, 595, 118).fill("#102B45");
-    doc.font("Helvetica-Bold").fontSize(10).fillColor("#9EDBE5").text("DIVA / SELECTED-LOCATION ANALYSIS", 48, 34);
+    doc.font("Helvetica-Bold").fontSize(10).fillColor("#9EDBE5").text("DIVA / RESQ CANONICAL DECISION ANALYSIS", 48, 34);
     doc.font("Helvetica-Bold").fontSize(23).fillColor("white").text("Location Decision\nContext Report", 48, 52, { lineGap: 3 });
-    doc.font("Helvetica").fontSize(8.5).fillColor("#C9DAE6").text(`Generated ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} IST · ${location.source}`, 48, 100, { width: 490 });
+    doc.font("Helvetica").fontSize(8.5).fillColor("#C9DAE6").text(`Generated ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} IST · ${location.source}${decisionNote}`, 48, 100, { width: 490 });
 
     doc.font("Helvetica-Bold").fontSize(17).fillColor("#163C58").text(location.name, 48, 146);
     const hierarchy = [location.category, location.address.locality, location.address.city, location.address.district, location.address.state].filter(Boolean).filter((value, index, values) => values.indexOf(value) === index).join(" · ") || "India";
     doc.font("Helvetica").fontSize(9.5).fillColor("#5C6B78").text(`${hierarchy} · ${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`, 48, 170, { width: 330 });
-    doc.roundedRect(396, 146, 151, 34, 8).fill(riskColour(screening.riskLevel));
-    doc.font("Helvetica-Bold").fontSize(10).fillColor("white").text(`${screening.riskLevel.toUpperCase()} SCREENING`, 406, 158, { width: 131, align: "center" });
+    doc.roundedRect(386, 146, 161, 34, 8).fill(riskColour(effectiveRiskLevel));
+    doc.font("Helvetica-Bold").fontSize(10).fillColor("white").text(decision ? `${decision.responsePriority.priorityLevel} PRIORITY (${decision.responsePriority.priorityScore}/100)` : `${screening.riskLevel.toUpperCase()} SCREENING`, 390, 158, { width: 153, align: "center" });
 
     sectionTitle(doc, "Location Decision Context", 210);
-    doc.font("Helvetica").fontSize(9.3).fillColor("#334A5D").text(`This report brings together the selected ${location.category.toLowerCase()} context, population, modelled environmental conditions, nearby mapped facilities, the selected geographic extent, and the DIVA screening signal. It is decision support only and requires analyst review before operational use.`, 48, 230, { width: 490, lineGap: 4 });
+    doc.font("Helvetica").fontSize(9.3).fillColor("#334A5D").text(`This report brings together the selected ${location.category.toLowerCase()} context, population, modelled environmental conditions, nearby mapped facilities, the selected geographic extent, and the ResQ canonical decision intelligence signal. It represents a single unified decision state across map, API, and relocation intelligence.`, 48, 230, { width: 490, lineGap: 4 });
 
     metric(doc, "Population", safeText(location.population?.toLocaleString("en-IN")), 48, 302);
-    metric(doc, "Risk score", screening.riskScore === null ? "—" : `${screening.riskScore}/100`, 170, 302, riskColour(screening.riskLevel));
-    metric(doc, "Priority", screening.priority, 292, 302, riskColour(screening.riskLevel));
+    metric(doc, "Decision score", effectiveScoreStr, 170, 302, riskColour(effectiveRiskLevel));
+    metric(doc, "Priority tier", effectivePriorityStr, 292, 302, riskColour(effectiveRiskLevel));
     metric(doc, "Mapped facilities", infrastructure.items.length ? String(infrastructure.items.length) : "—", 414, 302);
 
-    sectionTitle(doc, "AI/ML decision-support analysis", 390);
-    doc.roundedRect(48, 412, 490, 94, 9).fill("#F2F6F8");
-    doc.font("Helvetica-Bold").fontSize(10).fillColor("#173D5C").text(`${location.name}: ${screening.riskLevel} analytical screening context`, 64, 428, { width: 456 });
-    doc.font("Helvetica").fontSize(9).fillColor("#334A5D").text(`${screening.hazardContext} ${screening.populationContext}`, 64, 448, { width: 456, lineGap: 4 });
-    doc.font("Helvetica-Bold").fontSize(8).fillColor("#5B7380").text(`Priority: ${screening.priority} · Screening status: ${screening.status}`, 64, 486, { width: 456 });
+    sectionTitle(doc, "Canonical Decision Intelligence & Triage", 390);
+    doc.roundedRect(48, 412, 490, 98, 9).fill("#F2F6F8");
+    doc.font("Helvetica-Bold").fontSize(10).fillColor("#173D5C").text(decision ? `${location.name}: ${decision.responsePriority.priorityLevel} Priority [Primary Hazard: ${decision.hazardAssessment.primaryHazard}]` : `${location.name}: ${screening.riskLevel} analytical screening context`, 64, 426, { width: 456 });
+    doc.font("Helvetica").fontSize(8.8).fillColor("#334A5D").text(decision ? `${decision.explanation.whyThisPriority} Destination: ${decision.relocationAssessment.bestCandidate?.name ?? "None"} (${decision.routingAssessment.distanceKm ?? 0} km). Destination Safety: ${decision.relocationAssessment.destinationSafety.destinationSafetyStatus}.` : `${screening.hazardContext} ${screening.populationContext}`, 64, 444, { width: 456, lineGap: 3.5 });
+    doc.font("Helvetica-Bold").fontSize(8).fillColor("#5B7380").text(decision ? `Audited Priority: ${decision.responsePriority.priorityScore}/100 · Confidence: ${decision.confidence.level} · Evidence Coverage: ${decision.evidenceCoverage.label}` : `Priority: ${screening.priority} · Screening status: ${screening.status}`, 64, 492, { width: 456 });
 
     sectionTitle(doc, "Current decision signal", 548);
     doc.font("Helvetica").fontSize(9.2).fillColor("#334A5D").text(`Current weather: ${safeText(environment.temperatureC)}°C · precipitation: ${safeText(environment.precipitationMm)} mm · air quality: ${environment.usAqi === null ? "Unavailable" : `AQI ${environment.usAqi}`} · ${environment.status}.`, 48, 568, { width: 490, lineGap: 3 });

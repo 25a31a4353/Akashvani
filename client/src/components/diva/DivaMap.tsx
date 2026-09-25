@@ -353,26 +353,48 @@ export function DivaMap({
   const sources = useMemo(() => {
     if (!data) return null;
     const active = data.activeLocation;
+    const canonicalDecision = active?.decision;
+    const canonicalMapState = canonicalDecision?.mapState;
 
-    const effectiveRoute = activeNavigation ?? (data.relocationRoute && data.relocationRoute.coordinates?.length > 0 ? {
-      originLabel: data.relocationRoute.originLabel ?? "Vulnerable Habitation",
-      destinationLabel: data.relocationRoute.destinationLabel ?? "Safe Relocation Haven",
-      originCoords: [
-        data.relocationOrigin?.longitude ?? data.relocationRoute.coordinates[0][0],
-        data.relocationOrigin?.latitude ?? data.relocationRoute.coordinates[0][1]
-      ] as [number, number],
-      destinationCoords: [
-        data.relocationDestination?.longitude ?? data.relocationRoute.coordinates[data.relocationRoute.coordinates.length - 1][0],
-        data.relocationDestination?.latitude ?? data.relocationRoute.coordinates[data.relocationRoute.coordinates.length - 1][1]
-      ] as [number, number],
-      coordinates: data.relocationRoute.coordinates,
-      distanceKm: data.relocationRoute.distanceKm ?? 0,
-      travelTimeMinutes: data.relocationRoute.travelTimeMinutes ?? 0,
-      isRoadRoute: true,
-      classification: "RED" as const,
-      hazardType: data.relocationOrigin?.hazardType ?? "Critical Vulnerable Habitation",
-      safeRole: data.relocationDestination?.role ?? "Safe Relocation Shelter",
-    } : null);
+    const effectiveRoute = activeNavigation ?? (
+      canonicalMapState?.route && canonicalMapState.route.coordinates?.length > 0 ? {
+        originLabel: canonicalMapState.originMarker?.label ?? data.relocationOrigin?.name ?? "Vulnerable Habitation",
+        destinationLabel: canonicalMapState.destinationMarker?.label ?? data.relocationDestination?.name ?? "Safe Relocation Haven",
+        originCoords: canonicalMapState.originMarker?.coordinates ?? [
+          data.relocationOrigin?.longitude ?? canonicalMapState.route.coordinates[0][0],
+          data.relocationOrigin?.latitude ?? canonicalMapState.route.coordinates[0][1]
+        ] as [number, number],
+        destinationCoords: canonicalMapState.destinationMarker?.coordinates ?? [
+          data.relocationDestination?.longitude ?? canonicalMapState.route.coordinates[canonicalMapState.route.coordinates.length - 1][0],
+          data.relocationDestination?.latitude ?? canonicalMapState.route.coordinates[canonicalMapState.route.coordinates.length - 1][1]
+        ] as [number, number],
+        coordinates: canonicalMapState.route.coordinates,
+        distanceKm: canonicalMapState.route.distanceKm,
+        travelTimeMinutes: canonicalMapState.route.durationMinutes ?? 0,
+        isRoadRoute: canonicalMapState.route.isRoadRoute,
+        classification: (canonicalMapState.riskTier === "GREEN" ? "ORANGE" : canonicalMapState.riskTier) as any,
+        hazardType: canonicalMapState.primaryHazard,
+        safeRole: canonicalMapState.destinationMarker?.role ?? "Safe Relocation Facility",
+      } : (data.relocationRoute && data.relocationRoute.coordinates?.length > 0 ? {
+        originLabel: data.relocationRoute.originLabel ?? "Vulnerable Habitation",
+        destinationLabel: data.relocationRoute.destinationLabel ?? "Safe Relocation Haven",
+        originCoords: [
+          data.relocationOrigin?.longitude ?? data.relocationRoute.coordinates[0][0],
+          data.relocationOrigin?.latitude ?? data.relocationRoute.coordinates[0][1]
+        ] as [number, number],
+        destinationCoords: [
+          data.relocationDestination?.longitude ?? data.relocationRoute.coordinates[data.relocationRoute.coordinates.length - 1][0],
+          data.relocationDestination?.latitude ?? data.relocationRoute.coordinates[data.relocationRoute.coordinates.length - 1][1]
+        ] as [number, number],
+        coordinates: data.relocationRoute.coordinates,
+        distanceKm: data.relocationRoute.distanceKm ?? 0,
+        travelTimeMinutes: data.relocationRoute.travelTimeMinutes ?? 0,
+        isRoadRoute: data.relocationRoute.isRoadRoute !== false,
+        classification: "RED" as const,
+        hazardType: data.relocationOrigin?.hazardType ?? "Critical Vulnerable Habitation",
+        safeRole: data.relocationDestination?.role ?? "Safe Relocation Shelter",
+      } : null)
+    );
 
     const routeCoords = effectiveRoute?.coordinates ?? [];
     const midCoord = routeCoords.length > 1 ? routeCoords[Math.floor(routeCoords.length / 2)] : null;
@@ -388,7 +410,7 @@ export function DivaMap({
             originLabel: effectiveRoute.originLabel,
             distanceKm: effectiveRoute.distanceKm,
             travelTimeMinutes: effectiveRoute.travelTimeMinutes,
-            isRoadRoute: true,
+            isRoadRoute: effectiveRoute.isRoadRoute,
             classification: effectiveRoute.classification,
           },
           geometry: { type: "LineString" as const, coordinates: routeCoords }
@@ -434,7 +456,23 @@ export function DivaMap({
         type: "FeatureCollection" as const,
         features: [simPoint],
       } : emptyCollection,
-      activeMarker: active ? { type: "FeatureCollection" as const, features: [{ type: "Feature" as const, properties: { id: active.location.id, name: active.location.name, priority: active.screening.priority, riskScore: active.screening.riskScore }, geometry: { type: "Point" as const, coordinates: [active.location.longitude, active.location.latitude] } }] } : emptyCollection,
+      activeMarker: active ? {
+        type: "FeatureCollection" as const,
+        features: [{
+          type: "Feature" as const,
+          properties: {
+            id: active.location.id,
+            name: active.location.name,
+            priority: canonicalDecision?.recommendedAction?.tier ?? canonicalDecision?.responsePriority?.priorityLevel ?? active.screening.priority,
+            riskScore: canonicalDecision?.responsePriority?.priorityScore ?? active.screening.riskScore,
+            markerColor: canonicalMapState?.tierColor ?? riskColor(active.screening.riskScore ?? 50),
+            primaryHazard: canonicalDecision?.hazardAssessment?.primaryHazard ?? "Hazard Screening",
+            decisionId: canonicalDecision?.decisionId,
+            snapshotHash: canonicalDecision?.decisionSnapshotHash,
+          },
+          geometry: { type: "Point" as const, coordinates: [active.location.longitude, active.location.latitude] }
+        }]
+      } : emptyCollection,
       hazards: { type: "FeatureCollection" as const, features: (active ? [] : data.hazards).map(hazard => ({ type: "Feature" as const, properties: hazard, geometry: { type: "Polygon" as const, coordinates: [hazard.coordinates] } })) },
       roads: { type: "FeatureCollection" as const, features: (active ? [] : data.roads).map((coordinates, index) => ({ type: "Feature" as const, properties: { id: `RD-${index}` }, geometry: { type: "LineString" as const, coordinates } })) },
       infrastructure: { type: "FeatureCollection" as const, features: (active ? (data.nearbyInfrastructure ?? []) : data.infrastructure).map(item => ({ type: "Feature" as const, properties: item, geometry: { type: "Point" as const, coordinates: [item.longitude, item.latitude] } })) },
@@ -631,7 +669,7 @@ export function DivaMap({
       map.addLayer({ id: "selected-area-ring", type: "circle", source: "selected-area", paint: { "circle-radius": 15, "circle-color": "#ffffff", "circle-opacity": 0.18, "circle-stroke-color": "#ffffff", "circle-stroke-width": 2.2 } });
       map.addLayer({ id: "selected-area-core", type: "circle", source: "selected-area", paint: { "circle-radius": 7, "circle-color": "#ff4a4f", "circle-stroke-color": "#ffffff", "circle-stroke-width": 2.2 } });
       map.addLayer({ id: "assessment-labels", type: "symbol", source: "areas", layout: { "text-field": ["get", "name"], "text-size": 10, "text-offset": [0, 1.35], "text-anchor": "top" }, paint: { "text-color": "#ffffff", "text-halo-color": "#10232a", "text-halo-width": 1.4, "text-opacity": 0.92 } });
-      map.addLayer({ id: "active-marker", type: "circle", source: "active-marker", paint: { "circle-radius": 9, "circle-color": "#1d788d", "circle-stroke-color": "#ffffff", "circle-stroke-width": 2.3 } });
+      map.addLayer({ id: "active-marker", type: "circle", source: "active-marker", paint: { "circle-radius": 9, "circle-color": ["coalesce", ["get", "markerColor"], "#1d788d"], "circle-stroke-color": "#ffffff", "circle-stroke-width": 2.3 } });
 
       // ── Group 7: GOOGLE MAPS NAVIGATION ROAD LINE (RED ZONE ➔ GREEN ZONE) ───────
       // Layer A: Universal corridor baseline — renders ALL route types (road + planning corridor)
@@ -941,6 +979,23 @@ export function DivaMap({
       map.on("mouseleave", "relocation-route-line", () => { map.getCanvas().style.cursor = ""; });
       map.on("mouseenter", "relocation-route-casing", () => { map.getCanvas().style.cursor = "pointer"; });
       map.on("mouseleave", "relocation-route-casing", () => { map.getCanvas().style.cursor = ""; });
+
+      // Active selected-location marker click handler (Canonical ResQ Decision)
+      map.on("click", "active-marker", event => {
+        const feat = event.features?.[0];
+        if (!feat || !feat.properties) return;
+        const p = feat.properties as Record<string, unknown>;
+        const name = String(p.name || "Selected Location");
+        const priority = String(p.priority || "MODERATE");
+        const score = p.riskScore !== undefined && p.riskScore !== null ? `${p.riskScore}/100` : "N/A";
+        const hazard = String(p.primaryHazard || "Multi-Hazard Assessment");
+        const decId = p.decisionId ? String(p.decisionId) : null;
+        const color = priority === "RED" ? "#dc2626" : priority === "ORANGE" ? "#ea580c" : priority === "GREEN" ? "#16a34a" : "#475569";
+        const popupHtml = `<div style="font-family:inherit;padding:4px 2px;max-width:280px;color:#0f172a"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px"><strong style="font-size:13px;color:#0f172a;font-weight:700">📍 ${name}</strong><span style="background:${color};color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px">${priority} TIER</span></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:6px 8px;font-size:11px;margin-bottom:6px;display:grid;gap:4px"><div><span style="color:#64748b">Primary Hazard:</span> <strong style="color:#0f172a">${hazard}</strong></div><div><span style="color:#64748b">Priority Score:</span> <strong style="color:${color}">${score}</strong></div>${decId ? `<div><span style="color:#64748b">Canonical Decision:</span> <strong style="color:#0284c7;font-size:10px">${decId}</strong></div>` : ""}</div><div style="font-size:9.5px;color:#475569">Single canonical ResQ Decision Context — Map and Decision synchronized.</div></div>`;
+        new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: "300px" }).setLngLat(event.lngLat).setHTML(popupHtml).addTo(map);
+      });
+      map.on("mouseenter", "active-marker", () => { map.getCanvas().style.cursor = "pointer"; });
+      map.on("mouseleave", "active-marker", () => { map.getCanvas().style.cursor = ""; });
 
       // Apply initial layer visibility and fly to active location if any
       applyLayers(map, layers, opacity, baseStyle);

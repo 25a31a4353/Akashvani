@@ -100,6 +100,9 @@ export type EnvironmentalContext = {
   status: string;
 };
 
+import type { ResQDecisionContext } from "./decisionEngine";
+export type { ResQDecisionContext };
+
 export type IndiaLocationContext = {
   location: IndiaLocation;
   environment: EnvironmentalContext;
@@ -115,6 +118,7 @@ export type IndiaLocationContext = {
   districtInfo?: DistrictInfo;
   hazardProfile?: MultiHazardProfile;
   redZone?: RedZoneAssessment;
+  decision?: ResQDecisionContext;
 };
 
 export const andhraPradeshDefault: IndiaLocation = {

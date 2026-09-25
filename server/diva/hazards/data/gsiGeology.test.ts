@@ -47,7 +47,7 @@ describe("GSI Bhukosh & NGDR Geological Data Integration & Quality Validation", 
     expect(geo.sourceUrl).toContain("livingatlas.esri.in");
     expect(geo.retrievedAt).toBeDefined();
     expect(geo.spatialReference).toContain("4326");
-  });
+  }, 15000);
 
   it("3. Nearest fault / lineament distance calculation is deterministic", async () => {
     const geo1 = await resolveGeologyContext(11.6854, 76.132, "Wayanad", "Kerala");
@@ -61,7 +61,7 @@ describe("GSI Bhukosh & NGDR Geological Data Integration & Quality Validation", 
     expect(geo1.nearestFaultName).toBe(geo2.nearestFaultName);
     expect(geo1.lithology).toBe(geo2.lithology);
     expect(geo1.lithology).toBe("CHARNOCKITE GNEISSIC COMPLEX (SOUTHERN GRANULITE TERRAIN)");
-  });
+  }, 15000);
 
   it("4. Empty/out-of-bounds queries return UNAVAILABLE context and never synthesize or fabricate fake geology", async () => {
     // Coordinates in the middle of the Indian Ocean, far from India bounds
@@ -72,7 +72,7 @@ describe("GSI Bhukosh & NGDR Geological Data Integration & Quality Validation", 
     expect(oceanGeo?.lithology).toBeNull();
     expect(oceanGeo?.geologicalUnit).toBeNull();
     expect(oceanGeo?.limitations).toContain("no provisional geometry fabricated");
-  });
+  }, 15000);
 
   it("5. Strict Hazard Independence: Geology context does NOT alter primary hazard Red/Orange/Green classification", () => {
     // Baseline hazard profile generated from deterministic engine
@@ -148,5 +148,5 @@ describe("GSI Bhukosh & NGDR Geological Data Integration & Quality Validation", 
     // They must never cross-contaminate
     expect(puriGeo?.nearestFaultName).not.toBe(jodhpurGeo?.nearestFaultName);
     expect(puriGeo?.faultDistanceKm).not.toBe(jodhpurGeo?.faultDistanceKm);
-  });
+  }, 15000);
 });

@@ -35,6 +35,7 @@ import type {
   EvacuationFacility,
   RelocationRecommendation,
 } from "@shared/hazards";
+import type { ResQDecisionContext } from "@shared/decisionEngine";
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -433,6 +434,7 @@ export interface PS191DecisionPanelProps {
   classification: "RED" | "ORANGE" | "GREEN" | "UNAVAILABLE";
   stateCode?: string;
   onClose?: () => void;
+  decision?: ResQDecisionContext;
 }
 
 export function PS191DecisionPanel({
@@ -441,6 +443,7 @@ export function PS191DecisionPanel({
   classification,
   stateCode,
   onClose,
+  decision,
 }: PS191DecisionPanelProps) {
   const [showLimitations, setShowLimitations] = useState(false);
   const [showFacilities, setShowFacilities] = useState(true);
@@ -490,6 +493,54 @@ export function PS191DecisionPanel({
       </div>
 
       <div className="p-3.5 space-y-3">
+        {/* Canonical Decision V2 (Single Source of Truth) */}
+        {decision && (
+          <div className="rounded-xl border border-[#c7d2fe] bg-white p-3 shadow-sm space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[9px] font-bold uppercase tracking-[0.1em] text-[#4338ca]">
+                Canonical ResQ Decision V2 (Single Truth)
+              </span>
+              <span className={cn(
+                "rounded px-2 py-0.5 text-[9px] font-black",
+                decision.recommendedAction.tier === "RED" ? "bg-red-100 text-red-800 border border-red-200" :
+                decision.recommendedAction.tier === "ORANGE" ? "bg-orange-100 text-orange-800 border border-orange-200" :
+                decision.recommendedAction.tier === "GREEN" ? "bg-emerald-100 text-emerald-800 border border-emerald-200" :
+                "bg-slate-100 text-slate-700 border border-slate-200"
+              )}>
+                {decision.recommendedAction.tier} TIER · {decision.responsePriority.priorityScore}/100
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5 text-[9px]">
+              <div className="rounded bg-[#f8f9ff] p-1.5 border border-[#e0e7ff]">
+                <span className="text-[#64748b] block">Primary Hazard:</span>
+                <strong className="text-[#1e1b4b] font-bold">{decision.hazardAssessment.primaryHazard}</strong>
+              </div>
+              <div className="rounded bg-[#f8f9ff] p-1.5 border border-[#e0e7ff]">
+                <span className="text-[#64748b] block">Safe Destination:</span>
+                <strong className="text-[#15803d] font-bold truncate block">{decision.relocationAssessment.bestCandidate?.name ?? "None"}</strong>
+              </div>
+              <div className="rounded bg-[#f8f9ff] p-1.5 border border-[#e0e7ff]">
+                <span className="text-[#64748b] block">Destination Safety:</span>
+                <strong className={cn(
+                  "font-bold",
+                  decision.relocationAssessment.destinationSafety.destinationSafetyStatus === "SAFE" ? "text-emerald-700" :
+                  decision.relocationAssessment.destinationSafety.destinationSafetyStatus === "CONDITIONAL" ? "text-amber-700" : "text-rose-700"
+                )}>{decision.relocationAssessment.destinationSafety.destinationSafetyStatus}</strong>
+              </div>
+              <div className="rounded bg-[#f8f9ff] p-1.5 border border-[#e0e7ff]">
+                <span className="text-[#64748b] block">Road Evacuation:</span>
+                <strong className="text-[#0284c7] font-bold">
+                  {decision.routingAssessment.distanceKm != null ? `${decision.routingAssessment.distanceKm.toFixed(1)} km` : "N/A"}
+                  {decision.routingAssessment.durationMinutes != null ? ` (${Math.round(decision.routingAssessment.durationMinutes)}m)` : ""}
+                </strong>
+              </div>
+            </div>
+            <div className="flex items-center justify-between text-[8px] text-[#64748b] pt-1 border-t border-[#f1f5f9]">
+              <span>ID: {decision.decisionId}</span>
+              <span>Hash: {decision.decisionSnapshotHash.slice(0, 14)}...</span>
+            </div>
+          </div>
+        )}
         {/* Loading state */}
         {isLoading && (
           <div className="flex items-center justify-center gap-2 py-6 text-[11px] text-[#64748b]">

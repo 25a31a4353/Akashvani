@@ -328,15 +328,53 @@ export default function Home() {
   const indiaHeaderSearch = trpc.diva.india.search.useQuery({ query: search }, { enabled: search.trim().length >= 2, staleTime: 15 * 60 * 1000 });
   const mapData = useMemo(() => mapQuery.data ? { ...mapQuery.data, center: [indiaLocation.longitude, indiaLocation.latitude] as [number, number], areas: mappedAreas, nationwide: nationwideMapQuery.data } : undefined, [indiaLocation.latitude, indiaLocation.longitude, mapQuery.data, mappedAreas, nationwideMapQuery.data]);
 
-  const divaMapData = useMemo(() => mapData ? {
-    ...mapData,
-    activeLocation: mapLocationContext,
-    nearbyInfrastructure: mapLocationContext?.infrastructure.items,
-    relocationOrigin,
-    relocationDestination,
-    relocationRoute: verifiedRoadRoute ?? planningCorridorFallback,
-    environment: mapLocationContext ? { latitude: mapLocationContext.location.latitude, longitude: mapLocationContext.location.longitude, temperatureC: mapLocationContext.environment.temperatureC, precipitationMm: mapLocationContext.environment.precipitationMm, usAqi: mapLocationContext.environment.usAqi, status: mapLocationContext.environment.status } : environmentQuery.data ? { latitude: selectedCoordinates.latitude, longitude: selectedCoordinates.longitude, temperatureC: environmentQuery.data.temperatureC, precipitationMm: environmentQuery.data.precipitationMm, usAqi: environmentQuery.data.usAqi, status: environmentQuery.data.status } : undefined
-  } : undefined, [destinationCandidate, environmentQuery.data, mapData, mapLocationContext, planningCorridorFallback, relocationDestination, relocationOrigin, selectedCoordinates.latitude, selectedCoordinates.longitude, verifiedRoadRoute]);
+  const divaMapData = useMemo(() => {
+    if (!mapData) return undefined;
+    const canonicalMapState = mapLocationContext?.decision?.mapState;
+    const canonicalRoute = canonicalMapState?.route;
+    const canonicalReloc = mapLocationContext?.decision?.relocationAssessment;
+
+    const effectiveRelocationRoute = canonicalRoute && canonicalRoute.coordinates.length > 0 ? {
+      coordinates: canonicalRoute.coordinates,
+      destinationLabel: canonicalMapState.destinationMarker?.label ?? destinationCandidate.name,
+      originLabel: canonicalMapState.originMarker?.label ?? selectedVulnerableHabitation.name,
+      distanceKm: canonicalRoute.distanceKm,
+      travelTimeMinutes: canonicalRoute.durationMinutes,
+      isRoadRoute: canonicalRoute.isRoadRoute,
+      isPlanningCorridor: !canonicalRoute.isRoadRoute,
+      sourceNote: canonicalRoute.displayBadge,
+    } : (verifiedRoadRoute ?? planningCorridorFallback);
+
+    const effectiveOrigin = canonicalMapState?.originMarker ? {
+      latitude: canonicalMapState.originMarker.coordinates[1],
+      longitude: canonicalMapState.originMarker.coordinates[0],
+      name: canonicalMapState.originMarker.label,
+      exposureLevel: canonicalMapState.originMarker.exposureLevel,
+      population: canonicalMapState.originMarker.population,
+      hazardType: canonicalMapState.primaryHazard,
+    } : relocationOrigin;
+
+    const effectiveDestination = canonicalMapState?.destinationMarker ? {
+      latitude: canonicalMapState.destinationMarker.coordinates[1],
+      longitude: canonicalMapState.destinationMarker.coordinates[0],
+      name: canonicalMapState.destinationMarker.label,
+      role: canonicalMapState.destinationMarker.role,
+      suitability: canonicalMapState.destinationMarker.safetyStatus === "SAFE" ? "PREFERRED" : canonicalMapState.destinationMarker.safetyStatus,
+      capacityNote: canonicalReloc?.bestCandidate?.capacity != null
+        ? `${canonicalReloc.bestCandidate.capacity} verified capacity`
+        : "Capacity unverified (OSM/DDMA)",
+    } : relocationDestination;
+
+    return {
+      ...mapData,
+      activeLocation: mapLocationContext,
+      nearbyInfrastructure: mapLocationContext?.infrastructure.items,
+      relocationOrigin: effectiveOrigin,
+      relocationDestination: effectiveDestination,
+      relocationRoute: effectiveRelocationRoute,
+      environment: mapLocationContext ? { latitude: mapLocationContext.location.latitude, longitude: mapLocationContext.location.longitude, temperatureC: mapLocationContext.environment.temperatureC, precipitationMm: mapLocationContext.environment.precipitationMm, usAqi: mapLocationContext.environment.usAqi, status: mapLocationContext.environment.status } : environmentQuery.data ? { latitude: selectedCoordinates.latitude, longitude: selectedCoordinates.longitude, temperatureC: environmentQuery.data.temperatureC, precipitationMm: environmentQuery.data.precipitationMm, usAqi: environmentQuery.data.usAqi, status: environmentQuery.data.status } : undefined
+    };
+  }, [destinationCandidate, environmentQuery.data, mapData, mapLocationContext, planningCorridorFallback, relocationDestination, relocationOrigin, selectedCoordinates.latitude, selectedCoordinates.longitude, selectedVulnerableHabitation, verifiedRoadRoute]);
 
   useEffect(() => { setNarrative(null); }, [selectedId]);
   useEffect(() => {

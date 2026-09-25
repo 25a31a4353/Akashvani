@@ -26,6 +26,7 @@ import {
 } from "./multiState";
 import { buildMultiHazardProfile } from "./hazards/engine";
 import { resolveGeologyContext } from "./hazards/data/gsiGeology";
+import { computeCanonicalDecision } from "./decision/pipeline";
 
 type NominatimResult = { place_id: number; display_name: string; lat: string; lon: string; type?: string; addresstype?: string; class?: string; boundingbox?: string[]; geojson?: { type: string; coordinates: unknown }; address?: Record<string, string> };
 type OpenMeteoResult = { id: number; name: string; latitude: number; longitude: number; population?: number; admin1?: string; admin2?: string; admin3?: string; admin4?: string; feature_code?: string };
@@ -432,6 +433,16 @@ export async function getIndiaLocationContext(location: IndiaLocation): Promise<
     categories: coverageCategories,
   };
 
+  const decision = await computeCanonicalDecision({
+    location: finalLocation,
+    environment,
+    terrain,
+    hydrology,
+    geology,
+    hazardProfile,
+    evidenceCoverage,
+  });
+
   return {
     location: finalLocation,
     environment,
@@ -456,6 +467,7 @@ export async function getIndiaLocationContext(location: IndiaLocation): Promise<
     districtInfo,
     hazardProfile,
     redZone: hazardProfile.redZone,
+    decision,
   };
 }
 
