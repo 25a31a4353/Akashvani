@@ -84,16 +84,16 @@ function ProvenanceCard({
 }
 
 export function IndiaOverviewProvenance({
-  sources,
-  statuses,
-  updatedAt,
+  sources = {},
+  statuses = {},
+  updatedAt = "Real-time",
   initialOpen = false,
 }: {
-  sources: Record<string, string>;
-  statuses: Record<string, string>;
-  updatedAt: string;
+  sources?: Record<string, string>;
+  statuses?: Record<string, string>;
+  updatedAt?: string;
   initialOpen?: boolean;
-}) {
+} = {}) {
   const [isOpen, setIsOpen] = useState(initialOpen);
   const [activeTab, setActiveTab] = useState<"summary" | "audit">("summary");
   const [auditFilter, setAuditFilter] = useState<string>("ALL");
@@ -162,7 +162,7 @@ export function IndiaOverviewProvenance({
           </div>
 
           {/* Evidence Coverage Transparent Bar */}
-          <div className="mb-2.5 rounded-xl border border-[#1b3447] bg-[#0a1c2a] p-2">
+          <div data-testid="evidence-coverage-metric" className="mb-2.5 rounded-xl border border-[#1b3447] bg-[#0a1c2a] p-2">
             <div className="flex items-center justify-between text-[9px]">
               <span className="font-bold text-[#e2e8f0]">Evidence Coverage Score</span>
               <span className="font-black text-emerald-400">6 / 7 Categories Available</span>
@@ -179,18 +179,20 @@ export function IndiaOverviewProvenance({
             <div className="space-y-2">
               {/* States */}
               <ProvenanceCard
+                testId="provenance-card-states"
                 category="States"
-                source={sources.states ?? "geoBoundaries ADM1 (DataMeet India community / Election Commission of India)"}
+                source={sources?.states ?? "geoBoundaries ADM1 (DataMeet India community / Election Commission of India)"}
                 status="AVAILABLE"
                 resolution="State administrative polygon"
                 year="2011 / 2020"
                 unit="WGS84 Boundary"
                 type="OFFICIAL / REFERENCE"
-                note={statuses.states ?? "NATIONWIDE REFERENCE BOUNDARIES"}
+                note={statuses?.states ?? "NATIONWIDE REFERENCE BOUNDARIES"}
               />
 
               {/* Population */}
               <ProvenanceCard
+                testId="provenance-card-population"
                 category="Population"
                 source="Census of India 2011 (Habitation/District PCA) & WorldPop Global Population"
                 status="AVAILABLE"
@@ -203,6 +205,7 @@ export function IndiaOverviewProvenance({
 
               {/* Terrain */}
               <ProvenanceCard
+                testId="provenance-card-terrain"
                 category="Terrain"
                 source="Esri World Elevation Terrain image service & Copernicus Digital Elevation Model (GLO-90)"
                 status="AVAILABLE"
@@ -210,21 +213,23 @@ export function IndiaOverviewProvenance({
                 year="2015"
                 unit="Meters MSL"
                 type="REFERENCE"
-                note={`${statuses.terrain ?? "NATIONWIDE TERRAIN REFERENCE"} · Esri World Elevation Terrain image service. Derived slope computed via 5-point finite-difference spatial gradient.`}
+                note={`${statuses?.terrain ?? "NATIONWIDE TERRAIN REFERENCE"} · Esri World Elevation Terrain image service. Derived slope computed via 5-point finite-difference spatial gradient.`}
               />
 
               {/* Geology */}
               <ProvenanceCard
+                testId="provenance-card-geology"
                 category="Geology"
                 source="Geological Survey of India (GSI) Bhukosh & NGDR Geoscientific Repository"
                 status="UNAVAILABLE"
                 type="OFFICIAL REFERENCE"
-                reasonIfUnavailable={statuses.geology ?? "UNAVAILABLE — NO PROVISIONAL GEOLOGY GEOMETRY IS DISPLAYED"}
+                reasonIfUnavailable={statuses?.geology ?? "UNAVAILABLE — NO PROVISIONAL GEOLOGY GEOMETRY IS DISPLAYED"}
                 note="Official GSI geological data exists, but no machine-readable vector geometry is currently integrated. No provisional geometry is fabricated."
               />
 
               {/* Weather & Wind */}
               <ProvenanceCard
+                testId="provenance-card-weather"
                 category="Weather & Wind"
                 source="India Meteorological Department (IMD Mausam Nowcast & Warnings) + Open-Meteo NWP"
                 status="LIVE"
@@ -232,19 +237,20 @@ export function IndiaOverviewProvenance({
                 year="2026 (Live)"
                 unit="°C, mm, km/h"
                 type="OBSERVED & MODELLED"
-                note={`${statuses.weather ?? "LIVE MODELLED WEATHER + WIND COVERAGE GRID"}. Official IMD warnings parsed in real-time; numerical fields blended from ECMWF/GFS.`}
+                note={`${statuses?.weather ?? "LIVE MODELLED WEATHER + WIND COVERAGE GRID"}. Official IMD warnings parsed in real-time; numerical fields blended from ECMWF/GFS.`}
               />
 
               {/* Sensitivity */}
               <ProvenanceCard
+                testId="provenance-card-sensitivity"
                 category="Sensitivity"
-                source={sources.sensitivity ?? "ResQ Analytical Screening Pipeline (CWC + ISRO Landslide Atlas + BIS IS 1893:2016)"}
+                source={sources?.sensitivity ?? "ResQ Analytical Screening Pipeline (CWC + ISRO Landslide Atlas + BIS IS 1893:2016)"}
                 status="AVAILABLE"
                 resolution="Regional screening envelope"
                 year="2026"
                 unit="0–100 Screening Index"
                 type="DERIVED"
-                note={`${statuses.sensitivity ?? "BROAD ANALYTICAL SENSITIVITY EXTENTS"} — Derived analytical screening. Not an official warning or observed event footprint.`}
+                note={`${statuses?.sensitivity ?? "BROAD ANALYTICAL SENSITIVITY EXTENTS"} — Derived analytical screening. Not an official warning or observed event footprint.`}
               />
             </div>
           ) : (
