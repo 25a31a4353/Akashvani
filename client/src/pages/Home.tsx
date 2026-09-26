@@ -68,7 +68,7 @@ const initialLayers: Record<string, boolean> = {
   floodSensitivity: false,
   infrastructure: false,
   gsiGeology: false, // Default OFF on fresh load (manually toggleable in Layers menu)
-  gsiTectonics: true,
+  gsiTectonics: false, // Default OFF on fresh load (manually toggleable in Layers menu)
 };
 
 

@@ -62,7 +62,7 @@ export function deriveMapState(
     : null;
 
   // Active layer keys based on hazards present
-  const activeLayerKeys: string[] = ["boundaries", "terrain", "redZones", "routes", "exposedHabitations", "facilities", "gsiGeology", "gsiTectonics"];
+  const activeLayerKeys: string[] = ["boundaries", "redZones", "routes", "exposedHabitations", "facilities"];
   if (hazard.primaryHazard === "FLOOD" || hazard.secondaryHazards.includes("FLOOD")) {
     activeLayerKeys.push("floodPlains", "cwcGauges");
   }

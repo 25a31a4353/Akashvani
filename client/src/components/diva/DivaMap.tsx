@@ -616,8 +616,8 @@ export function DivaMap({
       if (data.nationwide) {
         map.addSource("national-terrain", { type: "image", url: data.nationwide.terrainImage, coordinates: data.nationwide.imageCoordinates });
         map.addSource("national-population", { type: "image", url: data.nationwide.populationImage, coordinates: data.nationwide.imageCoordinates });
-        map.addLayer({ id: "national-terrain", type: "raster", source: "national-terrain", paint: { "raster-opacity": 0.48 } });
-        map.addLayer({ id: "national-population", type: "raster", source: "national-population", paint: { "raster-opacity": 0.56 } });
+        map.addLayer({ id: "national-terrain", type: "raster", source: "national-terrain", paint: { "raster-opacity": 0.48 }, layout: { visibility: layers.terrain ? "visible" : "none" } });
+        map.addLayer({ id: "national-population", type: "raster", source: "national-population", paint: { "raster-opacity": 0.56 }, layout: { visibility: layers.population ? "visible" : "none" } });
         if (data.nationwide.geologyImage) {
           map.addSource("national-geology", { type: "image", url: data.nationwide.geologyImage, coordinates: data.nationwide.imageCoordinates });
           map.addLayer({ id: "national-geology", type: "raster", source: "national-geology", paint: { "raster-opacity": 0.45 }, layout: { visibility: layers.gsiGeology ? "visible" : "none" } });
