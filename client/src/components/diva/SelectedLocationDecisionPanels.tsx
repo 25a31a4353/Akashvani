@@ -344,12 +344,12 @@ export function IndiaContextSidebar({ context, onOpenKeralaAssessment }: { conte
 
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     hazardRisk: true,       // OPEN BY DEFAULT
+    capacity: false,        // CLOSED BY DEFAULT
+    relocation: false,      // CLOSED BY DEFAULT
     environment: false,     // CLOSED BY DEFAULT
     terrain: false,         // CLOSED BY DEFAULT
     hydrology: false,       // CLOSED BY DEFAULT
     exposure: false,        // CLOSED BY DEFAULT
-    capacity: false,        // CLOSED BY DEFAULT
-    relocation: false,      // CLOSED BY DEFAULT
     provenance: false,      // CLOSED BY DEFAULT
   });
 
@@ -611,189 +611,7 @@ export function IndiaContextSidebar({ context, onOpenKeralaAssessment }: { conte
           )}
         </AccordionSection>
 
-        {/* 3. LIVE ENVIRONMENTAL CONTEXT (CLOSED by default) */}
-        <AccordionSection
-          id="environment"
-          title="Live Environmental Context"
-          icon={CloudSun}
-          isOpen={openSections.environment}
-          onToggle={() => toggleSection("environment")}
-          badge={
-            <span className="rounded bg-[#e8f6f2] px-1.5 py-0.5 text-[8px] font-bold text-[#1d7d63]">
-              {context.environment.temperatureC !== null ? "LIVE" : "MODELLED"}
-            </span>
-          }
-          summary={
-            next
-              ? `Next day: ${next.temperatureMinC ?? "—"}–${next.temperatureMaxC ?? "—"}°C · ${next.precipitationProbability ?? "—"}% rain · ${next.windSpeedMaxKph ?? "—"} km/h wind`
-              : (context.environment.temperatureC !== null
-                ? `${context.environment.temperatureC}°C · ${context.environment.precipitationMm ?? 0} mm precipitation · US AQI ${context.environment.usAqi ?? "—"}`
-                : "Live forecast loading")
-          }
-          testId="accordion-environment"
-        >
-          <div className="space-y-2">
-            <div className="rounded-xl border border-[#d9e8ea] bg-[#f4faf9] p-2.5">
-              <p className="text-[9px] font-bold uppercase tracking-[.1em] text-[#2b7585]">{context.environment.status}</p>
-              <p className="mt-1 text-[11px] font-semibold text-[#385a67]">
-                {context.environment.temperatureC ?? "—"}°C · {context.environment.precipitationMm ?? "—"} mm precipitation · US AQI {context.environment.usAqi ?? "—"}
-              </p>
-              <p className="mt-1 text-[10px] font-semibold text-[#385a67]">
-                Next day: {next ? `${next.temperatureMinC ?? "—"}–${next.temperatureMaxC ?? "—"}°C · ${next.precipitationProbability ?? "—"}% rain · ${next.windSpeedMaxKph ?? "—"} km/h wind` : "Modelled forecast unavailable"}
-              </p>
-              <p className="mt-1 text-[9px] leading-relaxed text-[#758b94]">
-                {context.environment.source} · Updated {context.environment.observedAt ? new Date(context.environment.observedAt).toLocaleString("en-IN") : "unavailable"}
-              </p>
-            </div>
-            {context.environment.pm25 !== null && context.environment.pm25 !== undefined && (
-              <div className="flex items-center justify-between rounded-lg bg-[#f8fafb] px-2.5 py-1.5 text-[9.5px] text-[#556e79]">
-                <span>Fine particulate matter (PM2.5)</span>
-                <span className="font-bold text-[#274b60]">{context.environment.pm25} µg/m³</span>
-              </div>
-            )}
-          </div>
-        </AccordionSection>
-
-        {/* 4. TERRAIN & PHYSIOGRAPHY (CLOSED by default) */}
-        <AccordionSection
-          id="terrain"
-          title="Terrain & Physiography"
-          icon={Mountain}
-          isOpen={openSections.terrain}
-          onToggle={() => toggleSection("terrain")}
-          badge={
-            <span className={`rounded px-1.5 py-0.5 text-[8px] font-bold ${
-              context.terrain?.status === "AVAILABLE" ? "bg-[#e6f5ec] text-[#267553]" : "bg-[#edf1f3] text-[#71828c]"
-            }`}>
-              {context.terrain?.status ?? "UNAVAILABLE"}
-            </span>
-          }
-          summary={
-            context.terrain?.elevationMeters !== null && context.terrain?.elevationMeters !== undefined
-              ? `${context.terrain.elevationMeters} m elevation · ${context.terrain.slopeDegrees ?? "—"}° slope relief`
-              : (context.terrain?.status ?? "Physiography context")
-          }
-          testId="accordion-terrain"
-        >
-          <div className="space-y-2">
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div className="rounded-lg bg-[#f7fbfb] p-2 border border-[#e6eff1]">
-                <p className="text-[9px] font-bold uppercase text-[#819099]">Elevation</p>
-                <p className="mt-0.5 font-bold text-[#274b60]">
-                  {context.terrain?.elevationMeters !== null && context.terrain?.elevationMeters !== undefined
-                    ? `${context.terrain.elevationMeters} m`
-                    : <span className="text-[10px] font-medium text-[#819099]">Unavailable</span>}
-                </p>
-              </div>
-              <div className="rounded-lg bg-[#f7fbfb] p-2 border border-[#e6eff1]">
-                <p className="text-[9px] font-bold uppercase text-[#819099]">Slope Relief</p>
-                <p className="mt-0.5 font-bold text-[#274b60]">
-                  {context.terrain?.slopeDegrees !== null && context.terrain?.slopeDegrees !== undefined
-                    ? `${context.terrain.slopeDegrees}°`
-                    : <span className="text-[10px] font-medium text-[#819099]">Unavailable</span>}
-                </p>
-              </div>
-            </div>
-            <p className="text-[10px] text-[#556e79] leading-relaxed">
-              {context.terrain?.terrainClass ?? "Regional physiographic baseline"}
-            </p>
-          </div>
-        </AccordionSection>
-
-        {/* 5. HYDROLOGY & BASIN (CLOSED by default) */}
-        <AccordionSection
-          id="hydrology"
-          title="Hydrology & Basin"
-          icon={Droplets}
-          isOpen={openSections.hydrology}
-          onToggle={() => toggleSection("hydrology")}
-          badge={
-            <span className={`rounded px-1.5 py-0.5 text-[8px] font-bold ${
-              context.hydrology?.status === "REGIONAL_MAPPING" || context.hydrology?.status === "AVAILABLE"
-                ? "bg-[#eaf5f7] text-[#1c7084]"
-                : "bg-[#edf1f3] text-[#71828c]"
-            }`}>
-              {context.hydrology?.status ?? "UNAVAILABLE"}
-            </span>
-          }
-          summary={
-            context.hydrology?.basin
-              ? `${context.hydrology.basin}${context.hydrology.nearestRiver ? ` · ${context.hydrology.nearestRiver}` : ""}`
-              : (context.hydrology?.status ?? "Hydrology context")
-          }
-          testId="accordion-hydrology"
-        >
-          <div className="space-y-2">
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div className="rounded-lg bg-[#f7fbfb] p-2 border border-[#e6eff1]">
-                <p className="text-[9px] font-bold uppercase text-[#819099]">River Basin</p>
-                <p className="mt-0.5 truncate font-bold text-[#274b60]">
-                  {context.hydrology?.basin ?? <span className="text-[10px] font-medium text-[#819099]">Unavailable</span>}
-                </p>
-              </div>
-              <div className="rounded-lg bg-[#f7fbfb] p-2 border border-[#e6eff1]">
-                <p className="text-[9px] font-bold uppercase text-[#819099]">Nearest River</p>
-                <p className="mt-0.5 truncate font-bold text-[#274b60]">
-                  {context.hydrology?.nearestRiver
-                    ? `${context.hydrology.nearestRiver}${context.hydrology.riverDistanceKm !== null && context.hydrology.riverDistanceKm !== undefined ? ` (${context.hydrology.riverDistanceKm}km)` : ""}`
-                    : <span className="text-[10px] font-medium text-[#819099]">Unavailable</span>}
-                </p>
-              </div>
-            </div>
-            {context.hydrology?.floodplainIndicator !== null && context.hydrology?.floodplainIndicator !== undefined && (
-              <p className="text-[9px] font-semibold text-[#1c7084]">
-                {context.hydrology.floodplainIndicator ? "⚠ Within active riverine floodplain zone" : "Outside immediate floodplain zone"}
-              </p>
-            )}
-          </div>
-        </AccordionSection>
-
-        {/* 6. EXPOSURE & HABITATIONS (CLOSED by default) */}
-        <AccordionSection
-          id="exposure"
-          title="Exposure & Habitations"
-          icon={Users}
-          isOpen={openSections.exposure}
-          onToggle={() => toggleSection("exposure")}
-          badge={
-            <span className="rounded bg-[#fef3c7] px-1.5 py-0.5 text-[8px] font-bold text-[#b45309]">
-              {context.hazardProfile?.exposedHabitations.length ?? 0} Habitations
-            </span>
-          }
-          summary={
-            context.hazardProfile?.exposedHabitations.length
-              ? `${context.hazardProfile.exposedHabitations.length} habitations exposed · Census 2011`
-              : (context.location.population ? `${context.location.population.toLocaleString("en-IN")} population` : "Population context")
-          }
-          testId="accordion-exposure"
-        >
-          <div className="space-y-2">
-            <p className="text-[10px] leading-relaxed text-[#556e79]">{context.screening.populationContext}</p>
-            {context.hazardProfile?.exposedHabitations && context.hazardProfile.exposedHabitations.length > 0 ? (
-              <div className="space-y-1.5 pt-1">
-                <div className="flex items-center justify-between text-[9px] font-bold uppercase tracking-[.08em] text-[#1c4d62]">
-                  <span>Exposed Habitations ({context.hazardProfile.exposedHabitations.length})</span>
-                  <span className="text-[8.5px] font-semibold text-[#78909c]">Census 2011</span>
-                </div>
-                {context.hazardProfile.exposedHabitations.slice(0, 4).map((hab: any) => (
-                  <div key={hab.habitationId} className="flex items-center justify-between rounded bg-[#f7fafb] px-2.5 py-1.5 text-[9.5px] border border-[#e6eff1]">
-                    <div>
-                      <span className="font-bold text-[#2a4e60]">{hab.name}</span>
-                      <span className="block text-[8px] text-[#718894]">{hab.hazardType} · {Math.round(hab.distanceToHazardKm)}km away</span>
-                    </div>
-                    <span className="font-semibold text-[#375463]">
-                      {hab.population !== null ? `${hab.population.toLocaleString("en-IN")} pop` : <span className="text-[#889ca6]">Unavailable</span>}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-[9.5px] text-[#78909c] italic">No high-risk habitations within immediate screening buffer.</p>
-            )}
-          </div>
-        </AccordionSection>
-
-        {/* 7. CARRYING CAPACITY (CLOSED by default) */}
+        {/* 3. CARRYING CAPACITY (CLOSED by default) */}
         <AccordionSection
           id="capacity"
           title="Carrying Capacity"
@@ -848,7 +666,7 @@ export function IndiaContextSidebar({ context, onOpenKeralaAssessment }: { conte
           </div>
         </AccordionSection>
 
-        {/* 8. RELOCATION INTELLIGENCE (CLOSED by default) */}
+        {/* 4. RELOCATION INTELLIGENCE (CLOSED by default) */}
         <AccordionSection
           id="relocation"
           title="Relocation Intelligence"
@@ -898,6 +716,188 @@ export function IndiaContextSidebar({ context, onOpenKeralaAssessment }: { conte
               </p>
             </div>
           )}
+        </AccordionSection>
+
+        {/* 5. LIVE ENVIRONMENTAL CONTEXT (CLOSED by default) */}
+        <AccordionSection
+          id="environment"
+          title="Live Environmental Context"
+          icon={CloudSun}
+          isOpen={openSections.environment}
+          onToggle={() => toggleSection("environment")}
+          badge={
+            <span className="rounded bg-[#e8f6f2] px-1.5 py-0.5 text-[8px] font-bold text-[#1d7d63]">
+              {context.environment.temperatureC !== null ? "LIVE" : "MODELLED"}
+            </span>
+          }
+          summary={
+            next
+              ? `Next day: ${next.temperatureMinC ?? "—"}–${next.temperatureMaxC ?? "—"}°C · ${next.precipitationProbability ?? "—"}% rain · ${next.windSpeedMaxKph ?? "—"} km/h wind`
+              : (context.environment.temperatureC !== null
+                ? `${context.environment.temperatureC}°C · ${context.environment.precipitationMm ?? 0} mm precipitation · US AQI ${context.environment.usAqi ?? "—"}`
+                : "Live forecast loading")
+          }
+          testId="accordion-environment"
+        >
+          <div className="space-y-2">
+            <div className="rounded-xl border border-[#d9e8ea] bg-[#f4faf9] p-2.5">
+              <p className="text-[9px] font-bold uppercase tracking-[.1em] text-[#2b7585]">{context.environment.status}</p>
+              <p className="mt-1 text-[11px] font-semibold text-[#385a67]">
+                {context.environment.temperatureC ?? "—"}°C · {context.environment.precipitationMm ?? "—"} mm precipitation · US AQI {context.environment.usAqi ?? "—"}
+              </p>
+              <p className="mt-1 text-[10px] font-semibold text-[#385a67]">
+                Next day: {next ? `${next.temperatureMinC ?? "—"}–${next.temperatureMaxC ?? "—"}°C · ${next.precipitationProbability ?? "—"}% rain · ${next.windSpeedMaxKph ?? "—"} km/h wind` : "Modelled forecast unavailable"}
+              </p>
+              <p className="mt-1 text-[9px] leading-relaxed text-[#758b94]">
+                {context.environment.source} · Updated {context.environment.observedAt ? new Date(context.environment.observedAt).toLocaleString("en-IN") : "unavailable"}
+              </p>
+            </div>
+            {context.environment.pm25 !== null && context.environment.pm25 !== undefined && (
+              <div className="flex items-center justify-between rounded-lg bg-[#f8fafb] px-2.5 py-1.5 text-[9.5px] text-[#556e79]">
+                <span>Fine particulate matter (PM2.5)</span>
+                <span className="font-bold text-[#274b60]">{context.environment.pm25} µg/m³</span>
+              </div>
+            )}
+          </div>
+        </AccordionSection>
+
+        {/* 6. TERRAIN & PHYSIOGRAPHY (CLOSED by default) */}
+        <AccordionSection
+          id="terrain"
+          title="Terrain & Physiography"
+          icon={Mountain}
+          isOpen={openSections.terrain}
+          onToggle={() => toggleSection("terrain")}
+          badge={
+            <span className={`rounded px-1.5 py-0.5 text-[8px] font-bold ${
+              context.terrain?.status === "AVAILABLE" ? "bg-[#e6f5ec] text-[#267553]" : "bg-[#edf1f3] text-[#71828c]"
+            }`}>
+              {context.terrain?.status ?? "UNAVAILABLE"}
+            </span>
+          }
+          summary={
+            context.terrain?.elevationMeters !== null && context.terrain?.elevationMeters !== undefined
+              ? `${context.terrain.elevationMeters} m elevation · ${context.terrain.slopeDegrees ?? "—"}° slope relief`
+              : (context.terrain?.status ?? "Physiography context")
+          }
+          testId="accordion-terrain"
+        >
+          <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-lg bg-[#f7fbfb] p-2 border border-[#e6eff1]">
+                <p className="text-[9px] font-bold uppercase text-[#819099]">Elevation</p>
+                <p className="mt-0.5 font-bold text-[#274b60]">
+                  {context.terrain?.elevationMeters !== null && context.terrain?.elevationMeters !== undefined
+                    ? `${context.terrain.elevationMeters} m`
+                    : <span className="text-[10px] font-medium text-[#819099]">Unavailable</span>}
+                </p>
+              </div>
+              <div className="rounded-lg bg-[#f7fbfb] p-2 border border-[#e6eff1]">
+                <p className="text-[9px] font-bold uppercase text-[#819099]">Slope Relief</p>
+                <p className="mt-0.5 font-bold text-[#274b60]">
+                  {context.terrain?.slopeDegrees !== null && context.terrain?.slopeDegrees !== undefined
+                    ? `${context.terrain.slopeDegrees}°`
+                    : <span className="text-[10px] font-medium text-[#819099]">Unavailable</span>}
+                </p>
+              </div>
+            </div>
+            <p className="text-[10px] text-[#556e79] leading-relaxed">
+              {context.terrain?.terrainClass ?? "Regional physiographic baseline"}
+            </p>
+          </div>
+        </AccordionSection>
+
+        {/* 7. HYDROLOGY & BASIN (CLOSED by default) */}
+        <AccordionSection
+          id="hydrology"
+          title="Hydrology & Basin"
+          icon={Droplets}
+          isOpen={openSections.hydrology}
+          onToggle={() => toggleSection("hydrology")}
+          badge={
+            <span className={`rounded px-1.5 py-0.5 text-[8px] font-bold ${
+              context.hydrology?.status === "REGIONAL_MAPPING" || context.hydrology?.status === "AVAILABLE"
+                ? "bg-[#eaf5f7] text-[#1c7084]"
+                : "bg-[#edf1f3] text-[#71828c]"
+            }`}>
+              {context.hydrology?.status ?? "UNAVAILABLE"}
+            </span>
+          }
+          summary={
+            context.hydrology?.basin
+              ? `${context.hydrology.basin}${context.hydrology.nearestRiver ? ` · ${context.hydrology.nearestRiver}` : ""}`
+              : (context.hydrology?.status ?? "Hydrology context")
+          }
+          testId="accordion-hydrology"
+        >
+          <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-lg bg-[#f7fbfb] p-2 border border-[#e6eff1]">
+                <p className="text-[9px] font-bold uppercase text-[#819099]">River Basin</p>
+                <p className="mt-0.5 truncate font-bold text-[#274b60]">
+                  {context.hydrology?.basin ?? <span className="text-[10px] font-medium text-[#819099]">Unavailable</span>}
+                </p>
+              </div>
+              <div className="rounded-lg bg-[#f7fbfb] p-2 border border-[#e6eff1]">
+                <p className="text-[9px] font-bold uppercase text-[#819099]">Nearest River</p>
+                <p className="mt-0.5 truncate font-bold text-[#274b60]">
+                  {context.hydrology?.nearestRiver
+                    ? `${context.hydrology.nearestRiver}${context.hydrology.riverDistanceKm !== null && context.hydrology.riverDistanceKm !== undefined ? ` (${context.hydrology.riverDistanceKm}km)` : ""}`
+                    : <span className="text-[10px] font-medium text-[#819099]">Unavailable</span>}
+                </p>
+              </div>
+            </div>
+            {context.hydrology?.floodplainIndicator !== null && context.hydrology?.floodplainIndicator !== undefined && (
+              <p className="text-[9px] font-semibold text-[#1c7084]">
+                {context.hydrology.floodplainIndicator ? "⚠ Within active riverine floodplain zone" : "Outside immediate floodplain zone"}
+              </p>
+            )}
+          </div>
+        </AccordionSection>
+
+        {/* 8. EXPOSURE & HABITATIONS (CLOSED by default) */}
+        <AccordionSection
+          id="exposure"
+          title="Exposure & Habitations"
+          icon={Users}
+          isOpen={openSections.exposure}
+          onToggle={() => toggleSection("exposure")}
+          badge={
+            <span className="rounded bg-[#fef3c7] px-1.5 py-0.5 text-[8px] font-bold text-[#b45309]">
+              {context.hazardProfile?.exposedHabitations.length ?? 0} Habitations
+            </span>
+          }
+          summary={
+            context.hazardProfile?.exposedHabitations.length
+              ? `${context.hazardProfile.exposedHabitations.length} habitations exposed · Census 2011`
+              : (context.location.population ? `${context.location.population.toLocaleString("en-IN")} population` : "Population context")
+          }
+          testId="accordion-exposure"
+        >
+          <div className="space-y-2">
+            <p className="text-[10px] leading-relaxed text-[#556e79]">{context.screening.populationContext}</p>
+            {context.hazardProfile?.exposedHabitations && context.hazardProfile.exposedHabitations.length > 0 ? (
+              <div className="space-y-1.5 pt-1">
+                <div className="flex items-center justify-between text-[9px] font-bold uppercase tracking-[.08em] text-[#1c4d62]">
+                  <span>Exposed Habitations ({context.hazardProfile.exposedHabitations.length})</span>
+                  <span className="text-[8.5px] font-semibold text-[#78909c]">Census 2011</span>
+                </div>
+                {context.hazardProfile.exposedHabitations.slice(0, 4).map((hab: any) => (
+                  <div key={hab.habitationId} className="flex items-center justify-between rounded bg-[#f7fafb] px-2.5 py-1.5 text-[9.5px] border border-[#e6eff1]">
+                    <div>
+                      <span className="font-bold text-[#2a4e60]">{hab.name}</span>
+                      <span className="block text-[8px] text-[#718894]">{hab.hazardType} · {Math.round(hab.distanceToHazardKm)}km away</span>
+                    </div>
+                    <span className="font-semibold text-[#375463]">
+                      {hab.population !== null ? `${hab.population.toLocaleString("en-IN")} pop` : <span className="text-[#889ca6]">Unavailable</span>}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[9.5px] text-[#78909c] italic">No high-risk habitations within immediate screening buffer.</p>
+            )}
+          </div>
         </AccordionSection>
 
         {/* 9. DATA SOURCES & LIMITATIONS (CLOSED by default) */}
