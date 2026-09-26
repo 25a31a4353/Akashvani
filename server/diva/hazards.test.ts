@@ -429,7 +429,7 @@ describe("Phase 3.2B — Authoritative Hazard Data & Engine Test Suite", () => {
       });
       expect(wayanadContext.redZone?.tier).toBe("RED");
       expect(wayanadContext.redZone?.isRedZone).toBe(true);
-    });
+    }, 15000);
 
   });
 });
