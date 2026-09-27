@@ -1,6 +1,24 @@
+/**
+ * ResQ — Location Decision Context Report (v4)
+ *
+ * Professional disaster-management decision document.
+ * All rendered values are consumed from the canonical IndiaLocationContext /
+ * ResQDecisionContext objects.  The renderer NEVER recalculates decisions.
+ *
+ * Structure (7 pages):
+ *   Page 1 — Cover / Location Identity / Executive Summary
+ *   Page 2 — Geographic Decision Map
+ *   Page 3 — Decision Context Summary + Hazard Assessment
+ *   Page 4 — Exposure, Vulnerability & Evacuation Capacity
+ *   Page 5 — Safe Destination & Road Route
+ *   Page 6 — Why This Decision? (Causal Narrative + Priority Breakdown)
+ *   Page 7 — Data Quality, Limitations & Source Provenance
+ */
+
 import { createRequire } from "node:module";
 import type PDFDocumentClass from "pdfkit";
 import type { IndiaBoundary, IndiaLocationContext } from "../../shared/india";
+import type { ResQDecisionContext } from "../../shared/decisionEngine";
 
 const require = createRequire(import.meta.url);
 const PDFDocument: typeof PDFDocumentClass = require("pdfkit");
@@ -8,12 +26,57 @@ const PDFDocument: typeof PDFDocumentClass = require("pdfkit");
 type PdfDocument = PDFKit.PDFDocument;
 type Point = [number, number];
 
+// ─── Colour System ───────────────────────────────────────────────────────────
+
 export const SELECTED_LOCATION_RISK_COLORS = {
   High: "#BD3034",
   Moderate: "#E66E2D",
   Low: "#D3A52D",
   Safe: "#31825D",
 } as const;
+
+const PALETTE = {
+  // Text
+  ink: "#0F172A",
+  body: "#1E293B",
+  muted: "#475569",
+  faint: "#64748B",
+  // Backgrounds
+  pageWhite: "#FFFFFF",
+  surfaceLight: "#F8FAFC",
+  surfaceMid: "#F1F5F9",
+  // Borders
+  border: "#CBD5E1",
+  borderLight: "#E2E8F0",
+  // Brand / Status
+  brandBlue: "#0B1E2D",
+  brandAccent: "#1D4ED8",
+  routeBlue: "#38BDF8",
+  safe: "#16A34A",
+  safeBg: "#DCFCE7",
+  high: "#DC2626",
+  moderate: "#D97706",
+  low: "#D3A52D",
+  // Map
+  mapBg: "#0D2137",
+  mapGrid: "#1E3A52",
+  mapBoundary: "#60A5FA",
+  // Provenance badge colours
+  official: "#15803D",
+  officialBg: "#DCFCE7",
+  modelled: "#1D4ED8",
+  modelledBg: "#DBEAFE",
+  historical: "#7C3AED",
+  historicalBg: "#EDE9FE",
+  unavailable: "#6B7280",
+  unavailableBg: "#F3F4F6",
+  live: "#DC2626",
+  liveBg: "#FEE2E2",
+  derived: "#D97706",
+  derivedBg: "#FEF9C3",
+} as const;
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 export function riskColour(level: string | null | undefined): string {
   const norm = String(level || "").toUpperCase();
@@ -39,7 +102,9 @@ export function extractBoundaryRings(boundary: IndiaBoundary): Point[][] {
     return geometry.coordinates.map(asRing).filter((ring): ring is Point[] => Boolean(ring));
   }
   if (geometry.type === "MultiPolygon" && Array.isArray(geometry.coordinates)) {
-    return geometry.coordinates.flatMap(polygon => (Array.isArray(polygon) ? polygon.map(asRing).filter((ring): ring is Point[] => Boolean(ring)) : []));
+    return geometry.coordinates.flatMap((polygon) =>
+      Array.isArray(polygon) ? polygon.map(asRing).filter((ring): ring is Point[] => Boolean(ring)) : []
+    );
   }
   return [];
 }
@@ -49,20 +114,200 @@ function safeText(value: string | number | null | undefined, fallback = "Unavail
   return String(value);
 }
 
-// ─── Precision Map Renderer ───────────────────────────────────────────────────
+function formatPopulation(n: number | null | undefined): string {
+  if (n === null || n === undefined) return "UNAVAILABLE";
+  return Number(n).toLocaleString("en-IN");
+}
 
-function renderExtentMap(
+function formatCoord(val: number, pos: "lat" | "lon"): string {
+  const dir = pos === "lat" ? (val >= 0 ? "N" : "S") : val >= 0 ? "E" : "W";
+  return `${Math.abs(val).toFixed(6) + "\u00b0"} ${dir}`;
+}
+
+function freshnessLabel(f: string | null | undefined): string {
+  if (!f) return "UNKNOWN";
+  return f.replace("_", " ");
+}
+
+function provenanceBadgeColors(type: string): { fg: string; bg: string } {
+  const t = (type || "").toUpperCase();
+  if (t === "OFFICIAL") return { fg: PALETTE.official, bg: PALETTE.officialBg };
+  if (t === "MODELLED") return { fg: PALETTE.modelled, bg: PALETTE.modelledBg };
+  if (t === "HISTORICAL") return { fg: PALETTE.historical, bg: PALETTE.historicalBg };
+  if (t === "OBSERVED") return { fg: PALETTE.live, bg: PALETTE.liveBg };
+  if (t === "DERIVED") return { fg: PALETTE.derived, bg: PALETTE.derivedBg };
+  return { fg: PALETTE.unavailable, bg: PALETTE.unavailableBg };
+}
+
+// ─── Layout Constants ─────────────────────────────────────────────────────────
+
+const A4_WIDTH = 595;   // pt
+const A4_HEIGHT = 842;  // pt
+const MARGIN = 40;
+const USABLE_W = A4_WIDTH - MARGIN * 2;
+const PAGE_CONTENT_H = A4_HEIGHT - MARGIN * 2 - 30; // reserve 30pt for footer
+
+// ─── Page Header / Footer ─────────────────────────────────────────────────────
+
+function drawPageHeader(doc: PdfDocument, locationName: string, page: number, total: number) {
+  const y = MARGIN - 20;
+  doc.save();
+  doc.rect(MARGIN, y, USABLE_W, 16).fill(PALETTE.brandBlue);
+  doc.font("Helvetica-Bold").fontSize(7).fillColor("#FFFFFF")
+    .text("RESQ  |  LOCATION DECISION CONTEXT REPORT", MARGIN + 6, y + 4, { width: USABLE_W / 2 });
+  doc.font("Helvetica").fontSize(7).fillColor("#94A3B8")
+    .text(`${locationName}`, MARGIN + USABLE_W / 2, y + 4, { width: USABLE_W / 2 - 40, align: "right" });
+  doc.font("Helvetica").fontSize(7).fillColor("#94A3B8")
+    .text(`Page ${page} of ${total}`, MARGIN + USABLE_W - 38, y + 4, { width: 38, align: "right" });
+  doc.restore();
+}
+
+function drawPageFooter(doc: PdfDocument, generatedAt: string) {
+  const y = A4_HEIGHT - MARGIN - 10;
+  doc.save();
+  doc.moveTo(MARGIN, y).lineTo(MARGIN + USABLE_W, y).lineWidth(0.5).strokeColor(PALETTE.border).stroke();
+  doc.font("Helvetica").fontSize(6.5).fillColor(PALETTE.faint)
+    .text(
+      `Generated: ${generatedAt}  |  Coordinate System: WGS84 / EPSG:4326  |  ResQ Decision Intelligence Platform  |  SIH Problem Statement 191`,
+      MARGIN,
+      y + 3,
+      { width: USABLE_W, align: "center" }
+    );
+  doc.restore();
+}
+
+function sectionHeading(doc: PdfDocument, text: string, x: number, y: number, w: number): number {
+  doc.save();
+  doc.rect(x, y, w, 20).fill(PALETTE.brandBlue);
+  doc.font("Helvetica-Bold").fontSize(9).fillColor("#FFFFFF").text(text, x + 8, y + 6, { width: w - 16 });
+  doc.restore();
+  return y + 24;
+}
+
+function subHeading(doc: PdfDocument, text: string, x: number, y: number, w: number): number {
+  doc.save();
+  doc.rect(x, y, w, 16).fill(PALETTE.surfaceMid);
+  doc.moveTo(x, y).lineTo(x, y + 16).lineWidth(3).strokeColor(PALETTE.brandAccent).stroke();
+  doc.font("Helvetica-Bold").fontSize(8).fillColor(PALETTE.ink).text(text, x + 8, y + 4, { width: w - 16 });
+  doc.restore();
+  return y + 20;
+}
+
+function provenancePill(doc: PdfDocument, label: string, type: string, x: number, y: number): void {
+  const colors = provenanceBadgeColors(type);
+  const textW = label.length * 4.5 + 8;
+  doc.roundedRect(x, y, textW, 11, 3).fill(colors.bg);
+  doc.font("Helvetica-Bold").fontSize(6.5).fillColor(colors.fg).text(label, x + 4, y + 2, { width: textW - 4 });
+}
+
+function statusPill(doc: PdfDocument, label: string, color: string, bg: string, x: number, y: number): void {
+  const textW = Math.max(label.length * 4.5 + 10, 40);
+  doc.roundedRect(x, y, textW, 12, 3).fill(bg);
+  doc.font("Helvetica-Bold").fontSize(6.5).fillColor(color).text(label, x + 5, y + 3, { width: textW - 6 });
+}
+
+// ─── Two-Column Key/Value Table ───────────────────────────────────────────────
+
+interface KVRow {
+  key: string;
+  value: string;
+  valueColor?: string;
+  provenanceType?: string;
+  provenanceLabel?: string;
+}
+
+function drawKVTable(
+  doc: PdfDocument,
+  rows: KVRow[],
+  x: number,
+  y: number,
+  w: number,
+  rowH = 18
+): number {
+  rows.forEach((row, i) => {
+    const bg = i % 2 === 0 ? PALETTE.surfaceLight : PALETTE.pageWhite;
+    doc.rect(x, y, w, rowH).fill(bg);
+    doc.moveTo(x, y + rowH).lineTo(x + w, y + rowH).lineWidth(0.4).strokeColor(PALETTE.borderLight).stroke();
+    doc.font("Helvetica-Bold").fontSize(7.5).fillColor(PALETTE.muted).text(row.key, x + 8, y + (rowH - 9) / 2 + 1, { width: w * 0.38 - 4 });
+    doc.font("Helvetica").fontSize(7.5).fillColor(row.valueColor ?? PALETTE.body)
+      .text(row.value, x + w * 0.38, y + (rowH - 9) / 2 + 1, { width: w * 0.56 });
+    if (row.provenanceType && row.provenanceLabel) {
+      provenancePill(doc, row.provenanceLabel, row.provenanceType, x + w - 70, y + (rowH - 11) / 2);
+    }
+    y += rowH;
+  });
+  // Border around whole table
+  doc.rect(x, y - rowH * rows.length, w, rowH * rows.length).lineWidth(0.6).strokeColor(PALETTE.border).stroke();
+  return y;
+}
+
+// ─── Full Evidence Register Table ─────────────────────────────────────────────
+
+interface EvidenceRow {
+  id: string;
+  hazard: string;
+  type: string;
+  org: string;
+  temporal: string;
+  resolution: string;
+  value: string;
+  provenance: string;
+  confidence: string;
+}
+
+function drawEvidenceTable(
+  doc: PdfDocument,
+  rows: EvidenceRow[],
+  x: number,
+  y: number,
+  w: number
+): number {
+  // Header
+  const cols = [32, 58, 72, 84, 56, 70, 52, 58, 50];
+  const headers = ["ID", "HAZARD", "TYPE", "ORGANIZATION", "TEMPORAL", "RESOLUTION", "VALUE", "PROVENANCE", "CONFIDENCE"];
+  doc.rect(x, y, w, 18).fill(PALETTE.brandBlue);
+  let cx = x + 4;
+  headers.forEach((h, i) => {
+    doc.font("Helvetica-Bold").fontSize(6).fillColor("#FFFFFF").text(h, cx, y + 5, { width: cols[i] - 4 });
+    cx += cols[i];
+  });
+  y += 18;
+
+  rows.forEach((row, ri) => {
+    const bg = ri % 2 === 0 ? PALETTE.surfaceLight : PALETTE.pageWhite;
+    const rowH = 16;
+    doc.rect(x, y, w, rowH).fill(bg);
+    doc.moveTo(x, y + rowH).lineTo(x + w, y + rowH).lineWidth(0.3).strokeColor(PALETTE.borderLight).stroke();
+    const vals = [row.id, row.hazard, row.type, row.org, row.temporal, row.resolution, row.value, row.provenance, row.confidence];
+    cx = x + 4;
+    vals.forEach((v, i) => {
+      const col = i === 8 ? provenanceBadgeColors(v).fg : PALETTE.body;
+      doc.font("Helvetica").fontSize(6).fillColor(col).text(v, cx, y + 4, { width: cols[i] - 4 });
+      cx += cols[i];
+    });
+    y += rowH;
+  });
+  doc.rect(x, y - 16 * rows.length - 18, w, 16 * rows.length + 18).lineWidth(0.6).strokeColor(PALETTE.border).stroke();
+  return y;
+}
+
+// ─── Map Renderer ─────────────────────────────────────────────────────────────
+
+function renderDecisionMap(
   doc: PdfDocument,
   context: IndiaLocationContext,
   x: number,
   y: number,
   width: number,
   height: number
-) {
+): void {
+  const decision = context.decision;
   const boundaryRings = extractBoundaryRings(context.location.boundary);
   const fallbackBounds = context.location.boundingBox;
+
+  // Determine geographic extent
   const sourcePoints = boundaryRings.flat();
-  const points: Point[] = sourcePoints.length
+  let extentPoints: Point[] = sourcePoints.length
     ? sourcePoints
     : fallbackBounds
     ? [
@@ -78,149 +323,1200 @@ function renderExtentMap(
         [context.location.longitude - 0.15, context.location.latitude + 0.1],
       ];
 
-  const minLon = Math.min(...points.map(p => p[0]));
-  const maxLon = Math.max(...points.map(p => p[0]));
-  const minLat = Math.min(...points.map(p => p[1]));
-  const maxLat = Math.max(...points.map(p => p[1]));
+  // If we have a route, extend extent to include all route points
+  const routeCoords = decision?.routingAssessment?.routeCoordinates;
+  if (routeCoords && routeCoords.length > 1) {
+    extentPoints = extentPoints.concat(routeCoords as Point[]);
+  }
+  // Include destination
+  const bestCand = decision?.relocationAssessment?.bestCandidate;
+  if (bestCand && typeof bestCand.longitude === "number" && typeof bestCand.latitude === "number") {
+    extentPoints.push([bestCand.longitude, bestCand.latitude]);
+  }
 
-  const lonPad = Math.max((maxLon - minLon) * 0.15, 0.025);
-  const latPad = Math.max((maxLat - minLat) * 0.15, 0.025);
+  const minLon = Math.min(...extentPoints.map((p) => p[0]));
+  const maxLon = Math.max(...extentPoints.map((p) => p[0]));
+  const minLat = Math.min(...extentPoints.map((p) => p[1]));
+  const maxLat = Math.max(...extentPoints.map((p) => p[1]));
+
+  const lonSpan = Math.max(maxLon - minLon, 0.02);
+  const latSpan = Math.max(maxLat - minLat, 0.02);
+  const lonPad = lonSpan * 0.15;
+  const latPad = latSpan * 0.15;
   const west = minLon - lonPad;
   const east = maxLon + lonPad;
   const south = minLat - latPad;
   const north = maxLat + latPad;
 
-  const project = (point: Point): Point => [
-    x + ((point[0] - west) / Math.max(east - west, 0.0001)) * width,
-    y + height - ((point[1] - south) / Math.max(north - south, 0.0001)) * height,
+  const project = (pt: Point): Point => [
+    x + ((pt[0] - west) / Math.max(east - west, 0.0001)) * width,
+    y + height - ((pt[1] - south) / Math.max(north - south, 0.0001)) * height,
   ];
 
-  const decision = context.decision;
   const riskColorHex = riskColour(
     decision?.responsePriority.priorityLevel ??
     context.hazardProfile?.redZone.status ??
     context.screening.riskLevel
   );
 
-  // Map Canvas Background
+  // Map canvas
   doc.save();
-  doc.roundedRect(x, y, width, height, 8).fill("#0B1E2D");
+  doc.roundedRect(x, y, width, height, 6).fill(PALETTE.mapBg);
 
-  // Subtle Cartographic Grid Lines (Parallels & Meridians)
+  // Graticule grid
   const gridSteps = 4;
   for (let i = 1; i < gridSteps; i++) {
     const gx = x + (width / gridSteps) * i;
     const gy = y + (height / gridSteps) * i;
-    const lonVal = west + ((east - west) / gridSteps) * i;
-    const latVal = north - ((north - south) / gridSteps) * i;
-
-    doc.moveTo(gx, y + 4).lineTo(gx, y + height - 4).strokeColor("#1A384F").lineWidth(0.5).dash(3, { space: 3 }).stroke().undash();
-    doc.moveTo(x + 4, gy).lineTo(x + width - 4, gy).strokeColor("#1A384F").lineWidth(0.5).dash(3, { space: 3 }).stroke().undash();
-
-    // Coordinate Tick Labels
-    doc.font("Helvetica").fontSize(6.5).fillColor("#648296").text(`${lonVal.toFixed(2)}°E`, gx - 16, y + height - 12, { width: 32, align: "center" });
-    doc.font("Helvetica").fontSize(6.5).fillColor("#648296").text(`${latVal.toFixed(2)}°N`, x + 4, gy - 4, { width: 32 });
+    const lonV = west + ((east - west) / gridSteps) * i;
+    const latV = north - ((north - south) / gridSteps) * i;
+    doc.moveTo(gx, y + 2).lineTo(gx, y + height - 2).strokeColor(PALETTE.mapGrid).lineWidth(0.4).dash(3, { space: 4 }).stroke().undash();
+    doc.moveTo(x + 2, gy).lineTo(x + width - 2, gy).strokeColor(PALETTE.mapGrid).lineWidth(0.4).dash(3, { space: 4 }).stroke().undash();
+    // Graticule labels
+    doc.font("Helvetica").fontSize(5.5).fillColor("#4A6B80")
+      .text(`${lonV.toFixed(2)}\u00b0E`, gx - 14, y + height - 10, { width: 28, align: "center" });
+    doc.font("Helvetica").fontSize(5.5).fillColor("#4A6B80")
+      .text(`${latV.toFixed(2)}\u00b0N`, x + 2, gy - 4, { width: 30 });
   }
 
-  // Draw Administrative Extent Polygon
-  if (boundaryRings.length) {
-    boundaryRings.forEach(ring => {
-      const projected = ring.map(project);
-      if (projected.length < 3) return;
-      doc.moveTo(projected[0][0], projected[0][1]);
-      projected.slice(1).forEach(pt => doc.lineTo(pt[0], pt[1]));
-      doc.closePath()
-        .fillOpacity(0.38)
-        .fill(riskColorHex)
-        .fillOpacity(1)
-        .lineWidth(1.8)
-        .strokeColor(riskColorHex)
-        .stroke();
+  // Administrative boundary polygon
+  if (boundaryRings.length > 0) {
+    boundaryRings.forEach((ring) => {
+      const proj = ring.map(project);
+      if (proj.length < 3) return;
+      doc.moveTo(proj[0][0], proj[0][1]);
+      proj.slice(1).forEach((pt) => doc.lineTo(pt[0], pt[1]));
+      doc.closePath().fillOpacity(0.12).fill(PALETTE.mapBoundary).fillOpacity(1).lineWidth(1.4).strokeColor(PALETTE.mapBoundary).stroke();
     });
   } else {
-    const projectedFallback = points.map(project);
-    doc.moveTo(projectedFallback[0][0], projectedFallback[0][1]);
-    projectedFallback.slice(1).forEach(pt => doc.lineTo(pt[0], pt[1]));
-    doc.closePath()
-      .fillOpacity(0.2)
-      .fill(riskColorHex)
-      .fillOpacity(1)
-      .lineWidth(1.4)
-      .dash(4, { space: 3 })
-      .strokeColor(riskColorHex)
-      .stroke()
-      .undash();
+    // Fallback extent box (dashed, NOT labelled as hazard)
+    const corners = extentPoints.slice(0, 4).map(project);
+    if (corners.length >= 4) {
+      doc.moveTo(corners[0][0], corners[0][1]);
+      corners.slice(1).forEach((pt) => doc.lineTo(pt[0], pt[1]));
+      doc.closePath().lineWidth(1).strokeColor(PALETTE.mapBoundary).dash(4, { space: 3 }).stroke().undash();
+    }
   }
 
-  // Draw Evacuation Road Route if available
-  if (decision?.routingAssessment?.routeCoordinates && decision.routingAssessment.routeCoordinates.length > 1) {
-    const routePts = decision.routingAssessment.routeCoordinates.map(project);
+  // OSRM Road Route — rendered only if it is a real road route
+  if (routeCoords && routeCoords.length > 1 && decision?.routingAssessment?.isRoadRoute) {
+    const routePts = (routeCoords as Point[]).map(project);
+    // Casing
     doc.moveTo(routePts[0][0], routePts[0][1]);
-    routePts.slice(1).forEach(pt => doc.lineTo(pt[0], pt[1]));
-    doc.lineWidth(3.2).strokeColor("#38BDF8").stroke();
+    routePts.slice(1).forEach((pt) => doc.lineTo(pt[0], pt[1]));
+    doc.lineWidth(4).strokeColor("#0369A1").stroke();
+    // Core
+    doc.moveTo(routePts[0][0], routePts[0][1]);
+    routePts.slice(1).forEach((pt) => doc.lineTo(pt[0], pt[1]));
+    doc.lineWidth(2.2).strokeColor(PALETTE.routeBlue).stroke();
   }
 
-  // Centroid / Selected Location Marker
-  const centerProj = project([context.location.longitude, context.location.latitude]);
-  doc.circle(centerProj[0], centerProj[1], 8).fillOpacity(0.35).fill(riskColorHex);
-  doc.circle(centerProj[0], centerProj[1], 4.5).fillOpacity(1).fill("#DC2626").lineWidth(1.8).strokeColor("#FFFFFF").stroke();
+  // Origin marker — vulnerable/selected location
+  const originPt = project([context.location.longitude, context.location.latitude]);
+  // Halo
+  doc.circle(originPt[0], originPt[1], 10).fillOpacity(0.25).fill(riskColorHex).fillOpacity(1);
+  // Inner dot
+  doc.circle(originPt[0], originPt[1], 5).fill(riskColorHex).lineWidth(1.5).strokeColor("#FFFFFF").stroke();
+  // Label callout
+  const locLabel = context.location.name.length > 22 ? context.location.name.slice(0, 22) + "\u2026" : context.location.name;
+  doc.roundedRect(originPt[0] + 8, originPt[1] - 12, 90, 22, 3).fillOpacity(0.92).fill(PALETTE.brandBlue).fillOpacity(1);
+  doc.font("Helvetica-Bold").fontSize(7).fillColor("#FFFFFF")
+    .text(locLabel, originPt[0] + 11, originPt[1] - 9, { width: 84 });
+  doc.font("Helvetica").fontSize(5.5).fillColor("#94A3B8")
+    .text(`${context.location.latitude.toFixed(4)}\u00b0N, ${context.location.longitude.toFixed(4)}\u00b0E`, originPt[0] + 11, originPt[1] + 1, { width: 84 });
 
-  // Destination Marker if available
-  if (decision?.relocationAssessment?.bestCandidate?.coordinates) {
-    const destProj = project(decision.relocationAssessment.bestCandidate.coordinates);
-    doc.circle(destProj[0], destProj[1], 7).fillOpacity(0.35).fill("#16A34A");
-    doc.circle(destProj[0], destProj[1], 4).fillOpacity(1).fill("#16A34A").lineWidth(1.5).strokeColor("#FFFFFF").stroke();
-    doc.font("Helvetica-Bold").fontSize(7).fillColor("#86EFAC").text(`🟢 ${decision.relocationAssessment.bestCandidate.name}`, destProj[0] + 7, destProj[1] - 4, { width: 120 });
+  // Destination marker — verified safe destination
+  const dest = decision?.relocationAssessment?.bestCandidate;
+  const hasDestCoord = dest && typeof dest.latitude === "number" && typeof dest.longitude === "number";
+  if (hasDestCoord) {
+    const destPt = project([dest.longitude, dest.latitude]);
+    doc.circle(destPt[0], destPt[1], 8).fillOpacity(0.25).fill(PALETTE.safe).fillOpacity(1);
+    doc.circle(destPt[0], destPt[1], 4).fill(PALETTE.safe).lineWidth(1.5).strokeColor("#FFFFFF").stroke();
+    const destLabel = (dest.name || "Safe Destination").slice(0, 24);
+    doc.roundedRect(destPt[0] + 8, destPt[1] - 10, 90, 18, 3).fillOpacity(0.92).fill("#052D18").fillOpacity(1);
+    doc.font("Helvetica-Bold").fontSize(7).fillColor("#86EFAC")
+      .text(`DEST: ${destLabel}`, destPt[0] + 11, destPt[1] - 7, { width: 84 });
   }
 
-  // Target Location Callout Badge
-  doc.roundedRect(x + 10, y + 10, Math.min(width - 70, 210), 32, 5).fillOpacity(0.88).fill("#071520").fillOpacity(1);
-  doc.font("Helvetica-Bold").fontSize(8.5).fillColor("#FFFFFF").text(`📍 ${context.location.name}`, x + 16, y + 14, { width: 195 });
-  doc.font("Helvetica").fontSize(7).fillColor("#94A3B8").text(`${context.location.latitude.toFixed(4)}°N, ${context.location.longitude.toFixed(4)}°E · ${context.location.category}`, x + 16, y + 26, { width: 195 });
-
-  // Compass Rose
-  const compassX = x + width - 26;
-  const compassY = y + 22;
-  doc.circle(compassX, compassY, 11).fillOpacity(0.85).fill("#071520").fillOpacity(1).lineWidth(0.8).strokeColor("#334155").stroke();
-  doc.font("Helvetica-Bold").fontSize(8).fillColor("#38BDF8").text("N", compassX - 3.2, compassY - 10);
-  doc.moveTo(compassX, compassY - 8).lineTo(compassX - 3, compassY + 5).lineTo(compassX + 3, compassY + 5).closePath().fill("#38BDF8");
-
-  // Scale Bar (approx km)
-  const approxKmPerDeg = 111 * Math.cos((context.location.latitude * Math.PI) / 180);
-  const totalLonSpanKm = (east - west) * approxKmPerDeg;
-  const scaleBarKm = totalLonSpanKm > 50 ? 20 : totalLonSpanKm > 20 ? 10 : 5;
-  const scaleBarPx = (scaleBarKm / Math.max(totalLonSpanKm, 1)) * width;
-
-  if (scaleBarPx > 15 && scaleBarPx < width - 40) {
-    const sbX = x + width - scaleBarPx - 14;
-    const sbY = y + height - 16;
-    doc.roundedRect(sbX - 6, sbY - 4, scaleBarPx + 12, 14, 3).fillOpacity(0.85).fill("#071520").fillOpacity(1);
-    doc.rect(sbX, sbY + 4, scaleBarPx / 2, 2.5).fill("#FFFFFF");
-    doc.rect(sbX + scaleBarPx / 2, sbY + 4, scaleBarPx / 2, 2.5).fill("#38BDF8");
-    doc.font("Helvetica-Bold").fontSize(6.5).fillColor("#FFFFFF").text(`0`, sbX - 2, sbY - 3);
-    doc.font("Helvetica-Bold").fontSize(6.5).fillColor("#FFFFFF").text(`${scaleBarKm} km`, sbX + scaleBarPx - 16, sbY - 3, { width: 25, align: "right" });
+  // ── Legend Box (Bottom-Left) ──────────────────────────────────────────
+  const legendItems: Array<{ symbol: "circle" | "line"; color: string; label: string }> = [];
+  legendItems.push({ symbol: "circle", color: riskColorHex, label: "Selected / Vulnerable Location" });
+  if (hasDestCoord) legendItems.push({ symbol: "circle", color: PALETTE.safe, label: "Verified Safe Destination" });
+  if (boundaryRings.length > 0) legendItems.push({ symbol: "line", color: PALETTE.mapBoundary, label: "Administrative Boundary" });
+  if (routeCoords && routeCoords.length > 1 && decision?.routingAssessment?.isRoadRoute) {
+    legendItems.push({ symbol: "line", color: PALETTE.routeBlue, label: "Verified OSRM Road Route" });
   }
+
+  const legH = 14 + legendItems.length * 13;
+  const legW = 155;
+  const legX = x + 8;
+  const legY = y + height - legH - 8;
+  doc.roundedRect(legX, legY, legW, legH, 4).fillOpacity(0.92).fill(PALETTE.brandBlue).fillOpacity(1).lineWidth(0.5).strokeColor("#334155").stroke();
+  doc.font("Helvetica-Bold").fontSize(6).fillColor("#94A3B8").text("LEGEND", legX + 6, legY + 5);
+  legendItems.forEach((item, idx) => {
+    const iy = legY + 16 + idx * 13;
+    if (item.symbol === "circle") {
+      doc.circle(legX + 10, iy + 4, 3.5).fill(item.color);
+    } else {
+      doc.moveTo(legX + 6, iy + 4).lineTo(legX + 15, iy + 4).lineWidth(2).strokeColor(item.color).stroke();
+    }
+    doc.font("Helvetica").fontSize(6.5).fillColor("#E2E8F0").text(item.label, legX + 20, iy + 1, { width: legW - 26 });
+  });
+
+  // ── Compass Rose (Top-Right) ───────────────────────────────────────────
+  const cX = x + width - 22;
+  const cY = y + 22;
+  doc.circle(cX, cY, 12).fillOpacity(0.88).fill(PALETTE.brandBlue).fillOpacity(1).lineWidth(0.8).strokeColor("#334155").stroke();
+  doc.font("Helvetica-Bold").fontSize(9).fillColor(PALETTE.routeBlue).text("N", cX - 3.5, cY - 12);
+  doc.moveTo(cX, cY - 9).lineTo(cX - 3.5, cY + 6).lineTo(cX + 3.5, cY + 6).closePath().fill(PALETTE.routeBlue);
+
+  // ── Scale Bar (Bottom-Right) ──────────────────────────────────────────
+  const kmPerDeg = 111 * Math.cos((context.location.latitude * Math.PI) / 180);
+  const lonSpanKm = (east - west) * kmPerDeg;
+  const scaleKm = lonSpanKm > 200 ? 50 : lonSpanKm > 80 ? 20 : lonSpanKm > 30 ? 10 : 5;
+  const scaleBarPx = (scaleKm / Math.max(lonSpanKm, 1)) * width;
+
+  if (scaleBarPx > 20 && scaleBarPx < width - 60) {
+    const sbX = x + width - scaleBarPx - 20;
+    const sbY = y + height - 18;
+    doc.roundedRect(sbX - 6, sbY - 5, scaleBarPx + 14, 16, 3).fillOpacity(0.88).fill(PALETTE.brandBlue).fillOpacity(1);
+    doc.rect(sbX, sbY + 3, scaleBarPx / 2, 3).fill("#FFFFFF");
+    doc.rect(sbX + scaleBarPx / 2, sbY + 3, scaleBarPx / 2, 3).fill(PALETTE.routeBlue);
+    doc.font("Helvetica-Bold").fontSize(6).fillColor("#FFFFFF").text("0", sbX - 3, sbY - 2);
+    doc.font("Helvetica-Bold").fontSize(6).fillColor("#FFFFFF")
+      .text(`${scaleKm} km`, sbX + scaleBarPx - 14, sbY - 2, { width: 22, align: "right" });
+  }
+
+  // ── Map Source Label ──────────────────────────────────────────────────
+  const routeStatus = decision?.routingAssessment?.isRoadRoute
+    ? "Route: OSRM/OpenStreetMap"
+    : (routeCoords && routeCoords.length > 1 ? "Route: Geodesic proxy" : "Route: Not available");
+  const boundarySource = context.location.boundary ? "Boundary: geoBoundaries/OSM" : "Boundary: Bounding box";
+  doc.font("Helvetica").fontSize(5.5).fillColor("#4A6B80")
+    .text(`${boundarySource}  |  ${routeStatus}  |  WGS84 / EPSG:4326`, x + 6, y + height - 7, { width: width - 200 });
 
   doc.restore();
 
-  // Map Border & Footer Caption
-  doc.roundedRect(x, y, width, height, 8).lineWidth(1).strokeColor("#2A475E").stroke();
+  // Outer border
+  doc.roundedRect(x, y, width, height, 6).lineWidth(1).strokeColor("#2A475E").stroke();
 }
 
-// ─── Main PDF Document Builder ─────────────────────────────────────────────────
+// ─── Page 1: Cover + Location Identity + Executive Summary ───────────────────
+
+function buildPage1(doc: PdfDocument, context: IndiaLocationContext, generatedAt: string): void {
+  const { location, screening, decision } = context;
+
+  drawPageHeader(doc, location.name, 1, 7);
+  drawPageFooter(doc, generatedAt);
+
+  let y = MARGIN + 6;
+
+  // ── Document Title Block ──
+  doc.save();
+  doc.rect(MARGIN, y, USABLE_W, 58).fill(PALETTE.brandBlue);
+  doc.font("Helvetica-Bold").fontSize(18).fillColor("#FFFFFF")
+    .text("RESQ", MARGIN + 14, y + 10);
+  doc.font("Helvetica").fontSize(9).fillColor("#94A3B8")
+    .text("Location Decision Context Report", MARGIN + 14, y + 30);
+  doc.font("Helvetica-Bold").fontSize(8).fillColor("#94A3B8")
+    .text("SIH Problem Statement 191  |  Disaster Intelligence & Decision Support Platform", MARGIN + 14, y + 44);
+  // Priority badge top-right
+  const pLevel = decision?.responsePriority.priorityLevel ?? screening.riskLevel.toUpperCase();
+  const pColor = riskColour(pLevel);
+  doc.roundedRect(MARGIN + USABLE_W - 110, y + 12, 100, 34, 5).fill(pColor);
+  doc.font("Helvetica-Bold").fontSize(8).fillColor("#FFFFFF")
+    .text("RESPONSE PRIORITY", MARGIN + USABLE_W - 106, y + 16, { width: 92, align: "center" });
+  doc.font("Helvetica-Bold").fontSize(16).fillColor("#FFFFFF")
+    .text(pLevel, MARGIN + USABLE_W - 106, y + 26, { width: 92, align: "center" });
+  doc.restore();
+
+  y += 66;
+
+  // ── PART 1: Location Identity ──
+  y = sectionHeading(doc, "1. LOCATION IDENTITY", MARGIN, y, USABLE_W);
+
+  // Build admin hierarchy
+  const addr = location.address ?? {};
+  const adminParts: string[] = ["India"];
+  if (addr.state) adminParts.unshift(addr.state);
+  if (addr.district) adminParts.unshift(addr.district);
+  if (addr.city) adminParts.unshift(addr.city);
+  if (addr.locality) adminParts.unshift(addr.locality);
+  const adminHierarchy = adminParts.join(" > ");
+
+  // Precision level
+  const precisionLabel =
+    location.category === "District"
+      ? "District-level screening context — sub-district habitation not yet resolved"
+      : location.category === "State"
+      ? "State-level overview — district detail not resolved"
+      : `${location.category}-level context`;
+
+  const locRows: KVRow[] = [
+    { key: "Location Name", value: location.displayName || location.name, valueColor: PALETTE.brandAccent },
+    { key: "Administrative Hierarchy", value: adminHierarchy },
+    { key: "Latitude", value: formatCoord(location.latitude, "lat") },
+    { key: "Longitude", value: formatCoord(location.longitude, "lon") },
+    { key: "Coordinate System", value: "WGS84 / EPSG:4326" },
+    { key: "Geographic Level", value: location.category },
+    { key: "Spatial Resolution", value: precisionLabel },
+    { key: "Location Source", value: location.source },
+    {
+      key: "Location Confidence",
+      value: location.boundary ? "HIGH — administrative boundary geometry available" : "MEDIUM — centroid from geocoder, no polygon",
+      provenanceType: location.boundary ? "OFFICIAL" : "MODELLED",
+      provenanceLabel: location.boundary ? "OFFICIAL" : "GEOCODED",
+    },
+    { key: "Report Generated", value: generatedAt },
+  ];
+
+  y = drawKVTable(doc, locRows, MARGIN, y, USABLE_W);
+  y += 10;
+
+  // ── Decision Status Banner ──
+  const decisionTimestamp = decision?.decisionTimestamp
+    ? new Date(decision.decisionTimestamp).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) + " IST"
+    : "Screening-level context (no full decision computed)";
+
+  const bannerColor = decision ? PALETTE.brandAccent : PALETTE.muted;
+  doc.save();
+  doc.roundedRect(MARGIN, y, USABLE_W, 28, 5).fill(decision ? "#DBEAFE" : PALETTE.surfaceMid);
+  doc.moveTo(MARGIN, y).lineTo(MARGIN, y + 28).lineWidth(4).strokeColor(bannerColor).stroke();
+  doc.font("Helvetica-Bold").fontSize(8).fillColor(bannerColor)
+    .text(decision ? "FULL DECISION COMPUTED" : "SCREENING CONTEXT ONLY", MARGIN + 10, y + 6, { width: 200 });
+  doc.font("Helvetica").fontSize(7.5).fillColor(PALETTE.body)
+    .text(`Decision Timestamp: ${decisionTimestamp}`, MARGIN + 10, y + 17, { width: USABLE_W - 20 });
+  doc.restore();
+  y += 36;
+
+  // ── Executive Summary ──
+  y = subHeading(doc, "Executive Summary", MARGIN, y, USABLE_W);
+
+  const hazardName = decision?.hazardAssessment.primaryHazard ?? context.hazardProfile?.redZone.primaryHazard ?? "Multi-hazard screening";
+  const destName = decision?.relocationAssessment.bestCandidate?.name ?? "Not determined";
+  const routeKm = decision?.routingAssessment.distanceKm !== null && decision?.routingAssessment.distanceKm !== undefined
+    ? `${decision.routingAssessment.distanceKm.toFixed(1)} km (${decision.routingAssessment.isRoadRoute ? "OSRM road route" : "geodesic proxy"})`
+    : "UNAVAILABLE";
+  const popStr = location.population !== null && location.population !== undefined
+    ? `${formatPopulation(location.population)} people (${location.populationSource})`
+    : "UNAVAILABLE";
+
+  const summaryText = decision
+    ? `${location.displayName ?? location.name} has been assessed under the ResQ decision framework. ` +
+      `Primary hazard identified: ${hazardName}. ` +
+      `Response priority: ${decision.responsePriority.priorityLevel} (score ${decision.responsePriority.priorityScore}/100). ` +
+      `Population context: ${popStr}. ` +
+      `Recommended destination: ${destName}. ` +
+      `Road route: ${routeKm}. ` +
+      (decision.confidence ? `Decision confidence: ${decision.confidence.level}.` : "")
+    : `${location.displayName ?? location.name} has been screened under the ResQ multi-hazard framework. ` +
+      `Screening risk level: ${screening.riskLevel}. ` +
+      `${screening.hazardContext} ${screening.populationContext}`;
+
+  const summH = doc.font("Helvetica").fontSize(8.5).heightOfString(summaryText, { width: USABLE_W - 24, lineGap: 2.5 });
+  doc.roundedRect(MARGIN, y, USABLE_W, summH + 18, 5).fill(PALETTE.surfaceLight).lineWidth(0.7).strokeColor(PALETTE.border).stroke();
+  doc.font("Helvetica").fontSize(8.5).fillColor(PALETTE.body)
+    .text(summaryText, MARGIN + 12, y + 9, { width: USABLE_W - 24, lineGap: 2.5 });
+  y += summH + 26;
+
+  // ── Quick-Reference Summary Table ──
+  y = subHeading(doc, "Quick-Reference Decision Summary", MARGIN, y, USABLE_W);
+
+  const summaryRows: KVRow[] = [
+    {
+      key: "Primary Hazard",
+      value: hazardName,
+      provenanceType: decision?.hazardAssessment.provenance?.sourceType ?? "MODELLED",
+      provenanceLabel: decision?.hazardAssessment.provenance?.sourceType ?? "MODELLED",
+    },
+    {
+      key: "Risk Tier",
+      value: decision?.hazardAssessment.tier ?? screening.riskLevel,
+      valueColor: riskColour(decision?.hazardAssessment.tier ?? screening.riskLevel),
+    },
+    {
+      key: "Response Priority",
+      value: decision
+        ? `${decision.responsePriority.priorityLevel} (${decision.responsePriority.priorityScore}/100)`
+        : `${screening.priority} (screening level)`,
+      valueColor: riskColour(decision?.responsePriority.priorityLevel ?? screening.priority),
+    },
+    {
+      key: "Population",
+      value: popStr,
+      provenanceType: location.populationSource?.includes("Census") ? "OFFICIAL" : "MODELLED",
+      provenanceLabel: location.populationSource?.includes("Census") ? "OFFICIAL" : "MODELLED",
+    },
+    {
+      key: "Safe Destination",
+      value: destName,
+      provenanceType: decision?.relocationAssessment.bestCandidate ? "DERIVED" : "UNAVAILABLE",
+      provenanceLabel: decision?.relocationAssessment.bestCandidate ? "DERIVED" : "UNAVAILABLE",
+    },
+    {
+      key: "Road Route",
+      value: routeKm,
+      provenanceType: decision?.routingAssessment.isRoadRoute ? "DERIVED" : "MODELLED",
+      provenanceLabel: decision?.routingAssessment.isRoadRoute ? "OSRM" : "UNAVAILABLE",
+    },
+    {
+      key: "Decision Confidence",
+      value: decision?.confidence.level ?? "UNAVAILABLE",
+      valueColor: decision?.confidence.level === "HIGH" ? PALETTE.safe : decision?.confidence.level === "LOW" ? PALETTE.high : PALETTE.moderate,
+    },
+  ];
+
+  drawKVTable(doc, summaryRows, MARGIN, y, USABLE_W);
+}
+
+// ─── Page 2: Geographic Decision Map ─────────────────────────────────────────
+
+function buildPage2(doc: PdfDocument, context: IndiaLocationContext, generatedAt: string): void {
+  drawPageHeader(doc, context.location.name, 2, 7);
+  drawPageFooter(doc, generatedAt);
+
+  let y = MARGIN + 6;
+
+  y = sectionHeading(doc, "2. GEOGRAPHIC DECISION MAP", MARGIN, y, USABLE_W);
+
+  // Map subtitle — location full name
+  doc.font("Helvetica-Bold").fontSize(10).fillColor(PALETTE.ink)
+    .text(context.location.displayName ?? context.location.name, MARGIN, y, { width: USABLE_W });
+  doc.font("Helvetica").fontSize(7.5).fillColor(PALETTE.faint)
+    .text(`${formatCoord(context.location.latitude, "lat")}  ${formatCoord(context.location.longitude, "lon")}  |  WGS84 / EPSG:4326  |  ${context.location.category}`, MARGIN, y + 13);
+  y += 26;
+
+  // Main map
+  const mapH = 330;
+  renderDecisionMap(doc, context, MARGIN, y, USABLE_W, mapH);
+  y += mapH + 12;
+
+  // Map Provenance Table
+  y = subHeading(doc, "Map Layer Provenance", MARGIN, y, USABLE_W);
+
+  const mapProvenanceRows: KVRow[] = [
+    {
+      key: "Administrative Boundary",
+      value: context.location.boundary
+        ? "geoBoundaries ADM2 / Election Commission of India (geoBoundaries.org)"
+        : "Bounding box from Nominatim geocoder (polygon unavailable)",
+      provenanceType: context.location.boundary ? "OFFICIAL" : "DERIVED",
+      provenanceLabel: context.location.boundary ? "OFFICIAL" : "DERIVED",
+    },
+    {
+      key: "Location Centroid",
+      value: `${context.location.source}`,
+      provenanceType: "DERIVED",
+      provenanceLabel: "GEOCODED",
+    },
+    {
+      key: "Road Route",
+      value: context.decision?.routingAssessment.isRoadRoute
+        ? `Project OSRM / OpenStreetMap road graph — ${context.decision.routingAssessment.distanceKm?.toFixed(1)} km`
+        : "OSRM road route unavailable for this origin/destination pair",
+      provenanceType: context.decision?.routingAssessment.isRoadRoute ? "DERIVED" : "UNAVAILABLE",
+      provenanceLabel: context.decision?.routingAssessment.isRoadRoute ? "OSRM" : "UNAVAILABLE",
+    },
+    {
+      key: "Destination",
+      value: context.decision?.relocationAssessment.bestCandidate
+        ? `${context.decision.relocationAssessment.bestCandidate.name} (OpenStreetMap facility point)`
+        : "No destination determined",
+      provenanceType: context.decision?.relocationAssessment.bestCandidate ? "OBSERVED" : "UNAVAILABLE",
+      provenanceLabel: context.decision?.relocationAssessment.bestCandidate ? "OSM" : "UNAVAILABLE",
+    },
+    {
+      key: "Coordinate System",
+      value: "WGS84 / EPSG:4326 throughout",
+      provenanceType: "OFFICIAL",
+      provenanceLabel: "STANDARD",
+    },
+    {
+      key: "Scale",
+      value: context.location.boundary
+        ? "District/habitation scale (depends on boundary extent)"
+        : "Approximately 1:250,000 equivalent",
+    },
+  ];
+
+  drawKVTable(doc, mapProvenanceRows, MARGIN, y, USABLE_W);
+}
+
+// ─── Page 3: Decision Context + Hazard Assessment ────────────────────────────
+
+function buildPage3(doc: PdfDocument, context: IndiaLocationContext, generatedAt: string): void {
+  drawPageHeader(doc, context.location.name, 3, 7);
+  drawPageFooter(doc, generatedAt);
+
+  let y = MARGIN + 6;
+  const { decision, screening, environment } = context;
+
+  y = sectionHeading(doc, "3. DECISION CONTEXT & HAZARD ASSESSMENT", MARGIN, y, USABLE_W);
+
+  // ── 3A: Separated Risk Components ──
+  y = subHeading(doc, "3A. Risk Component Breakdown (Separated)", MARGIN, y, USABLE_W);
+
+  // Four boxes in a row
+  const boxW = (USABLE_W - 9) / 4;
+  const boxH = 56;
+  const boxes = [
+    {
+      title: "GEOGRAPHIC HAZARD",
+      value: decision?.hazardAssessment.tier ?? (context.hazardProfile?.redZone.status ?? "UNKNOWN"),
+      sub: decision?.hazardAssessment.primaryDriverReason ?? screening.hazardContext.split(".")[0] ?? "See hazard details",
+      color: riskColour(decision?.hazardAssessment.tier ?? screening.riskLevel),
+    },
+    {
+      title: "ACTIVE STATUS",
+      value: environment?.imdWarning ? "OFFICIAL WARNING" : "NO ACTIVE WARNING",
+      sub: environment?.imdWarning ? `${environment.imdWarning.warningLevel}: ${environment.imdWarning.headline}` : "No official IMD warning retrieved",
+      color: environment?.imdWarning ? PALETTE.high : PALETTE.safe,
+    },
+    {
+      title: "EXPOSURE",
+      value: decision?.exposureAssessment.exposedPopulationEstimate !== null && decision?.exposureAssessment.exposedPopulationEstimate !== undefined
+        ? formatPopulation(decision.exposureAssessment.exposedPopulationEstimate) + " people"
+        : "UNKNOWN",
+      sub: decision?.exposureAssessment.exposureMethod ?? "Population not resolved at this scale",
+      color: PALETTE.moderate,
+    },
+    {
+      title: "RESPONSE PRIORITY",
+      value: decision?.responsePriority.priorityLevel ?? screening.priority.toUpperCase(),
+      sub: decision ? `Score: ${decision.responsePriority.priorityScore}/100` : "Screening-level assessment",
+      color: riskColour(decision?.responsePriority.priorityLevel ?? screening.priority),
+    },
+  ];
+
+  boxes.forEach((box, bi) => {
+    const bx = MARGIN + bi * (boxW + 3);
+    doc.roundedRect(bx, y, boxW, boxH, 5).fill(PALETTE.surfaceLight).lineWidth(0.8).strokeColor(PALETTE.border).stroke();
+    doc.moveTo(bx, y).lineTo(bx, y + boxH).lineWidth(3.5).strokeColor(box.color).stroke();
+    doc.font("Helvetica-Bold").fontSize(6.5).fillColor(PALETTE.faint).text(box.title, bx + 8, y + 7, { width: boxW - 16 });
+    doc.font("Helvetica-Bold").fontSize(11).fillColor(box.color).text(box.value, bx + 8, y + 18, { width: boxW - 16 });
+    doc.font("Helvetica").fontSize(6.5).fillColor(PALETTE.muted).text(box.sub, bx + 8, y + 35, { width: boxW - 16 });
+  });
+  y += boxH + 12;
+
+  // ── 3B: Primary Hazard ──
+  y = subHeading(doc, "3B. Primary Hazard", MARGIN, y, USABLE_W);
+
+  if (decision) {
+    const hz = decision.hazardAssessment;
+    const primaryRows: KVRow[] = [
+      { key: "Primary Hazard", value: hz.primaryHazard, valueColor: PALETTE.high },
+      { key: "Evidence Hierarchy Level", value: hz.contributions[0]?.hierarchyLevel ?? "SUSCEPTIBILITY_SCREENING", provenanceType: hz.provenance?.sourceType, provenanceLabel: hz.provenance?.sourceType },
+      { key: "Primary Driver", value: hz.primaryDriverReason },
+      { key: "Composite Hazard Score", value: `${hz.compositeHazardScore.toFixed(1)} / 100` },
+      { key: "Triggers Confirmed", value: hz.triggers.length > 0 ? hz.triggers.join("; ") : "No physical triggers confirmed" },
+      { key: "Supporting Evidence", value: hz.supportingEvidence.length > 0 ? hz.supportingEvidence.join("; ") : "None confirmed" },
+      { key: "Provenance", value: hz.provenance?.sourceName ?? "Not specified" },
+      { key: "Spatial Resolution", value: hz.provenance?.spatialResolution ?? "Not specified" },
+      { key: "Confidence", value: hz.provenance?.confidence ?? "UNKNOWN" },
+      { key: "Known Limitations", value: hz.limitations.join("; ") || "None stated" },
+    ];
+    y = drawKVTable(doc, primaryRows, MARGIN, y, USABLE_W);
+  } else {
+    const fallbackH = 38;
+    doc.roundedRect(MARGIN, y, USABLE_W, fallbackH, 5).fill(PALETTE.surfaceMid).lineWidth(0.7).strokeColor(PALETTE.border).stroke();
+    doc.font("Helvetica").fontSize(8).fillColor(PALETTE.muted)
+      .text(`Hazard context: ${screening.hazardContext}`, MARGIN + 12, y + 10, { width: USABLE_W - 24 });
+    doc.font("Helvetica").fontSize(7).fillColor(PALETTE.faint)
+      .text("Full hazard assessment requires decision engine to be executed for this location.", MARGIN + 12, y + 24, { width: USABLE_W - 24 });
+    y += fallbackH + 8;
+  }
+  y += 8;
+
+  // ── 3C: Secondary Hazards ──
+  y = subHeading(doc, "3C. Secondary Hazards", MARGIN, y, USABLE_W);
+
+  const secHazards = decision?.hazardAssessment.secondaryHazards ?? [];
+  if (secHazards.length > 0) {
+    const secH = (secHazards.length * 18) + 4;
+    doc.roundedRect(MARGIN, y, USABLE_W, secH, 5).fill(PALETTE.surfaceLight).lineWidth(0.7).strokeColor(PALETTE.border).stroke();
+    secHazards.forEach((sh, si) => {
+      const sy = y + 4 + si * 18;
+      doc.circle(MARGIN + 12, sy + 7, 3).fill(PALETTE.moderate);
+      doc.font("Helvetica-Bold").fontSize(8).fillColor(PALETTE.body).text(sh, MARGIN + 20, sy + 2, { width: USABLE_W - 30 });
+    });
+    y += secH + 8;
+  } else {
+    doc.roundedRect(MARGIN, y, USABLE_W, 24, 5).fill(PALETTE.surfaceMid).lineWidth(0.7).strokeColor(PALETTE.border).stroke();
+    doc.font("Helvetica").fontSize(8).fillColor(PALETTE.muted)
+      .text("No confirmed secondary hazards from current evidence set.", MARGIN + 12, y + 7, { width: USABLE_W - 24 });
+    y += 32;
+  }
+
+  // ── 3D: Meteorological Context ──
+  y = subHeading(doc, "3D. Meteorological Context", MARGIN, y, USABLE_W);
+
+  const env = context.environment;
+  const tempStr = env.temperatureC !== null ? `${env.temperatureC}\u00b0C` : "Unavailable";
+  const precipStr = env.precipitationMm !== null ? `${env.precipitationMm} mm` : "Unavailable";
+  const aqiStr = env.usAqi !== null ? `AQI ${env.usAqi}` : "Unavailable";
+  const imdStr = env.imdWarning ? `${env.imdWarning.warningLevel} — ${env.imdWarning.headline}` : "No active IMD warning retrieved";
+  const obsAt = env.observedAt ? new Date(env.observedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) + " IST" : "Not available";
+
+  const metRows: KVRow[] = [
+    { key: "Temperature", value: tempStr, provenanceType: "MODELLED", provenanceLabel: "MODELLED" },
+    { key: "Precipitation", value: precipStr, provenanceType: "MODELLED", provenanceLabel: "MODELLED" },
+    { key: "Air Quality Index", value: aqiStr, provenanceType: "MODELLED", provenanceLabel: "MODELLED" },
+    { key: "IMD Warning", value: imdStr, provenanceType: env.imdWarning ? "OFFICIAL" : "UNAVAILABLE", provenanceLabel: env.imdWarning ? "OFFICIAL" : "UNAVAILABLE" },
+    { key: "Observation Timestamp", value: obsAt },
+    { key: "Source", value: env.source },
+    { key: "Temporal Status", value: env.imdWarning ? "CURRENT (OFFICIAL)" : "MODELLED (Open-Meteo NWP)" },
+  ];
+
+  drawKVTable(doc, metRows, MARGIN, y, USABLE_W);
+}
+
+// ─── Page 4: Exposure, Vulnerability, Capacity ───────────────────────────────
+
+function buildPage4(doc: PdfDocument, context: IndiaLocationContext, generatedAt: string): void {
+  drawPageHeader(doc, context.location.name, 4, 7);
+  drawPageFooter(doc, generatedAt);
+
+  let y = MARGIN + 6;
+  const { decision, location, screening, infrastructure } = context;
+
+  y = sectionHeading(doc, "4. EXPOSURE, VULNERABILITY & EVACUATION CAPACITY", MARGIN, y, USABLE_W);
+
+  // ── 4A: Exposure (who is in the area) ──
+  y = subHeading(doc, "4A. Exposure  — Who is in the affected area?", MARGIN, y, USABLE_W);
+
+  const exp = decision?.exposureAssessment;
+  const popVal = exp?.populationValue ?? location.population ?? null;
+  const popSource = exp?.populationSource ?? location.populationSource ?? "Not specified";
+  const popYear = exp?.populationYear ?? (popSource.includes("Census") ? 2011 : null);
+  const popRes = exp?.populationResolution ?? (location.category === "District" ? "District" : "Place");
+  const popMethod = exp?.exposureMethod ?? "Direct geocoder value";
+
+  const expRows: KVRow[] = [
+    {
+      key: "Population",
+      value: popVal !== null ? `${formatPopulation(popVal)} people` : "UNAVAILABLE at this spatial resolution",
+      valueColor: popVal !== null ? PALETTE.body : PALETTE.high,
+      provenanceType: popSource.includes("Census") ? "OFFICIAL" : "MODELLED",
+      provenanceLabel: popSource.includes("Census") ? "OFFICIAL" : "MODELLED",
+    },
+    { key: "Population Source", value: popSource },
+    { key: "Data Year", value: popYear ? String(popYear) : "UNKNOWN" },
+    { key: "Spatial Resolution", value: popRes },
+    { key: "Exposure Method", value: popMethod },
+    {
+      key: "Exposed Population Estimate",
+      value: exp?.exposedPopulationEstimate !== null && exp?.exposedPopulationEstimate !== undefined
+        ? `${formatPopulation(exp.exposedPopulationEstimate)} people`
+        : "UNAVAILABLE",
+      provenanceType: exp ? "DERIVED" : "UNAVAILABLE",
+      provenanceLabel: exp ? "DERIVED" : "UNAVAILABLE",
+    },
+    { key: "Exposure Rationale", value: exp?.exposureRationale ?? screening.populationContext },
+  ];
+
+  y = drawKVTable(doc, expRows, MARGIN, y, USABLE_W);
+  y += 10;
+
+  // Exposed habitations sub-table
+  const habList = decision?.exposureAssessment.exposedHabitations ?? [];
+
+  if (habList.length > 0) {
+    y = subHeading(doc, "Exposed Habitations", MARGIN, y, USABLE_W);
+    // Header
+    doc.rect(MARGIN, y, USABLE_W, 18).fill(PALETTE.surfaceMid);
+    const hCols = [180, 110, 90, 80, 55];
+    const hHeaders = ["HABITATION / VILLAGE", "HAZARD TYPE", "DISTANCE TO HAZARD", "POPULATION", "IN HAZARD ZONE"];
+    let hx = MARGIN + 8;
+    hHeaders.forEach((h, i) => {
+      doc.font("Helvetica-Bold").fontSize(7).fillColor(PALETTE.muted).text(h, hx, y + 5, { width: hCols[i] - 4 });
+      hx += hCols[i];
+    });
+    doc.rect(MARGIN, y, USABLE_W, 18).lineWidth(0.5).strokeColor(PALETTE.border).stroke();
+    y += 18;
+
+    habList.slice(0, 6).forEach((hab: any, hi: number) => {
+      const bg = hi % 2 === 0 ? PALETTE.surfaceLight : PALETTE.pageWhite;
+      doc.rect(MARGIN, y, USABLE_W, 18).fill(bg);
+      const habCols = [
+        hab.name ?? `Habitation ${hi + 1}`,
+        hab.hazardType ?? "Unknown",
+        hab.distanceToHazardKm !== null && hab.distanceToHazardKm !== undefined ? `${Number(hab.distanceToHazardKm).toFixed(1)} km` : "Unknown",
+        hab.population !== null && hab.population !== undefined ? formatPopulation(hab.population) : "Unverified",
+        hab.insideHazardZone ? "YES" : "No",
+      ];
+      let hxr = MARGIN + 8;
+      habCols.forEach((v, ci) => {
+        const col = ci === 4 && v === "YES" ? PALETTE.high : PALETTE.body;
+        doc.font(ci === 0 ? "Helvetica-Bold" : "Helvetica").fontSize(7.5).fillColor(col).text(v, hxr, y + 5, { width: hCols[ci] - 4 });
+        hxr += hCols[ci];
+      });
+      doc.rect(MARGIN, y, USABLE_W, 18).lineWidth(0.4).strokeColor(PALETTE.borderLight).stroke();
+      y += 18;
+    });
+    y += 8;
+  }
+
+  // ── 4B: Vulnerability (why harder to evacuate) ──
+  y = subHeading(doc, "4B. Vulnerability  — Why might this population be harder to evacuate?", MARGIN, y, USABLE_W);
+
+  const vuln = decision?.vulnerabilityAssessment;
+  if (vuln) {
+    const vulnRows: KVRow[] = [
+      { key: "Vulnerability Status", value: vuln.status },
+      {
+        key: "Vulnerability Score",
+        value: vuln.vulnerabilityScore !== null ? `${vuln.vulnerabilityScore}/20` : "DATA INSUFFICIENT",
+        valueColor: vuln.vulnerabilityScore !== null ? PALETTE.body : PALETTE.high,
+      },
+      { key: "Demographic Data Available", value: vuln.demographicDataAvailable ? "Yes" : "No" },
+      { key: "Terrain Vulnerability", value: vuln.terrainVulnerabilityScore !== null ? `${vuln.terrainVulnerabilityScore}` : "Not assessed" },
+      { key: "Accessibility Constraint", value: vuln.accessibilityConstraintScore !== null ? `${vuln.accessibilityConstraintScore}` : "Not assessed" },
+      { key: "Rationale", value: vuln.rationale },
+    ];
+    if (vuln.factors.length > 0) {
+      vulnRows.push({ key: "Vulnerability Factors", value: vuln.factors.map((f) => `${f.name}: ${f.value} (${f.evidence})`).join("; ") });
+    }
+    y = drawKVTable(doc, vulnRows, MARGIN, y, USABLE_W);
+  } else {
+    doc.roundedRect(MARGIN, y, USABLE_W, 30, 5).fill(PALETTE.surfaceMid).lineWidth(0.6).strokeColor(PALETTE.border).stroke();
+    doc.font("Helvetica").fontSize(8).fillColor(PALETTE.muted)
+      .text("Vulnerability Assessment: DATA INSUFFICIENT — full decision pipeline not executed for this location.", MARGIN + 12, y + 10, { width: USABLE_W - 24 });
+    y += 38;
+  }
+  y += 10;
+
+  // ── 4C: Evacuation Capacity ──
+  y = subHeading(doc, "4C. Evacuation Capacity Assessment", MARGIN, y, USABLE_W);
+
+  const cap = decision?.capacityAssessment;
+  const catInfra = context.categorizedInfrastructure;
+  const totalFac = cap?.totalNearbyFacilities ?? infrastructure.items.length;
+  const shelterCount = cap?.eligibleRelocationShelters ?? catInfra?.shelters.length ?? 0;
+  const hospCount = cap?.hospitalsExcludedFromShelters ?? catInfra?.hospitals.length ?? 0;
+
+  doc.save();
+  doc.roundedRect(MARGIN, y, USABLE_W, 22, 4).fill("#FEF9C3").lineWidth(0.6).strokeColor("#FDE047").stroke();
+  doc.font("Helvetica-Bold").fontSize(7.5).fillColor(PALETTE.derived)
+    .text("IMPORTANT: Facility existence does NOT equal verified capacity. Capacity shown as UNKNOWN unless verified from official field registers.", MARGIN + 10, y + 7, { width: USABLE_W - 20 });
+  doc.restore();
+  y += 28;
+
+  const capRows: KVRow[] = [
+    { key: "Total Nearby Facilities", value: `${totalFac}` },
+    { key: "Eligible Relocation Shelters", value: `${shelterCount}`, provenanceType: "OBSERVED", provenanceLabel: "OSM" },
+    { key: "Hospitals (medical support only)", value: `${hospCount}`, provenanceType: "OBSERVED", provenanceLabel: "OSM" },
+    {
+      key: "Capacity Verified",
+      value: cap?.capacityVerified ? "YES" : "UNKNOWN — not verified from field register",
+      valueColor: cap?.capacityVerified ? PALETTE.safe : PALETTE.high,
+    },
+    {
+      key: "Available Capacity",
+      value: cap?.availableCapacity !== null && cap?.availableCapacity !== undefined ? `${cap.availableCapacity} persons` : "UNKNOWN",
+      valueColor: cap?.availableCapacity !== null && cap?.availableCapacity !== undefined ? PALETTE.body : PALETTE.high,
+    },
+    {
+      key: "Required Capacity",
+      value: cap?.requiredCapacity !== null && cap?.requiredCapacity !== undefined ? `${formatPopulation(cap.requiredCapacity)} persons` : "UNKNOWN",
+    },
+    {
+      key: "Capacity Deficit",
+      value: cap?.capacityDeficit !== null && cap?.capacityDeficit !== undefined ? `${formatPopulation(cap.capacityDeficit)} persons` : "UNKNOWN",
+    },
+    { key: "Capacity Status", value: cap?.capacityStatus ?? "UNKNOWN", valueColor: cap?.capacityStatus === "CAPACITY_KNOWN" ? PALETTE.safe : PALETTE.high },
+    { key: "Capacity Source", value: cap?.capacitySource ?? "OpenStreetMap geometry (unverified)" },
+    { key: "Notes", value: cap?.notes ?? "Facility counts are from OSM; actual capacities require field verification against DDMA shelter registers." },
+  ];
+
+  drawKVTable(doc, capRows, MARGIN, y, USABLE_W);
+}
+
+// ─── Page 5: Safe Destination + Road Route ───────────────────────────────────
+
+function buildPage5(doc: PdfDocument, context: IndiaLocationContext, generatedAt: string): void {
+  drawPageHeader(doc, context.location.name, 5, 7);
+  drawPageFooter(doc, generatedAt);
+
+  let y = MARGIN + 6;
+  const { decision, location } = context;
+
+  y = sectionHeading(doc, "5. SAFE DESTINATION & ROAD ROUTE", MARGIN, y, USABLE_W);
+
+  // ── 5A: Safe Destination Assessment ──
+  y = subHeading(doc, "5A. Safe Destination Assessment", MARGIN, y, USABLE_W);
+
+  const reloc = decision?.relocationAssessment;
+  const dest = reloc?.bestCandidate;
+
+  if (dest) {
+    const destSafety = reloc?.destinationSafety;
+    const safetyColor = destSafety?.destinationSafetyStatus === "SAFE" ? PALETTE.safe
+      : destSafety?.destinationSafetyStatus === "CONDITIONAL" ? PALETTE.moderate
+      : PALETTE.high;
+
+    const destRows: KVRow[] = [
+      { key: "Origin", value: `${location.displayName ?? location.name}` },
+      { key: "Origin Coordinates", value: `${formatCoord(location.latitude, "lat")}, ${formatCoord(location.longitude, "lon")}` },
+      { key: "Destination Name", value: dest.name },
+      { key: "Destination Type", value: dest.facilityRole ?? "SHELTER" },
+      {
+        key: "Destination Coordinates",
+        value: typeof dest.latitude === "number" && typeof dest.longitude === "number"
+          ? `${formatCoord(dest.latitude, "lat")}, ${formatCoord(dest.longitude, "lon")}`
+          : "Unavailable",
+      },
+      {
+        key: "Destination Safety Status",
+        value: destSafety?.destinationSafetyStatus ?? "UNKNOWN",
+        valueColor: safetyColor,
+      },
+      {
+        key: "Destination Inside Hazard Zone",
+        value: destSafety?.destinationInsideHazard ? "YES — CAUTION" : "No (validated outside active hazard)",
+        valueColor: destSafety?.destinationInsideHazard ? PALETTE.high : PALETTE.safe,
+      },
+      { key: "Destination Hazard Tier", value: destSafety?.destinationHazardTier ?? "UNSCREENED" },
+      { key: "Candidate Status", value: reloc?.candidateStatus ?? "UNKNOWN" },
+      {
+        key: "Capacity Status",
+        value: dest.capacity !== null && dest.capacity !== undefined
+          ? `${formatPopulation(dest.capacity)} persons (UNVERIFIED from OSM)`
+          : "UNKNOWN — capacity not verified from field register",
+        provenanceType: "OBSERVED",
+        provenanceLabel: "OSM",
+      },
+      { key: "Road Accessibility", value: dest.routeDistanceKm !== null && dest.routeDistanceKm !== undefined ? `${dest.routeDistanceKm.toFixed(1)} km road route` : "Not computed" },
+      { key: "Destination Rationale", value: reloc?.rationale ?? "Best available candidate from OSM facility search" },
+      { key: "Safety Check Details", value: destSafety?.checkDetails ?? "Not available" },
+    ];
+    y = drawKVTable(doc, destRows, MARGIN, y, USABLE_W);
+
+    // Alternative candidates
+    if ((reloc?.conditionalAlternatives?.length ?? 0) > 0) {
+      y += 8;
+      y = subHeading(doc, "Conditional Alternative Destinations", MARGIN, y, USABLE_W);
+      doc.roundedRect(MARGIN, y, USABLE_W, 16 + (reloc!.conditionalAlternatives.length * 16), 5)
+        .fill(PALETTE.surfaceLight).lineWidth(0.6).strokeColor(PALETTE.border).stroke();
+      reloc!.conditionalAlternatives.slice(0, 4).forEach((alt, ai) => {
+        doc.font("Helvetica").fontSize(7.5).fillColor(PALETTE.body)
+          .text(`${ai + 1}. ${alt.name}  |  Role: ${alt.facilityRole}  |  ${alt.routeDistanceKm ? alt.routeDistanceKm.toFixed(1) + " km" : "Distance unknown"}`, MARGIN + 12, y + 8 + ai * 16, { width: USABLE_W - 24 });
+      });
+      y += 16 + reloc!.conditionalAlternatives.length * 16 + 8;
+    }
+  } else {
+    doc.roundedRect(MARGIN, y, USABLE_W, 40, 5).fill("#FEE2E2").lineWidth(0.7).strokeColor("#FCA5A5").stroke();
+    doc.font("Helvetica-Bold").fontSize(9).fillColor(PALETTE.high)
+      .text("DESTINATION: UNAVAILABLE", MARGIN + 12, y + 10);
+    doc.font("Helvetica").fontSize(7.5).fillColor(PALETTE.muted)
+      .text("No eligible destination facility identified within the search radius for this location/hazard combination.", MARGIN + 12, y + 24, { width: USABLE_W - 24 });
+    y += 48;
+  }
+  y += 10;
+
+  // ── 5B: Road Route ──
+  y = subHeading(doc, "5B. Road Route Assessment", MARGIN, y, USABLE_W);
+
+  const routing = decision?.routingAssessment;
+
+  if (!routing) {
+    doc.roundedRect(MARGIN, y, USABLE_W, 30, 5).fill(PALETTE.surfaceMid).lineWidth(0.6).strokeColor(PALETTE.border).stroke();
+    doc.font("Helvetica").fontSize(8).fillColor(PALETTE.muted)
+      .text("Road route assessment: UNAVAILABLE (decision not computed for this location).", MARGIN + 12, y + 10, { width: USABLE_W - 24 });
+    y += 38;
+  } else {
+    // Status banner
+    const routeIsReal = routing.isRoadRoute;
+    const routeBannerColor = routeIsReal ? PALETTE.safe : PALETTE.moderate;
+    const routeBannerBg = routeIsReal ? PALETTE.safeBg : "#FEF9C3";
+    doc.roundedRect(MARGIN, y, USABLE_W, 24, 5).fill(routeBannerBg).lineWidth(0.6).strokeColor(routeIsReal ? "#86EFAC" : "#FDE047").stroke();
+    doc.font("Helvetica-Bold").fontSize(8.5).fillColor(routeBannerColor)
+      .text(
+        routeIsReal ? "ROAD ROUTE STATUS: VERIFIED — OSRM / OpenStreetMap Road Network" : "ROAD ROUTE STATUS: UNAVAILABLE — Geodesic proxy shown; NOT a road distance",
+        MARGIN + 12, y + 8, { width: USABLE_W - 24 }
+      );
+    y += 30;
+
+    const routeRows: KVRow[] = [
+      { key: "Route Origin", value: `${routing.origin.name}  (${formatCoord(routing.origin.latitude, "lat")}, ${formatCoord(routing.origin.longitude, "lon")})` },
+      {
+        key: "Route Destination",
+        value: routing.destination
+          ? `${routing.destination.name}  |  Role: ${routing.destination.role}`
+          : "No destination",
+      },
+      {
+        key: "Route Distance",
+        value: routing.distanceKm !== null && routing.distanceKm !== undefined
+          ? `${routing.distanceKm.toFixed(2)} km`
+          : "UNAVAILABLE",
+        valueColor: routing.distanceKm !== null ? PALETTE.body : PALETTE.high,
+        provenanceType: routeIsReal ? "DERIVED" : "UNAVAILABLE",
+        provenanceLabel: routeIsReal ? "OSRM" : "UNAVAILABLE",
+      },
+      {
+        key: "Estimated Travel Time",
+        value: routing.durationMinutes !== null && routing.durationMinutes !== undefined
+          ? `${Math.floor(routing.durationMinutes / 60)}h ${Math.round(routing.durationMinutes % 60)}min`
+          : "UNAVAILABLE",
+      },
+      { key: "Route Type", value: routeIsReal ? "OSRM road-network geometry (real road centerlines)" : "DIRECT DISTANCE — geodesic line (not a road route)" },
+      { key: "Route Status Badge", value: routing.displayBadge },
+      { key: "Source Note", value: routing.sourceNote },
+      {
+        key: "Geometry Validation",
+        value: routing.validation.geometryExists
+          ? `Geometry exists: YES  |  Origin proximity: ${routing.validation.originProximityValid ? "PASS" : "FAIL"}  |  Dest proximity: ${routing.validation.destinationProximityValid ? "PASS" : "FAIL"}`
+          : "Geometry not returned by OSRM",
+      },
+    ];
+
+    drawKVTable(doc, routeRows, MARGIN, y, USABLE_W);
+    y += routeRows.length * 18 + 8;
+
+    // Consistency checks
+    if (decision?.consistencyChecks && decision.consistencyChecks.length > 0) {
+      y = subHeading(doc, "Cross-Source Consistency Checks", MARGIN, y, USABLE_W);
+      decision.consistencyChecks.forEach((chk, ci) => {
+        const checkBg = chk.status === "PASSED" ? "#DCFCE7" : chk.status === "FAILED" ? "#FEE2E2" : "#FEF9C3";
+        const checkColor = chk.status === "PASSED" ? PALETTE.official : chk.status === "FAILED" ? PALETTE.high : PALETTE.derived;
+        doc.roundedRect(MARGIN, y, USABLE_W, 26, 4).fill(checkBg).lineWidth(0.5).strokeColor(PALETTE.border).stroke();
+        doc.font("Helvetica-Bold").fontSize(7.5).fillColor(checkColor)
+          .text(`${chk.status}  |  ${chk.name}`, MARGIN + 10, y + 5, { width: USABLE_W / 2 - 10 });
+        doc.font("Helvetica").fontSize(7).fillColor(PALETTE.body)
+          .text(chk.details, MARGIN + USABLE_W / 2, y + 5, { width: USABLE_W / 2 - 10 });
+        doc.font("Helvetica").fontSize(6.5).fillColor(PALETTE.faint)
+          .text(`Source: ${chk.source}`, MARGIN + 10, y + 17, { width: USABLE_W - 20 });
+        y += 30;
+      });
+    }
+  }
+}
+
+// ─── Page 6: Why This Decision ───────────────────────────────────────────────
+
+function buildPage6(doc: PdfDocument, context: IndiaLocationContext, generatedAt: string): void {
+  drawPageHeader(doc, context.location.name, 6, 7);
+  drawPageFooter(doc, generatedAt);
+
+  let y = MARGIN + 6;
+  const { decision } = context;
+
+  y = sectionHeading(doc, "6. WHY DID RESQ PRODUCE THIS DECISION?", MARGIN, y, USABLE_W);
+
+  if (!decision) {
+    doc.roundedRect(MARGIN, y, USABLE_W, 50, 5).fill(PALETTE.surfaceMid).lineWidth(0.6).strokeColor(PALETTE.border).stroke();
+    doc.font("Helvetica-Bold").fontSize(9).fillColor(PALETTE.muted).text("Decision Engine Not Executed", MARGIN + 12, y + 12);
+    doc.font("Helvetica").fontSize(8).fillColor(PALETTE.muted)
+      .text("The full decision pipeline was not computed for this location. Only screening-level context is available.", MARGIN + 12, y + 26, { width: USABLE_W - 24 });
+    y += 58;
+  } else {
+    const expl = decision.explanation;
+
+    // Structured causal chain
+    y = subHeading(doc, "6A. Causal Decision Chain", MARGIN, y, USABLE_W);
+
+    const chainSteps = [
+      { num: "1", label: "Hazard Identification", text: expl.whyThisHazard },
+      { num: "2", label: "Hazard Severity", text: expl.whyThisSeverity },
+      { num: "3", label: "Location Assessment", text: expl.whyThisLocation },
+      { num: "4", label: "Response Priority", text: expl.whyThisPriority },
+      { num: "5", label: "Destination Selection", text: expl.whyThisDestination },
+      { num: "6", label: "Route Selection", text: expl.whyThisRoute },
+      { num: "7", label: "Why Not Another Destination", text: expl.whyNotAnotherDestination },
+      { num: "8", label: "Missing Data", text: expl.whatDataIsMissing },
+    ];
+
+    chainSteps.forEach((step) => {
+      const textH = doc.font("Helvetica").fontSize(8).heightOfString(step.text, { width: USABLE_W - 60, lineGap: 1.5 });
+      const stepH = Math.max(32, textH + 16);
+      doc.roundedRect(MARGIN, y, USABLE_W, stepH, 4).fill(PALETTE.surfaceLight).lineWidth(0.6).strokeColor(PALETTE.border).stroke();
+      // Step circle
+      doc.circle(MARGIN + 16, y + stepH / 2, 9).fill(PALETTE.brandBlue);
+      doc.font("Helvetica-Bold").fontSize(8).fillColor("#FFFFFF").text(step.num, MARGIN + 12.5, y + stepH / 2 - 5);
+      // Label
+      doc.font("Helvetica-Bold").fontSize(8).fillColor(PALETTE.ink).text(step.label, MARGIN + 32, y + 8, { width: USABLE_W - 48 });
+      // Text
+      doc.font("Helvetica").fontSize(8).fillColor(PALETTE.body).text(step.text, MARGIN + 32, y + 19, { width: USABLE_W - 48, lineGap: 1.5 });
+      y += stepH + 4;
+    });
+    y += 8;
+
+    // ── 6B: Priority Score Breakdown ──
+    y = subHeading(doc, "6B. Response Priority Score Breakdown", MARGIN, y, USABLE_W);
+
+    const pri = decision.responsePriority;
+    const comps: Array<{ key: keyof typeof pri.components; label: string; color: string }> = [
+      { key: "hazardSeverity", label: "Hazard Severity", color: PALETTE.high },
+      { key: "populationExposure", label: "Population Exposure", color: PALETTE.moderate },
+      { key: "vulnerability", label: "Vulnerability", color: "#7C3AED" },
+      { key: "capacityDeficit", label: "Capacity Deficit", color: PALETTE.safe },
+      { key: "accessibility", label: "Accessibility", color: PALETTE.brandAccent },
+    ];
+
+    // Score bar for each component
+    const barTotalW = USABLE_W - 24;
+    const barH = 14;
+    comps.forEach((comp) => {
+      const c = pri.components[comp.key];
+      const fraction = c.maxWeight > 0 ? c.normalizedValue / c.maxWeight : 0;
+      const labelText = `${comp.label}: ${c.normalizedValue}/${c.maxWeight}`;
+      doc.font("Helvetica-Bold").fontSize(7.5).fillColor(PALETTE.body).text(labelText, MARGIN + 12, y, { width: 160 });
+      doc.font("Helvetica").fontSize(7).fillColor(PALETTE.faint)
+        .text(`Method: ${c.method}  |  Uncertainty: ${c.uncertainty}`, MARGIN + 180, y, { width: barTotalW - 168 });
+      y += 11;
+      // Background bar
+      doc.roundedRect(MARGIN + 12, y, barTotalW, barH, 3).fill(PALETTE.borderLight);
+      // Filled bar
+      const fillW = Math.max(3, fraction * barTotalW);
+      doc.roundedRect(MARGIN + 12, y, fillW, barH, 3).fill(comp.color);
+      y += barH + 6;
+    });
+
+    // Total score
+    y += 4;
+    doc.roundedRect(MARGIN, y, USABLE_W, 36, 5).fill(PALETTE.surfaceLight).lineWidth(1).strokeColor(PALETTE.border).stroke();
+    doc.font("Helvetica-Bold").fontSize(10).fillColor(PALETTE.ink)
+      .text(`TOTAL SCORE: ${pri.priorityScore} / 100  —  ${pri.priorityLevel}`, MARGIN + 12, y + 12, { width: USABLE_W - 24 });
+    y += 44;
+
+    doc.font("Helvetica").fontSize(7.5).fillColor(PALETTE.faint)
+      .text(
+        "Note: Response Priority is an operational prioritization score. It is NOT a direct measurement of physical hazard severity. A score of MEDIUM does not mean the hazard is less dangerous — it reflects the composite decision weighting across hazard, exposure, vulnerability, capacity, and accessibility.",
+        MARGIN, y, { width: USABLE_W, lineGap: 1.5 }
+      );
+    y += 30;
+
+    // ── 6C: Confidence vs Coverage ──
+    y = subHeading(doc, "6C. Confidence vs Data Coverage", MARGIN, y, USABLE_W);
+
+    const confRows: KVRow[] = [
+      {
+        key: "Data Coverage",
+        value: context.evidenceCoverage?.label ?? "Not computed",
+        provenanceType: "DERIVED",
+        provenanceLabel: "DERIVED",
+      },
+      {
+        key: "Decision Confidence Level",
+        value: decision.confidence.level,
+        valueColor: riskColour(decision.confidence.level === "LOW" ? "HIGH" : decision.confidence.level === "HIGH" ? "SAFE" : "MODERATE"),
+      },
+      { key: "Confidence Score", value: `${(decision.confidence.score * 100).toFixed(0)}%` },
+      { key: "Confidence Reasons", value: decision.confidence.reasons.join("; ") || "Not specified" },
+      { key: "Uncertainty Level", value: decision.uncertainty.level },
+      { key: "Uncertainty Reasons", value: decision.uncertainty.reasons.join("; ") || "None" },
+      { key: "Missing Datasets", value: decision.uncertainty.missingDatasets.join("; ") || "None identified" },
+    ];
+
+    drawKVTable(doc, confRows, MARGIN, y, USABLE_W);
+  }
+}
+
+// ─── Page 7: Data Quality, Limitations & Source Provenance ───────────────────
+
+function buildPage7(doc: PdfDocument, context: IndiaLocationContext, generatedAt: string): void {
+  drawPageHeader(doc, context.location.name, 7, 7);
+  drawPageFooter(doc, generatedAt);
+
+  let y = MARGIN + 6;
+  const { decision, location, environment } = context;
+
+  y = sectionHeading(doc, "7. DATA QUALITY, LIMITATIONS & SOURCE PROVENANCE", MARGIN, y, USABLE_W);
+
+  // ── Evidence Register ──
+  y = subHeading(doc, "7A. Evidence Register", MARGIN, y, USABLE_W);
+
+  const snapshot = decision?.dataSnapshot;
+  const evidenceRows: EvidenceRow[] = [];
+  let evIdx = 1;
+
+  const sourcesToShow = snapshot?.sources
+    ? Object.values(snapshot.sources)
+    : [
+        { sourceId: "admin_boundary", sourceName: "geoBoundaries ADM2 / ECI", sourceType: "OFFICIAL" as const, freshness: "STATIC_REFERENCE", resolution: "District polygon", confidence: "HIGH" as const },
+        { sourceId: "population", sourceName: location.populationSource, sourceType: (location.populationSource?.includes("Census") ? "OFFICIAL" : "MODELLED") as any, freshness: "HISTORICAL", resolution: "District/Town", confidence: (location.population !== null ? "HIGH" : "UNAVAILABLE") as any },
+        { sourceId: "seismic_baseline", sourceName: "BIS IS 1893:2016", sourceType: "OFFICIAL" as const, freshness: "STATIC_REFERENCE", resolution: "National zonation", confidence: "HIGH" as const },
+        { sourceId: "weather_telemetry", sourceName: environment.source, sourceType: (environment.imdWarning ? "OFFICIAL" : "MODELLED") as any, freshness: environment.imdWarning ? "CURRENT" : "MODELLED", resolution: "Point observation", confidence: (environment.temperatureC !== null ? "HIGH" : "UNAVAILABLE") as any },
+        { sourceId: "road_network", sourceName: "Project OSRM / OpenStreetMap", sourceType: "DERIVED" as const, freshness: "CURRENT", resolution: "Road centerline", confidence: "HIGH" as const },
+      ];
+
+  sourcesToShow.slice(0, 14).forEach((src) => {
+    const hazardMap: Record<string, string> = {
+      flood_historical: "FLOOD", cwc_hydrology: "FLOOD", landslide_atlas: "LANDSLIDE",
+      weather_telemetry: "RAINFALL/WEATHER", seismic_baseline: "SEISMIC", tectonics_faults: "SEISMIC",
+      geology_lithology: "GEOLOGY", geomorphology: "GEOLOGY", terrain: "TERRAIN",
+      admin_boundary: "ADMINISTRATIVE", population: "POPULATION", facilities_osm: "EVACUATION",
+      road_network: "ROUTING", geomorphology_nrsc: "LANDSLIDE",
+    };
+    const hazardLabel = hazardMap[src.sourceId] ?? "GENERAL";
+    evidenceRows.push({
+      id: `EV-${String(evIdx++).padStart(3, "0")}`,
+      hazard: hazardLabel,
+      type: src.freshness ?? "UNKNOWN",
+      org: src.sourceName.split(" ").slice(0, 3).join(" "),
+      temporal: freshnessLabel(src.freshness),
+      resolution: (src as any).resolution ?? "Not specified",
+      value: "PRESENT",
+      provenance: src.sourceType ?? "UNKNOWN",
+      confidence: src.confidence ?? "UNKNOWN",
+    });
+  });
+
+  if (evidenceRows.length > 0) {
+    y = drawEvidenceTable(doc, evidenceRows, MARGIN, y, USABLE_W);
+  }
+  y += 10;
+
+  // ── 7B: Data Quality Flags ──
+  y = subHeading(doc, "7B. Data Quality & Completeness Flags", MARGIN, y, USABLE_W);
+
+  type FlagStatus = "AVAILABLE" | "PARTIAL" | "UNAVAILABLE" | "VERIFIED" | "UNKNOWN" | "MODELLED" | "REFERENCE" | "HISTORICAL";
+  const flags: Array<{ variable: string; status: FlagStatus; note: string }> = [
+    {
+      variable: "Population",
+      status: location.population !== null ? "AVAILABLE" : "UNAVAILABLE",
+      note: location.population !== null ? location.populationSource : "No population returned by geocoder for this spatial level",
+    },
+    {
+      variable: "Administrative Boundary",
+      status: location.boundary ? "AVAILABLE" : "PARTIAL",
+      note: location.boundary ? "Polygon geometry available" : "Only centroid available; polygon from geocoder was null",
+    },
+    {
+      variable: "Facility Capacity",
+      status: decision?.capacityAssessment.capacityVerified ? "VERIFIED" : "UNKNOWN",
+      note: "Facility locations known from OSM; bed capacities require DDMA field register verification",
+    },
+    {
+      variable: "Current Official Warning",
+      status: environment.imdWarning ? "AVAILABLE" : "UNAVAILABLE",
+      note: environment.imdWarning ? `IMD ${environment.imdWarning.warningLevel}: ${environment.imdWarning.headline}` : "No IMD warning retrieved for this location",
+    },
+    {
+      variable: "Historical Flood Footprint",
+      status: (decision?.hazardAssessment.specificExposures.flood.insideHistoricalFloodExtent || decision?.hazardAssessment.specificExposures.flood.distanceToFloodExtentKm !== null) ? "REFERENCE" : "UNAVAILABLE",
+      note: "NRSC/Bhuvan historical inundation footprints used as reference; not a live flood observation",
+    },
+    {
+      variable: "OSRM Road Route",
+      status: decision?.routingAssessment.isRoadRoute ? "AVAILABLE" : "UNAVAILABLE",
+      note: decision?.routingAssessment.isRoadRoute ? "Real road centerline returned by OSRM" : "OSRM failed or no destination; geodesic fallback may be shown",
+    },
+    {
+      variable: "Destination Safety",
+      status: decision?.relocationAssessment.destinationSafety.destinationSafetyStatus === "SAFE" ? "VERIFIED"
+        : decision?.relocationAssessment.bestCandidate ? "PARTIAL"
+        : "UNKNOWN",
+      note: decision?.relocationAssessment.destinationSafety.checkDetails ?? "No destination evaluated",
+    },
+    {
+      variable: "Terrain / Elevation",
+      status: context.terrain ? "AVAILABLE" : "MODELLED",
+      note: "Copernicus DEM GLO-90 (90m); used for slope and flood-hazard context",
+    },
+    {
+      variable: "Geology / Lithology",
+      status: context.geology ? "REFERENCE" : "REFERENCE",
+      note: "GSI Bhukosh 1:2M bedrock geology; static reference dataset",
+    },
+    {
+      variable: "Weather Forecast",
+      status: environment.forecast && environment.forecast.length > 0 ? "MODELLED" : "UNAVAILABLE",
+      note: "Open-Meteo 5-day NWP; modelled data, not official IMD observation",
+    },
+  ];
+
+  const flagRowH = 18;
+  flags.forEach((flag, fi) => {
+    const bg = fi % 2 === 0 ? PALETTE.surfaceLight : PALETTE.pageWhite;
+    const statusColor = ["AVAILABLE", "VERIFIED", "REFERENCE"].includes(flag.status) ? PALETTE.safe
+      : flag.status === "UNAVAILABLE" || flag.status === "UNKNOWN" ? PALETTE.high
+      : PALETTE.moderate;
+    doc.rect(MARGIN, y, USABLE_W, flagRowH).fill(bg);
+    doc.moveTo(MARGIN, y + flagRowH).lineTo(MARGIN + USABLE_W, y + flagRowH).lineWidth(0.3).strokeColor(PALETTE.borderLight).stroke();
+    doc.font("Helvetica-Bold").fontSize(7.5).fillColor(PALETTE.muted).text(flag.variable, MARGIN + 8, y + 5, { width: 140 });
+    doc.font("Helvetica-Bold").fontSize(7.5).fillColor(statusColor).text(flag.status, MARGIN + 152, y + 5, { width: 80 });
+    doc.font("Helvetica").fontSize(7).fillColor(PALETTE.body).text(flag.note, MARGIN + 238, y + 5, { width: USABLE_W - 246 });
+    y += flagRowH;
+  });
+  doc.rect(MARGIN, y - flagRowH * flags.length, USABLE_W, flagRowH * flags.length).lineWidth(0.6).strokeColor(PALETTE.border).stroke();
+  y += 12;
+
+  // ── 7C: Source Registry ──
+  y = subHeading(doc, "7C. Complete Source Registry", MARGIN, y, USABLE_W);
+
+  const sourceRegistry = [
+    { org: "GSI (Geological Survey of India)", dataset: "Bhukosh 1:2M Bedrock Geology & SEISAT Seismotectonic Atlas", type: "OFFICIAL", temporal: "STATIC_REFERENCE", url: "bhukosh.gsi.gov.in" },
+    { org: "NRSC / ISRO", dataset: "Historical Inundation Footprints, Landslide Atlas 2023, Bhuvan GIS", type: "OFFICIAL", temporal: "HISTORICAL", url: "bhuvan.nrsc.gov.in" },
+    { org: "CWC", dataset: "National Flood Forecasting Network — River Gauge Telemetry", type: "OFFICIAL", temporal: "CURRENT", url: "cwc.gov.in" },
+    { org: "BIS", dataset: "IS 1893:2016 — Criteria for Earthquake Resistant Design (Seismic Zones)", type: "OFFICIAL", temporal: "STATIC_REFERENCE", url: "bis.gov.in" },
+    { org: "IMD", dataset: "Nowcast / Weather Warnings / Cyclone Bulletins", type: "OFFICIAL", temporal: "CURRENT", url: "mausam.imd.gov.in" },
+    { org: "WorldPop / Census of India", dataset: "Population Estimates (2011 PCA, 2020 WorldPop 100m)", type: "OFFICIAL/MODELLED", temporal: "HISTORICAL/MODELLED", url: "worldpop.org / censusindia.gov.in" },
+    { org: "Copernicus / Esri", dataset: "GLO-90 DEM (90m) + Esri World Elevation", type: "OBSERVED", temporal: "STATIC_REFERENCE", url: "spacedata.copernicus.eu" },
+    { org: "OpenStreetMap / Overpass", dataset: "Facility Nodes & Road Network", type: "OBSERVED", temporal: "CURRENT", url: "openstreetmap.org" },
+    { org: "Project OSRM", dataset: "OpenStreetMap Road-Network Routing Engine", type: "DERIVED", temporal: "CURRENT", url: "project-osrm.org" },
+    { org: "geoBoundaries / ECI", dataset: "ADM1/ADM2 Administrative Boundaries", type: "OFFICIAL", temporal: "STATIC_REFERENCE", url: "geoboundaries.org" },
+    { org: "Nominatim / OSM", dataset: "Geocoding & Place Resolution", type: "DERIVED", temporal: "CURRENT", url: "nominatim.openstreetmap.org" },
+    { org: "Open-Meteo", dataset: "NWP Atmospheric Model Output (Forecast)", type: "MODELLED", temporal: "FORECAST", url: "open-meteo.com" },
+    { org: "NOAA IBTrACS", dataset: "International Best Track Archive for Climate Stewardship (Cyclone tracks)", type: "OFFICIAL", temporal: "HISTORICAL", url: "ncei.noaa.gov/products/international-best-track-archive" },
+  ];
+
+  const srcRowH = 16;
+  // Header
+  doc.rect(MARGIN, y, USABLE_W, 16).fill(PALETTE.surfaceMid);
+  doc.font("Helvetica-Bold").fontSize(6.5).fillColor(PALETTE.muted).text("ORGANIZATION", MARGIN + 6, y + 4, { width: 120 });
+  doc.font("Helvetica-Bold").fontSize(6.5).fillColor(PALETTE.muted).text("DATASET", MARGIN + 132, y + 4, { width: 170 });
+  doc.font("Helvetica-Bold").fontSize(6.5).fillColor(PALETTE.muted).text("TYPE", MARGIN + 308, y + 4, { width: 60 });
+  doc.font("Helvetica-Bold").fontSize(6.5).fillColor(PALETTE.muted).text("TEMPORAL", MARGIN + 372, y + 4, { width: 70 });
+  doc.font("Helvetica-Bold").fontSize(6.5).fillColor(PALETTE.muted).text("URL / IDENTIFIER", MARGIN + 448, y + 4, { width: USABLE_W - 454 });
+  y += 16;
+
+  sourceRegistry.forEach((src, si) => {
+    const bg = si % 2 === 0 ? PALETTE.surfaceLight : PALETTE.pageWhite;
+    doc.rect(MARGIN, y, USABLE_W, srcRowH).fill(bg);
+    doc.font("Helvetica-Bold").fontSize(6.5).fillColor(PALETTE.body).text(src.org, MARGIN + 6, y + 4, { width: 124 });
+    doc.font("Helvetica").fontSize(6.5).fillColor(PALETTE.body).text(src.dataset, MARGIN + 132, y + 4, { width: 173 });
+    const typeColors = provenanceBadgeColors(src.type.split("/")[0]);
+    doc.font("Helvetica-Bold").fontSize(6.5).fillColor(typeColors.fg).text(src.type, MARGIN + 308, y + 4, { width: 60 });
+    doc.font("Helvetica").fontSize(6.5).fillColor(PALETTE.faint).text(src.temporal, MARGIN + 372, y + 4, { width: 70 });
+    doc.font("Helvetica").fontSize(6).fillColor(PALETTE.faint).text(src.url, MARGIN + 448, y + 5, { width: USABLE_W - 454 });
+    doc.rect(MARGIN, y, USABLE_W, srcRowH).lineWidth(0.3).strokeColor(PALETTE.borderLight).stroke();
+    y += srcRowH;
+  });
+  doc.rect(MARGIN, y - srcRowH * sourceRegistry.length - 16, USABLE_W, srcRowH * sourceRegistry.length + 16).lineWidth(0.6).strokeColor(PALETTE.border).stroke();
+  y += 12;
+
+  // ── Final disclaimer ──
+  doc.roundedRect(MARGIN, y, USABLE_W, 40, 5).fill("#FFFBEB").lineWidth(0.7).strokeColor("#FDE047").stroke();
+  doc.font("Helvetica-Bold").fontSize(7.5).fillColor(PALETTE.derived).text("ACCURACY & LIMITATIONS STATEMENT", MARGIN + 10, y + 7);
+  doc.font("Helvetica").fontSize(7).fillColor(PALETTE.body).text(
+    "This report is produced by the ResQ Decision Intelligence Platform (SIH Problem Statement 191). " +
+    "All values are sourced from authoritative or official datasets as documented above. " +
+    "Modelled or derived values are explicitly labeled. " +
+    "Facility capacities are UNVERIFIED unless sourced from official DDMA field registers. " +
+    "OSRM road routes represent the current OpenStreetMap road network and may not reflect live road closures or disaster damage. " +
+    "This report reflects benchmark performance on the current validation set and should not be construed as independent validation against an external ground truth.",
+    MARGIN + 10, y + 18, { width: USABLE_W - 20, lineGap: 1.5 }
+  );
+}
+
+// ─── Main PDF Builder ─────────────────────────────────────────────────────────
 
 export async function buildSelectedLocationPdf(context: IndiaLocationContext): Promise<Buffer> {
   return new Promise<Buffer>((resolve, reject) => {
-    const { location, environment, infrastructure, screening } = context;
+    const { location } = context;
+    const generatedAt = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) + " IST";
+    const TOTAL_PAGES = 7;
+
     const doc = new PDFDocument({
       size: "A4",
-      margin: 44,
+      margin: MARGIN,
       bufferPages: true,
       info: {
-        Title: `DIVA / RESQ Location Decision Context Report — ${location.name}`,
-        Author: "DIVA Decision Support & ResQ Intelligence Platform",
-        Subject: "Authoritative Location Multi-Hazard Triage & Relocation Analysis",
-        Keywords: "disaster, relocation, hazard, GIS, India, decision support",
+        Title: `ResQ Location Decision Context Report — ${location.displayName ?? location.name}`,
+        Author: "ResQ Decision Intelligence Platform — SIH Problem Statement 191",
+        Subject: "Hazard-Based Red Zone Identification, Carrying Capacity Assessment & Relocation Decision",
+        Keywords: "disaster, relocation, hazard, GIS, India, decision support, SIH191",
       },
     });
 
@@ -229,565 +1525,20 @@ export async function buildSelectedLocationPdf(context: IndiaLocationContext): P
     doc.on("error", reject);
     doc.on("end", () => resolve(Buffer.concat(chunks)));
 
-    const decision = context.decision;
-    const hazard = context.hazardProfile;
-    const primaryHazard = decision?.hazardAssessment.primaryHazard ?? hazard?.redZone.primaryHazard ?? screening.hazardContext.split(" ")[0] ?? "Multi-Hazard";
-    const effectiveTier = (decision?.responsePriority.priorityLevel ?? hazard?.redZone.status ?? (screening.riskLevel === "High" ? "RED" : screening.riskLevel === "Moderate" ? "ORANGE" : "GREEN")).toUpperCase();
-    const effectiveScore = decision?.responsePriority.priorityScore ?? hazard?.redZone.score ?? screening.riskScore ?? 50;
-    const bannerColor = riskColour(effectiveTier);
-
-    const usableWidth = 507;
-    const leftMargin = 44;
-
-    // ══════════════════════════════════════════════════════════════════════════
-    // PAGE 1: EXECUTIVE DECISION CONTEXT & TRIAGE
-    // ══════════════════════════════════════════════════════════════════════════
-
-    // 1. Top Header Banner
-    doc.rect(0, 0, 595, 114).fill("#0B1E2D");
-    doc.rect(0, 110, 595, 4).fill(bannerColor);
-
-    doc.font("Helvetica-Bold").fontSize(8.5).fillColor("#38BDF8").text("RESQ INTELLIGENCE · NATIONWIDE DISASTER DECISION PLATFORM", leftMargin, 26);
-    doc.font("Helvetica-Bold").fontSize(20).fillColor("#FFFFFF").text("Location Decision Context & Triage Report", leftMargin, 40);
-    doc.font("Helvetica").fontSize(8).fillColor("#94A3B8").text(
-      `Generated: ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} IST · Authoritative Multi-Agency Evidence Baseline`,
-      leftMargin,
-      66
-    );
-
-    if (decision) {
-      doc.font("Helvetica-Bold").fontSize(7.5).fillColor("#67E8F9").text(
-        `Canonical Decision ID: ${decision.decisionId}  ·  Snapshot Hash: ${decision.decisionSnapshotHash.slice(0, 12)}...  ·  Status: AUDITED`,
-        leftMargin,
-        82
-      );
-    } else {
-      doc.font("Helvetica").fontSize(7.5).fillColor("#CBD5E1").text(
-        `Source: ${location.source}  ·  Location ID: ${location.id}`,
-        leftMargin,
-        82
-      );
-    }
-
-    // 2. Location Identity Card
-    let curY = 126;
-    doc.roundedRect(leftMargin, curY, usableWidth, 54, 8).fill("#F8FAFC").lineWidth(1).strokeColor("#E2E8F0").stroke();
-
-    doc.font("Helvetica-Bold").fontSize(15).fillColor("#0F172A").text(location.name, leftMargin + 14, curY + 10, { width: 320 });
-    const fullHierarchy = [location.category, location.address.locality, location.address.city, location.address.district, location.address.state, "India"]
-      .filter(Boolean)
-      .filter((v, i, a) => a.indexOf(v) === i)
-      .join(" · ");
-    doc.font("Helvetica").fontSize(8.5).fillColor("#64748B").text(
-      `${fullHierarchy}  ·  ${location.latitude.toFixed(4)}°N, ${location.longitude.toFixed(4)}°E`,
-      leftMargin + 14,
-      curY + 30,
-      { width: 320 }
-    );
-
-    // Prominent Priority Badge
-    doc.roundedRect(leftMargin + usableWidth - 146, curY + 10, 134, 34, 6).fill(bannerColor);
-    doc.font("Helvetica-Bold").fontSize(10).fillColor("#FFFFFF").text(
-      `${effectiveTier} PRIORITY`,
-      leftMargin + usableWidth - 146,
-      curY + 16,
-      { width: 134, align: "center" }
-    );
-    doc.font("Helvetica-Bold").fontSize(7.5).fillColor("#FFFFFF").text(
-      `Score: ${effectiveScore}/100 · ${primaryHazard}`,
-      leftMargin + usableWidth - 146,
-      curY + 29,
-      { width: 134, align: "center" }
-    );
-
-    // 3. Key Decision Metric Cards (6 cards in 3 columns)
-    curY = 190;
-    const cardW = 163;
-    const cardH = 46;
-    const gap = 9;
-
-    const metricsData = [
-      {
-        label: "CENSUS POPULATION",
-        val: location.population !== null ? location.population.toLocaleString("en-IN") : "Unavailable",
-        sub: location.populationSource?.includes("Census") ? "Census of India 2011" : "Administrative Extent",
-        color: "#0F172A",
-      },
-      {
-        label: "RESPONSE PRIORITY",
-        val: `${effectiveTier} (${effectiveScore}/100)`,
-        sub: decision ? `Confidence: ${decision.confidence.level}` : "Analytical Screening",
-        color: bannerColor,
-      },
-      {
-        label: "PRIMARY HAZARD DRIVER",
-        val: primaryHazard,
-        sub: hazard?.redZone.primaryDriverReason ? hazard.redZone.primaryDriverReason.slice(0, 30) + "..." : "Dominant Physical Risk",
-        color: "#B91C1C",
-      },
-      {
-        label: "TERRAIN & ELEVATION",
-        val: context.terrain?.elevationMeters !== null && context.terrain?.elevationMeters !== undefined ? `${context.terrain.elevationMeters} m MSL` : "Available",
-        sub: context.terrain?.slopeDegrees ? `${context.terrain.slopeDegrees}° Slope Relief` : "Copernicus DEM 90m",
-        color: "#0369A1",
-      },
-      {
-        label: "RIVER BASIN & HYDROLOGY",
-        val: context.hydrology?.basin ?? "Regional Basin",
-        sub: context.hydrology?.nearestRiver ? `River: ${context.hydrology.nearestRiver}` : "CWC Network",
-        color: "#0D9488",
-      },
-      {
-        label: "VERIFIED SAFE HAVEN",
-        val: decision?.relocationAssessment.bestCandidate?.name ? decision.relocationAssessment.bestCandidate.name.slice(0, 18) : "District Facility",
-        sub: decision?.routingAssessment.distanceKm ? `${decision.routingAssessment.distanceKm} km · Verified Road` : "OSM / DDMA Indexed",
-        color: "#15803D",
-      },
-    ];
-
-    metricsData.forEach((m, idx) => {
-      const col = idx % 3;
-      const row = Math.floor(idx / 3);
-      const mx = leftMargin + col * (cardW + gap);
-      const my = curY + row * (cardH + 7);
-
-      doc.roundedRect(mx, my, cardW, cardH, 6).fill("#F1F5F9").lineWidth(0.8).strokeColor("#CBD5E1").stroke();
-      doc.font("Helvetica-Bold").fontSize(6.5).fillColor("#64748B").text(m.label, mx + 8, my + 6, { width: cardW - 16 });
-      doc.font("Helvetica-Bold").fontSize(11).fillColor(m.color).text(m.val, mx + 8, my + 17, { width: cardW - 16 });
-      doc.font("Helvetica").fontSize(6.5).fillColor("#64748B").text(m.sub, mx + 8, my + 32, { width: cardW - 16 });
-    });
-
-    // 4. Canonical Decision Intelligence & Triage Rationale
-    curY = 302;
-    doc.font("Helvetica-Bold").fontSize(11).fillColor("#0F172A").text("Executive Decision Intelligence & Triage Rationale", leftMargin, curY);
-
-    curY += 16;
-    const triageBoxH = decision ? 134 : 100;
-    doc.roundedRect(leftMargin, curY, usableWidth, triageBoxH, 8).fill("#F8FAFC").lineWidth(1).strokeColor("#CBD5E1").stroke();
-
-    doc.font("Helvetica-Bold").fontSize(9.5).fillColor("#0F172A").text(
-      decision
-        ? `Triage Rationale: ${location.name} assigned ${decision.responsePriority.priorityLevel} Priority Tier`
-        : `Triage Context: ${location.name} (${screening.riskLevel} Screening Level)`,
-      leftMargin + 12,
-      curY + 10,
-      { width: usableWidth - 24 }
-    );
-
-    const rationaleText = decision?.explanation.whyThisPriority ?? `${screening.hazardContext} ${screening.populationContext}`;
-    doc.font("Helvetica").fontSize(8.5).fillColor("#334155").text(rationaleText, leftMargin + 12, curY + 25, {
-      width: usableWidth - 24,
-      lineGap: 2.5,
-    });
-
-    if (decision) {
-      // 5-Component Response Priority Breakdown Bar
-      const compY = curY + 62;
-      doc.font("Helvetica-Bold").fontSize(7.5).fillColor("#475569").text("Audited 5-Component Response Breakdown (0–100):", leftMargin + 12, compY);
-
-      const comps = [
-        { label: "Hazard Severity", val: decision.responsePriority.components.hazardSeverity.normalizedValue, max: 30, color: "#DC2626" },
-        { label: "Pop Exposure", val: decision.responsePriority.components.populationExposure.normalizedValue, max: 20, color: "#EA580C" },
-        { label: "Vulnerability", val: decision.responsePriority.components.vulnerability.normalizedValue, max: 20, color: "#4F46E5" },
-        { label: "Capacity Deficit", val: decision.responsePriority.components.capacityDeficit.normalizedValue, max: 15, color: "#059669" },
-        { label: "Accessibility", val: decision.responsePriority.components.accessibility.normalizedValue, max: 15, color: "#0284C7" },
-      ];
-
-      const barW = (usableWidth - 24 - 4 * 6) / 5;
-      comps.forEach((c, ci) => {
-        const cx = leftMargin + 12 + ci * (barW + 6);
-        doc.roundedRect(cx, compY + 12, barW, 28, 4).fill("#FFFFFF").lineWidth(0.8).strokeColor("#E2E8F0").stroke();
-        doc.font("Helvetica-Bold").fontSize(6.5).fillColor("#64748B").text(c.label, cx + 4, compY + 16, { width: barW - 8, align: "center" });
-        doc.font("Helvetica-Bold").fontSize(9.5).fillColor(c.color).text(`${c.val}/${c.max}`, cx + 4, compY + 26, { width: barW - 8, align: "center" });
-      });
-
-      // Operational Directive
-      const directive = decision.explanation.policyActionRecommendation ?? "Initiate standard district disaster management protocol.";
-      doc.font("Helvetica-Bold").fontSize(7.5).fillColor("#0F172A").text(`Recommended Action: `, leftMargin + 12, compY + 46);
-      doc.font("Helvetica").fontSize(7.5).fillColor("#1E293B").text(directive, leftMargin + 105, compY + 46, { width: usableWidth - 120 });
-    }
-
-    // 5. Live Environmental Snapshot
-    curY += triageBoxH + 16;
-    doc.font("Helvetica-Bold").fontSize(11).fillColor("#0F172A").text("Live Atmospheric & Meteorological Telemetry", leftMargin, curY);
-
-    curY += 16;
-    doc.roundedRect(leftMargin, curY, usableWidth, 54, 8).fill("#F0FDF4").lineWidth(1).strokeColor("#BBF7D0").stroke();
-
-    const tempStr = safeText(environment.temperatureC) !== "Unavailable" ? `${environment.temperatureC}°C` : "Unavailable";
-    const feelStr = environment.apparentTemperatureC !== null && environment.apparentTemperatureC !== undefined ? `${environment.apparentTemperatureC}°C` : tempStr;
-    const precipStr = safeText(environment.precipitationMm) !== "Unavailable" ? `${environment.precipitationMm} mm` : "0 mm";
-    const aqiStr = environment.usAqi !== null ? `AQI ${environment.usAqi}` : "Unavailable";
-    const pm25Str = environment.pm25 !== null ? `${environment.pm25} µg/m³` : "Unavailable";
-    const statusStr = environment.status ?? "Live Telemetry Active";
-
-    doc.font("Helvetica-Bold").fontSize(8.5).fillColor("#166534").text(`Weather Status: ${statusStr}`, leftMargin + 12, curY + 8);
-    doc.font("Helvetica").fontSize(8).fillColor("#1E293B").text(
-      `Temperature: ${tempStr} (Feels ${feelStr})  ·  Precipitation: ${precipStr}  ·  Air Quality: ${aqiStr} (PM2.5: ${pm25Str})`,
-      leftMargin + 12,
-      curY + 22,
-      { width: usableWidth - 24 }
-    );
-    doc.font("Helvetica").fontSize(7).fillColor("#64748B").text(
-      `Source: ${environment.source}  ·  Observed At: ${environment.observedAt ? new Date(environment.observedAt).toLocaleString("en-IN") : "Runtime Feed"}`,
-      leftMargin + 12,
-      curY + 36,
-      { width: usableWidth - 24 }
-    );
-
-    // 6. Forensic Evidence & Agency Baseline Bar
-    curY += 66;
-    doc.roundedRect(leftMargin, curY, usableWidth, 42, 6).fill("#F1F5F9").lineWidth(0.8).strokeColor("#CBD5E1").stroke();
-    doc.font("Helvetica-Bold").fontSize(7.5).fillColor("#334155").text("AUTHORITATIVE DATA BASELINE AUDIT:", leftMargin + 10, curY + 8);
-    doc.font("Helvetica").fontSize(7).fillColor("#475569").text(
-      "Boundaries: Survey of India / OSM  ·  Population: Census of India 2011  ·  Terrain: Copernicus GLO-90 DEM\n" +
-      "Seismic: BIS IS 1893:2016  ·  Hydrology: CWC Gauges  ·  Landslides: ISRO Bhuvan / GSI NLSM  ·  Weather: IMD / Open-Meteo",
-      leftMargin + 10,
-      curY + 20,
-      { width: usableWidth - 20, lineGap: 2.5 }
-    );
-
-    // ══════════════════════════════════════════════════════════════════════════
-    // PAGE 2: GEOSPATIAL MAPPING & MULTI-HAZARD DOMAIN BASELINE
-    // ══════════════════════════════════════════════════════════════════════════
+    // ── Build all 7 pages ──
+    buildPage1(doc, context, generatedAt);
     doc.addPage();
-    curY = 44;
-
-    doc.font("Helvetica-Bold").fontSize(14).fillColor("#0F172A").text("Geospatial Extent & Multi-Hazard Baseline", leftMargin, curY);
-    doc.font("Helvetica").fontSize(8.5).fillColor("#64748B").text(
-      "High-precision cartographic mapping of administrative extent and authoritative domain vulnerability ratings.",
-      leftMargin,
-      curY + 18
-    );
-
-    curY += 34;
-    // Render Map
-    const mapH = 260;
-    renderExtentMap(doc, context, leftMargin, curY, usableWidth, mapH);
-
-    curY += mapH + 12;
-
-    // Location Coordinates & Geographical Limits Box
-    const boundsBox = location.boundingBox;
-    doc.roundedRect(leftMargin, curY, usableWidth, 46, 6).fill("#F8FAFC").lineWidth(1).strokeColor("#E2E8F0").stroke();
-
-    doc.font("Helvetica-Bold").fontSize(8).fillColor("#0F172A").text("EXACT GEOGRAPHICAL COORDINATES & BOUNDS:", leftMargin + 12, curY + 8);
-    doc.font("Helvetica").fontSize(7.5).fillColor("#334155").text(
-      `Centroid: ${location.latitude.toFixed(5)}°N, ${location.longitude.toFixed(5)}°E  ·  Category: ${location.category} Extent\n` +
-      `Bounding Extent: North: ${boundsBox ? boundsBox[2].toFixed(4) : "—"}°N, South: ${boundsBox ? boundsBox[0].toFixed(4) : "—"}°N, ` +
-      `East: ${boundsBox ? boundsBox[3].toFixed(4) : "—"}°E, West: ${boundsBox ? boundsBox[1].toFixed(4) : "—"}°E  ·  CRS: EPSG:4326 (WGS 84)`,
-      leftMargin + 12,
-      curY + 20,
-      { width: usableWidth - 24, lineGap: 2 }
-    );
-
-    curY += 56;
-
-    // Multi-Hazard Domain Matrix (4 Structured Panels)
-    doc.font("Helvetica-Bold").fontSize(11).fillColor("#0F172A").text("Authoritative Multi-Hazard Domain Matrix", leftMargin, curY);
-    curY += 16;
-
-    const domainW = (usableWidth - gap) / 2;
-    const domainH = 68;
-
-    const domains = [
-      {
-        title: "BIS IS 1893:2016 Seismic Zone",
-        val: hazard?.seismic ? `${hazard.seismic.zone} (Zone Factor Z=${hazard.seismic.zoneFactor})` : "BIS Regulatory Baseline",
-        desc: hazard?.seismic?.description ?? "Seismic zone classification per national building code (IS 1893).",
-        src: "Bureau of Indian Standards (BIS)",
-        color: "#7C3AED",
-      },
-      {
-        title: "ISRO / GSI Landslide Susceptibility",
-        val: hazard?.landslide?.districtRank ? `District Rank #${hazard.landslide.districtRank} in India` : "Low / Moderate Susceptibility",
-        desc: hazard?.landslide?.susceptibilityClass ? `Macro susceptibility: ${hazard.landslide.susceptibilityClass}. Slope & lithology model.` : "National Landslide Susceptibility Mapping (NLSM).",
-        src: "ISRO Atlas 2023 / GSI",
-        color: "#B45309",
-      },
-      {
-        title: "CWC Riverine Floodplain & Gauges",
-        val: hazard?.flood?.nearestCwcGauge?.stationName ? `Gauge: ${hazard.flood.nearestCwcGauge.stationName}` : (context.hydrology?.basin ? `${context.hydrology.basin} Basin` : "Floodplain Baseline"),
-        desc: context.hydrology?.floodplainIndicator ? "⚠ Situated in active riverine floodplain corridor." : "Outside immediate severe floodplain inundation zone.",
-        src: "Central Water Commission (CWC)",
-        color: "#0284C7",
-      },
-      {
-        title: "IMD / IBTrACS Coastal & Cyclone",
-        val: hazard?.cyclone?.coastalVulnerabilityClass ?? "Inland / Moderate Wind Zone",
-        desc: hazard?.cyclone?.historicalTracksCount ? `${hazard.cyclone.historicalTracksCount} historical cyclone tracks within 100km buffer.` : "Historical cyclone track buffer per IMD records.",
-        src: "IMD / NOAA IBTrACS",
-        color: "#0D9488",
-      },
-    ];
-
-    domains.forEach((d, di) => {
-      const col = di % 2;
-      const row = Math.floor(di / 2);
-      const dx = leftMargin + col * (domainW + gap);
-      const dy = curY + row * (domainH + 8);
-
-      doc.roundedRect(dx, dy, domainW, domainH, 6).fill("#F8FAFC").lineWidth(0.8).strokeColor("#CBD5E1").stroke();
-      doc.font("Helvetica-Bold").fontSize(8).fillColor(d.color).text(d.title, dx + 10, dy + 8, { width: domainW - 20 });
-      doc.font("Helvetica-Bold").fontSize(9).fillColor("#0F172A").text(d.val, dx + 10, dy + 20, { width: domainW - 20 });
-      doc.font("Helvetica").fontSize(7).fillColor("#475569").text(d.desc, dx + 10, dy + 34, { width: domainW - 20, lineGap: 1.5 });
-      doc.font("Helvetica-Bold").fontSize(6.5).fillColor("#64748B").text(`Source: ${d.src}`, dx + 10, dy + 54, { width: domainW - 20 });
-    });
-
-    // ══════════════════════════════════════════════════════════════════════════
-    // PAGE 3: RELOCATION CORRIDOR, CAPACITY & HABITATIONS
-    // ══════════════════════════════════════════════════════════════════════════
+    buildPage2(doc, context, generatedAt);
     doc.addPage();
-    curY = 44;
-
-    doc.font("Helvetica-Bold").fontSize(14).fillColor("#0F172A").text("Relocation Intelligence & Carrying Capacity", leftMargin, curY);
-    doc.font("Helvetica").fontSize(8.5).fillColor("#64748B").text(
-      "Verified turn-by-turn road evacuation routes, safe haven facilities, and habitation exposure details.",
-      leftMargin,
-      curY + 18
-    );
-
-    curY += 34;
-
-    // 1. Evacuation Corridor Card
-    const bestCand = decision?.relocationAssessment.bestCandidate;
-    const routing = decision?.routingAssessment;
-    const originHab = decision?.exposureAssessment.selectedOriginHabitation;
-
-    doc.roundedRect(leftMargin, curY, usableWidth, 120, 8).fill("#F0FDF4").lineWidth(1).strokeColor("#BBF7D0").stroke();
-
-    doc.font("Helvetica-Bold").fontSize(10).fillColor("#166534").text("PS191 VERIFIED EVACUATION ROAD CORRIDOR", leftMargin + 12, curY + 10);
-
-    // Origin Box
-    const origBoxW = (usableWidth - 36) / 2;
-    doc.roundedRect(leftMargin + 12, curY + 26, origBoxW, 52, 6).fill("#FEF2F2").lineWidth(0.8).strokeColor("#FECACA").stroke();
-    doc.font("Helvetica-Bold").fontSize(7.5).fillColor("#B91C1C").text("📍 RED ZONE ORIGIN HABITATION", leftMargin + 20, curY + 32);
-    doc.font("Helvetica-Bold").fontSize(9).fillColor("#0F172A").text(originHab?.name ?? `${location.name} Habitation`, leftMargin + 20, curY + 44, { width: origBoxW - 16 });
-    doc.font("Helvetica").fontSize(7).fillColor("#64748B").text(
-      `Exposure: ${originHab?.exposureLevel ?? effectiveTier}  ·  Census Pop: ${originHab?.population !== null && originHab?.population !== undefined ? originHab.population.toLocaleString("en-IN") : "Unverified"}`,
-      leftMargin + 20,
-      curY + 58
-    );
-
-    // Destination Box
-    const destX = leftMargin + 12 + origBoxW + 12;
-    doc.roundedRect(destX, curY + 26, origBoxW, 52, 6).fill("#FFFFFF").lineWidth(0.8).strokeColor("#86EFAC").stroke();
-    doc.font("Helvetica-Bold").fontSize(7.5).fillColor("#15803D").text("🟢 GREEN ZONE SAFE HAVEN", destX + 8, curY + 32);
-    doc.font("Helvetica-Bold").fontSize(9).fillColor("#0F172A").text(bestCand?.name ?? "District Safe Haven Relief Centre", destX + 8, curY + 44, { width: origBoxW - 16 });
-    doc.font("Helvetica").fontSize(7).fillColor("#64748B").text(
-      `Role: ${bestCand?.facilityRole ? String(bestCand.facilityRole).replace(/_/g, " ") : "Emergency Shelter"}  ·  Safety: ${decision?.relocationAssessment.destinationSafety.destinationSafetyStatus ?? "SAFE"}`,
-      destX + 8,
-      curY + 58
-    );
-
-    // Road Routing Footer
-    doc.font("Helvetica-Bold").fontSize(8).fillColor("#0F172A").text(
-      `Road Navigation: ${routing?.distanceKm ? `${routing.distanceKm} km` : "Calculated Corridor"}  ·  Estimated Transit: ~${routing?.durationMinutes ? `${routing.durationMinutes} min` : "30 min"}  ·  Status: ${routing?.status ? String(routing.status).replace(/_/g, " ") : "VERIFIED ROADWAY"}`,
-      leftMargin + 12,
-      curY + 86
-    );
-    doc.font("Helvetica").fontSize(7).fillColor("#475569").text(
-      routing?.sourceNote ?? "Turn-by-turn road network routing via OpenStreetMap and OSRM engine. Bypasses active flood/landslide hazards.",
-      leftMargin + 12,
-      curY + 98,
-      { width: usableWidth - 24 }
-    );
-
-    curY += 134;
-
-    // 2. Carrying Capacity & Facility Transparency
-    doc.font("Helvetica-Bold").fontSize(11).fillColor("#0F172A").text("Carrying Capacity & Facility Infrastructure Audit", leftMargin, curY);
-    curY += 16;
-
-    const catInfra = context.categorizedInfrastructure;
-    const hospCount = catInfra?.hospitals.length ?? infrastructure.items.filter(i => i.type.toLowerCase().includes("hospital")).length;
-    const shelterCount = catInfra?.shelters.length ?? infrastructure.items.filter(i => i.type.toLowerCase().includes("shelter")).length;
-    const emergCount = catInfra?.emergencyFacilities.length ?? infrastructure.items.filter(i => i.type.toLowerCase().includes("fire") || i.type.toLowerCase().includes("police")).length;
-    const totalCount = catInfra?.totalCount ?? infrastructure.items.length;
-
-    doc.roundedRect(leftMargin, curY, usableWidth, 76, 6).fill("#F8FAFC").lineWidth(0.8).strokeColor("#CBD5E1").stroke();
-
-    doc.font("Helvetica-Bold").fontSize(8.5).fillColor("#0F172A").text(`Mapped Facilities in Screening Extent (${totalCount} Total):`, leftMargin + 12, curY + 8);
-
-    const fStats = [
-      { label: "EMERGENCY SHELTERS", count: shelterCount, desc: "Designated evacuation points", color: "#16A34A" },
-      { label: "RELIEF / COMMUNITY", count: emergCount, desc: "Secondary staging centers", color: "#D97706" },
-      { label: "HOSPITALS & CLINICS", count: hospCount, desc: "⚠ Medical Support Only", color: "#0284C7" },
-    ];
-
-    const fStatW = (usableWidth - 24 - 16) / 3;
-    fStats.forEach((fs, fsi) => {
-      const fx = leftMargin + 12 + fsi * (fStatW + 8);
-      doc.roundedRect(fx, curY + 22, fStatW, 44, 4).fill("#FFFFFF").lineWidth(0.6).strokeColor("#E2E8F0").stroke();
-      doc.font("Helvetica-Bold").fontSize(11).fillColor(fs.color).text(`${fs.count}`, fx + 8, curY + 28);
-      doc.font("Helvetica-Bold").fontSize(7).fillColor("#334155").text(fs.label, fx + 28, curY + 30);
-      doc.font("Helvetica").fontSize(6.5).fillColor("#64748B").text(fs.desc, fx + 8, curY + 48);
-    });
-
-    curY += 88;
-
-    // 3. Exposed Habitations Table
-    doc.font("Helvetica-Bold").fontSize(11).fillColor("#0F172A").text("Exposed Habitations & Settlement Analysis", leftMargin, curY);
-    curY += 16;
-
-    const habitationsList = hazard?.exposedHabitations ?? [];
-
-    if (habitationsList.length > 0) {
-      doc.roundedRect(leftMargin, curY, usableWidth, 22, 4).fill("#E2E8F0");
-      doc.font("Helvetica-Bold").fontSize(7.5).fillColor("#475569").text("HABITATION / VILLAGE", leftMargin + 10, curY + 7);
-      doc.font("Helvetica-Bold").fontSize(7.5).fillColor("#475569").text("HAZARD EXPOSURE", leftMargin + 190, curY + 7);
-      doc.font("Helvetica-Bold").fontSize(7.5).fillColor("#475569").text("DISTANCE TO HAZARD", leftMargin + 320, curY + 7);
-      doc.font("Helvetica-Bold").fontSize(7.5).fillColor("#475569").text("CENSUS POPULATION", leftMargin + 410, curY + 7);
-
-      curY += 24;
-      habitationsList.slice(0, 6).forEach((hab: any, hi: number) => {
-        const rowBg = hi % 2 === 0 ? "#F8FAFC" : "#FFFFFF";
-        doc.roundedRect(leftMargin, curY, usableWidth, 22, 3).fill(rowBg);
-        doc.font("Helvetica-Bold").fontSize(8).fillColor("#0F172A").text(hab.name ?? `Habitation ${hi + 1}`, leftMargin + 10, curY + 6, { width: 175 });
-        doc.font("Helvetica").fontSize(7.5).fillColor("#B91C1C").text(hab.hazardType ?? primaryHazard, leftMargin + 190, curY + 6, { width: 120 });
-        doc.font("Helvetica").fontSize(7.5).fillColor("#334155").text(`${Math.round(hab.distanceToHazardKm ?? 0)} km`, leftMargin + 320, curY + 6);
-        doc.font("Helvetica-Bold").fontSize(7.5).fillColor("#0F172A").text(hab.population !== null && hab.population !== undefined ? Number(hab.population).toLocaleString("en-IN") : "Census unverified", leftMargin + 410, curY + 6);
-        curY += 24;
-      });
-    } else {
-      doc.roundedRect(leftMargin, curY, usableWidth, 42, 6).fill("#F8FAFC").lineWidth(0.8).strokeColor("#CBD5E1").stroke();
-      doc.font("Helvetica-Bold").fontSize(8.5).fillColor("#0F172A").text("Population Context & Habitation Screening:", leftMargin + 12, curY + 8);
-      doc.font("Helvetica").fontSize(7.5).fillColor("#475569").text(
-        screening.populationContext || "Location-level population resolved from official 2011 Census administrative mapping. No high-risk isolated habitations reported within immediate screening buffer.",
-        leftMargin + 12,
-        curY + 22,
-        { width: usableWidth - 24, lineGap: 2 }
-      );
-      curY += 52;
-    }
-
-    // ══════════════════════════════════════════════════════════════════════════
-    // PAGE 4: DETAILED METEOROLOGICAL FORECAST & PROVENANCE AUDIT
-    // ══════════════════════════════════════════════════════════════════════════
+    buildPage3(doc, context, generatedAt);
     doc.addPage();
-    curY = 44;
-
-    doc.font("Helvetica-Bold").fontSize(14).fillColor("#0F172A").text("Meteorological Forecast & Provenance Audit", leftMargin, curY);
-    doc.font("Helvetica").fontSize(8.5).fillColor("#64748B").text(
-      "Five-day weather outlook, predictive impact analysis, and complete multi-agency data provenance registry.",
-      leftMargin,
-      curY + 18
-    );
-
-    curY += 34;
-
-    // 1. 5-Day Forecast Table
-    doc.font("Helvetica-Bold").fontSize(11).fillColor("#0F172A").text("Five-Day Numerical Weather Prediction Outlook", leftMargin, curY);
-    curY += 16;
-
-    if (environment.forecast && environment.forecast.length > 0) {
-      doc.roundedRect(leftMargin, curY, usableWidth, 24, 4).fill("#0B1E2D");
-      doc.font("Helvetica-Bold").fontSize(7.5).fillColor("#FFFFFF").text("DATE", leftMargin + 12, curY + 8);
-      doc.font("Helvetica-Bold").fontSize(7.5).fillColor("#FFFFFF").text("TEMPERATURE RANGE", leftMargin + 110, curY + 8);
-      doc.font("Helvetica-Bold").fontSize(7.5).fillColor("#FFFFFF").text("PRECIPITATION PROB / SUM", leftMargin + 250, curY + 8);
-      doc.font("Helvetica-Bold").fontSize(7.5).fillColor("#FFFFFF").text("MAX WIND / GUSTS", leftMargin + 395, curY + 8);
-
-      curY += 26;
-      environment.forecast.slice(0, 5).forEach((day, index) => {
-        const rowBg = index % 2 === 0 ? "#F8FAFC" : "#FFFFFF";
-        doc.roundedRect(leftMargin, curY, usableWidth, 26, 3).fill(rowBg).lineWidth(0.5).strokeColor("#E2E8F0").stroke();
-
-        let dateStr = day.date;
-        try {
-          dateStr = new Date(`${day.date}T00:00:00`).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
-        } catch {}
-
-        doc.font("Helvetica-Bold").fontSize(8).fillColor("#0F172A").text(dateStr, leftMargin + 12, curY + 8);
-        doc.font("Helvetica").fontSize(8).fillColor("#334155").text(`${safeText(day.temperatureMinC)}°C – ${safeText(day.temperatureMaxC)}°C`, leftMargin + 110, curY + 8);
-        doc.font("Helvetica").fontSize(8).fillColor("#0284C7").text(`${safeText(day.precipitationProbability)}% (${safeText(day.precipitationSumMm)} mm)`, leftMargin + 250, curY + 8);
-        doc.font("Helvetica").fontSize(8).fillColor("#475569").text(`${safeText(day.windSpeedMaxKph)} km/h (Gust ${safeText(day.windGustMaxKph)})`, leftMargin + 395, curY + 8);
-
-        curY += 28;
-      });
-    } else {
-      doc.roundedRect(leftMargin, curY, usableWidth, 42, 6).fill("#FFFBEB").lineWidth(0.8).strokeColor("#FDE68A").stroke();
-      doc.font("Helvetica-Bold").fontSize(8.5).fillColor("#92400E").text("Forecast Telemetry Status", leftMargin + 12, curY + 8);
-      doc.font("Helvetica").fontSize(8).fillColor("#78350F").text("Real-time numeric weather prediction is updating. Historical and baseline atmospheric stress models applied.", leftMargin + 12, curY + 22);
-      curY += 52;
-    }
-
-    curY += 10;
-
-    // 2. Comprehensive Data Provenance & Agency Registry Table
-    doc.font("Helvetica-Bold").fontSize(11).fillColor("#0F172A").text("Authoritative Multi-Agency Data Provenance & Audit Registry", leftMargin, curY);
-    curY += 16;
-
-    const provTable = [
-      { domain: "Administrative Boundaries", agency: "Survey of India / Bharat Maps", std: "OFFICIAL", scale: "1:50,000 ADM2 Vector" },
-      { domain: "Demographics & Population", agency: "Office of the Registrar General (Census 2011)", std: "OFFICIAL", scale: "Village / Ward Resolution" },
-      { domain: "Digital Elevation & Terrain", agency: "Copernicus GLO-90 DEM (ESA)", std: "VERIFIED", scale: "90m Ground Resolution" },
-      { domain: "Seismic Hazard Zonation", agency: "Bureau of Indian Standards (IS 1893:2016)", std: "OFFICIAL", scale: "National Seismic Zonation" },
-      { domain: "Geology & Tectonic Faults", agency: "Geological Survey of India (Bhukosh)", std: "OFFICIAL", scale: "1:2,000,000 Vector" },
-      { domain: "River Monitoring & Gauges", agency: "Central Water Commission (CWC)", std: "OFFICIAL", scale: "Telemetry Hydrographs" },
-      { domain: "Landslide Susceptibility", agency: "ISRO NRSC / Geological Survey of India", std: "OFFICIAL", scale: "147 Hilly Districts Index" },
-      { domain: "Atmospheric & Radar Telemetry", agency: "India Meteorological Dept / Open-Meteo", std: "LIVE FEED", scale: "Hourly NWP Grid" },
-      { domain: "Roadway Network & Routing", agency: "OpenStreetMap Foundation / OSRM Engine", std: "OPEN/AUDIT", scale: "Turn-by-turn Roadway" },
-    ];
-
-    doc.roundedRect(leftMargin, curY, usableWidth, 20, 3).fill("#1E293B");
-    doc.font("Helvetica-Bold").fontSize(7).fillColor("#FFFFFF").text("DOMAIN CATEGORY", leftMargin + 8, curY + 6);
-    doc.font("Helvetica-Bold").fontSize(7).fillColor("#FFFFFF").text("AUTHORITATIVE REGULATORY AGENCY", leftMargin + 155, curY + 6);
-    doc.font("Helvetica-Bold").fontSize(7).fillColor("#FFFFFF").text("STANDARD", leftMargin + 370, curY + 6);
-    doc.font("Helvetica-Bold").fontSize(7).fillColor("#FFFFFF").text("SCALE / RESOLUTION", leftMargin + 425, curY + 6);
-
-    curY += 22;
-    provTable.forEach((p, pi) => {
-      const rowBg = pi % 2 === 0 ? "#F8FAFC" : "#FFFFFF";
-      doc.roundedRect(leftMargin, curY, usableWidth, 18, 2).fill(rowBg);
-      doc.font("Helvetica-Bold").fontSize(7).fillColor("#0F172A").text(p.domain, leftMargin + 8, curY + 5);
-      doc.font("Helvetica").fontSize(7).fillColor("#334155").text(p.agency, leftMargin + 155, curY + 5);
-      doc.font("Helvetica-Bold").fontSize(6.5).fillColor(p.std === "OFFICIAL" ? "#16A34A" : "#0284C7").text(p.std, leftMargin + 370, curY + 5);
-      doc.font("Helvetica").fontSize(6.5).fillColor("#64748B").text(p.scale, leftMargin + 425, curY + 5);
-      curY += 19;
-    });
-
-    curY += 8;
-
-    // 3. Operational Directives & Forensic Disclaimer
-    doc.roundedRect(leftMargin, curY, usableWidth, 60, 6).fill("#F1F5F9").lineWidth(0.8).strokeColor("#CBD5E1").stroke();
-    doc.font("Helvetica-Bold").fontSize(7.5).fillColor("#0F172A").text("OPERATIONAL DECISION DIRECTIVE & DISCLAIMER:", leftMargin + 10, curY + 8);
-    doc.font("Helvetica").fontSize(7).fillColor("#475569").text(
-      "1. Confirm administrative boundary and target triage extent before mobilizing field evacuation vehicles.\n" +
-      "2. Field reconnaissance by local DDMA / SDMA is mandatory to verify shelter physical structural capacity.\n" +
-      "3. In the event of conflicting nowcast telemetry, authoritative IMD / CWC emergency alerts supersede automated models.\n" +
-      "4. This report constitutes decision-support intelligence generated by DIVA ResQ Engine V3.1. Zero fabricated data.",
-      leftMargin + 10,
-      curY + 20,
-      { width: usableWidth - 20, lineGap: 2.2 }
-    );
-
-    // ══════════════════════════════════════════════════════════════════════════
-    // RUNNING HEADERS & FOOTERS (Page Numbers)
-    // ══════════════════════════════════════════════════════════════════════════
-    const pages = doc.bufferedPageRange();
-    for (let page = 0; page < pages.count; page++) {
-      doc.switchToPage(page);
-
-      // Running Header (Pages 2+)
-      if (page > 0) {
-        doc.font("Helvetica").fontSize(6.8).fillColor("#94A3B8").text(
-          `DIVA / RESQ DECISION REPORT  ·  ${location.name} (${location.category})  ·  ${effectiveTier} TIER`,
-          leftMargin,
-          24,
-          { width: usableWidth }
-        );
-        doc.moveTo(leftMargin, 34).lineTo(leftMargin + usableWidth, 34).strokeColor("#E2E8F0").lineWidth(0.6).stroke();
-      }
-
-      // Running Footer (All Pages)
-      doc.moveTo(leftMargin, 804).lineTo(leftMargin + usableWidth, 804).strokeColor("#E2E8F0").lineWidth(0.6).stroke();
-      doc.font("Helvetica").fontSize(7).fillColor("#64748B").text(
-        `DIVA & ResQ Intelligence Platform  ·  Location: ${location.name}  ·  Page ${page + 1} of ${pages.count}`,
-        leftMargin,
-        812,
-        { width: usableWidth, align: "center" }
-      );
-    }
+    buildPage4(doc, context, generatedAt);
+    doc.addPage();
+    buildPage5(doc, context, generatedAt);
+    doc.addPage();
+    buildPage6(doc, context, generatedAt);
+    doc.addPage();
+    buildPage7(doc, context, generatedAt);
 
     doc.end();
   });

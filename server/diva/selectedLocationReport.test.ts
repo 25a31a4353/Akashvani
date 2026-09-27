@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { generatedReports } from "../../drizzle/schema";
 import { buildSelectedLocationPdf, extractBoundaryRings, SELECTED_LOCATION_RISK_COLORS } from "./selectedLocationReport";
+import { computeCanonicalDecision } from "./decision/pipeline";
+import { buildMultiHazardProfile } from "./hazards/engine";
 
 const context = {
   location: {
@@ -85,4 +87,55 @@ describe("selected-location PDF reporting", () => {
     expect(pdf.subarray(0, 4).toString()).toBe("%PDF");
     expect(pdf.length).toBeGreaterThan(7_000);
   });
+
+  it("renders a 7-page professional decision report when full canonical decision is supplied", async () => {
+    const loc = {
+      id: "cal-kl-way",
+      name: "Wayanad",
+      displayName: "Wayanad, Kerala, India",
+      category: "District" as const,
+      latitude: 11.6854,
+      longitude: 76.132,
+      population: 817420,
+      populationSource: "Census of India 2011",
+      boundingBox: [11.45, 75.9, 11.95, 76.35] as [number, number, number, number],
+      boundary: null,
+      address: { state: "Kerala", district: "Wayanad" },
+      source: "Census 2011 & Survey of India",
+    };
+
+    const hazardProfile = buildMultiHazardProfile({
+      locationName: "Wayanad",
+      latitude: 11.6854,
+      longitude: 76.132,
+      stateCode: "KL",
+      district: "Wayanad",
+      slopeDegrees: 34,
+      elevationMeters: 920,
+    });
+
+    const decision = await computeCanonicalDecision({
+      location: loc,
+      hazardProfile,
+      evidenceCoverage: {
+        availableCount: 7,
+        totalCount: 8,
+        coverageRatio: 0.88,
+        label: "7 / 8 evidence categories available",
+        categories: [],
+      },
+    });
+
+    const fullContext = {
+      ...context,
+      location: loc,
+      hazardProfile,
+      decision,
+    };
+
+    const pdf = await buildSelectedLocationPdf(fullContext);
+    expect(pdf.subarray(0, 4).toString()).toBe("%PDF");
+    expect(pdf.length).toBeGreaterThan(15_000);
+  });
 });
+
