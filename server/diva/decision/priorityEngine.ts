@@ -112,8 +112,10 @@ export function evaluatePriorityV2(
 
   // ── 5. Accessibility Component (0–15) ─────────────────────────────────────
   // Higher score = poorer accessibility / greater evacuation challenge
-  let aNorm = 5; // Default baseline
-  if (accessibility.status === "CONSTRAINED") {
+  let aNorm = 0;
+  if (!accessibility.roadAccessVerified) {
+    aNorm = 0; // Not scored when road routing is unavailable
+  } else if (accessibility.status === "CONSTRAINED") {
     aNorm = 12;
   } else if (accessibility.status === "ACCESSIBLE") {
     aNorm = 3;
@@ -127,8 +129,8 @@ export function evaluatePriorityV2(
     maxWeight: 15,
     contribution: aNorm,
     source: accessibility.evidence,
-    method: "Road network travel time & terrain obstacle index (0-15)",
-    uncertainty: accessibility.roadAccessVerified ? "OSRM road graph verified" : "Straight-line proxy baseline",
+    method: accessibility.roadAccessVerified ? "Road network travel time & terrain obstacle index (0-15)" : "Zero-neutral: road routing unavailable",
+    uncertainty: accessibility.roadAccessVerified ? "OSRM road graph verified" : "Road route unavailable (Not scored)",
   };
 
   // ── Total Composite Priority Score ─────────────────────────────────────────
@@ -146,7 +148,7 @@ export function evaluatePriorityV2(
   // Priority Level Classification
   let priorityLevel: ResQResponsePriority["priorityLevel"];
   const criticalDataMissing =
-    exposure.populationValue === null && !capacity.capacityVerified;
+    exposure.populationValue === null || !capacity.capacityVerified;
 
   if (criticalDataMissing) {
     priorityLevel = "UNKNOWN";
@@ -158,7 +160,12 @@ export function evaluatePriorityV2(
     priorityLevel = "LOW";
   }
 
-  const formulaExplanation = `Priority Score ${priorityScore}/100 = Hazard Severity (${hNorm}/30) + Population Exposure (${pNorm}/20) + Vulnerability (${vNorm}/20) + Capacity Deficit (${cNorm}/15) + Accessibility Constraint (${aNorm}/15). Classified as ${priorityLevel} priority.`;
+  const pStr = exposure.populationValue !== null ? `${pNorm}/20` : "NOT SCORED — DATA UNAVAILABLE";
+  const vStr = vulnerability.vulnerabilityScore !== null ? `${vNorm}/20` : "NOT SCORED — DATA UNAVAILABLE";
+  const cStr = capacity.capacityVerified ? `${cNorm}/15` : "NOT SCORED — DATA UNAVAILABLE";
+  const aStr = accessibility.roadAccessVerified ? `${aNorm}/15` : "NOT SCORED — ROUTE UNAVAILABLE";
+
+  const formulaExplanation = `Priority Score ${priorityScore}/100 = Hazard Severity (${hNorm}/30) + Population Exposure (${pStr}) + Vulnerability (${vStr}) + Capacity Deficit (${cStr}) + Accessibility Constraint (${aStr}). Classified as ${priorityLevel} priority.`;
 
   return {
     priorityLevel,

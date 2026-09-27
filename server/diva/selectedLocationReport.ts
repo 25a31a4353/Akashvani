@@ -309,7 +309,7 @@ function drawPageHeader(doc: PdfDocument, locationName: string, pageNum: number)
   doc.save();
   doc.rect(MARGIN, MARGIN, USABLE_W, 16).fill(PALETTE.brandBlue);
   doc.font("Helvetica-Bold").fontSize(7.5).fillColor("#FFFFFF")
-    .text("RESQ — Location Decision Context & Triage Report (v4.2)", MARGIN + 8, MARGIN + 4.5);
+    .text("RESQ REPORT ENGINE V3.2  |  Report Schema Version: 3.2", MARGIN + 8, MARGIN + 4.5);
   doc.font("Helvetica").fontSize(7).fillColor("#CBD5E1")
     .text(`${locationName}  |  Page ${pageNum} of ${TOTAL_PAGES}`, MARGIN, MARGIN + 4.5, { width: USABLE_W - 8, align: "right" });
   doc.restore();
@@ -320,7 +320,7 @@ function drawPageFooter(doc: PdfDocument, generatedAt: string): void {
   const fy = PAGE_H - MARGIN - 12;
   doc.moveTo(MARGIN, fy).lineTo(MARGIN + USABLE_W, fy).lineWidth(0.5).strokeColor(PALETTE.border).stroke();
   doc.font("Helvetica").fontSize(6.5).fillColor(PALETTE.faint)
-    .text("CONFIDENTIAL — FOR OPERATIONAL & TECHNICAL REVIEW ONLY  |  WGS84 / EPSG:4326  |  ResQ Disaster Intelligence Engine V3.2", MARGIN, fy + 4);
+    .text("RESQ REPORT ENGINE V3.2  |  Report Schema Version: 3.2  |  Report Generator: selectedLocationReport.ts", MARGIN, fy + 4);
   doc.font("Helvetica").fontSize(6.5).fillColor(PALETTE.faint)
     .text(`Report Generated: ${generatedAt}`, MARGIN, fy + 4, { width: USABLE_W, align: "right" });
   doc.restore();
@@ -397,9 +397,9 @@ function buildPage1(doc: PdfDocument, context: IndiaLocationContext, generatedAt
   // Title Block
   doc.save();
   doc.rect(MARGIN, y, USABLE_W, 56).fill(PALETTE.brandBlue);
-  doc.font("Helvetica-Bold").fontSize(18).fillColor("#FFFFFF").text("RESQ", MARGIN + 12, y + 8);
-  doc.font("Helvetica").fontSize(8.5).fillColor("#94A3B8").text("Location Decision Context & Triage Report (v4.2)", MARGIN + 12, y + 27);
-  doc.font("Helvetica-Bold").fontSize(7.5).fillColor("#94A3B8").text("SIH Problem Statement 191  |  Disaster Intelligence & Decision Support Platform", MARGIN + 12, y + 41);
+  doc.font("Helvetica-Bold").fontSize(18).fillColor("#FFFFFF").text("RESQ REPORT ENGINE V3.2", MARGIN + 12, y + 8);
+  doc.font("Helvetica").fontSize(8.5).fillColor("#94A3B8").text("Location Decision Context & Triage Report (Schema Version: 3.2)", MARGIN + 12, y + 27);
+  doc.font("Helvetica-Bold").fontSize(7.5).fillColor("#94A3B8").text("Report Generator: selectedLocationReport.ts  |  SIH PS191  |  Disaster Intelligence Platform", MARGIN + 12, y + 41);
 
   // Response Priority Badge (Top-Right)
   const priLevel = decision?.responsePriority.priorityLevel ?? screening.priority.toUpperCase();
@@ -426,7 +426,7 @@ function buildPage1(doc: PdfDocument, context: IndiaLocationContext, generatedAt
   const coordMeaning = resolveCoordinateMeaning(location.category);
 
   // Bounds display logic
-  let boundsStr = "Administrative bounds: UNAVAILABLE (centroid reference only)";
+  let boundsStr = "Administrative bounds: UNAVAILABLE";
   if (location.boundingBox && Array.isArray(location.boundingBox) && location.boundingBox.length === 4) {
     const bb = location.boundingBox;
     boundsStr = `N: ${bb[2].toFixed(4)}°N  |  S: ${bb[0].toFixed(4)}°N  |  E: ${bb[3].toFixed(4)}°E  |  W: ${bb[1].toFixed(4)}°E`;
@@ -435,6 +435,9 @@ function buildPage1(doc: PdfDocument, context: IndiaLocationContext, generatedAt
   }
 
   const locRows: KVRow[] = [
+    { key: "Report Engine", value: "RESQ REPORT ENGINE V3.2", provenanceType: "OFFICIAL", provenanceLabel: "V3.2" },
+    { key: "Report Schema Version", value: "3.2", provenanceType: "OFFICIAL", provenanceLabel: "3.2" },
+    { key: "Report Generator", value: "selectedLocationReport.ts", provenanceType: "OFFICIAL", provenanceLabel: "CANONICAL" },
     { key: "Location Name", value: location.displayName || location.name, valueColor: PALETTE.brandAccent },
     { key: "Assessment Level", value: assessLevel, valueColor: PALETTE.brandBlue },
     { key: "Administrative Hierarchy", value: adminHierarchy },
@@ -959,7 +962,7 @@ function buildPage5(doc: PdfDocument, context: IndiaLocationContext, generatedAt
   }
 
   const infraRows: KVRow[] = [
-    { key: "Total Facilities Discovered", value: `${totalFac} facilities`, provenanceType: "OBSERVED", provenanceLabel: "OSM" },
+    { key: "Mapped Facilities in Screening Extent", value: totalFac === 0 ? "0 facilities (None inside screening extent)" : `${totalFac} facilities`, provenanceType: totalFac > 0 ? "OBSERVED" : "UNAVAILABLE", provenanceLabel: totalFac > 0 ? "OSM" : "0 MAPPED" },
     { key: "Eligible Relocation Shelters", value: `${shelterCount} shelters / schools / community halls`, provenanceType: "OBSERVED", provenanceLabel: "OSM" },
     { key: "Medical Facilities (Role Gated)", value: `${hospCount} hospitals / clinics (EXCLUDED from mass sheltering — triage support only)`, provenanceType: "OFFICIAL", provenanceLabel: "GATED" },
     { key: "Spatial Extent Verification", value: facScopeNote },
@@ -1018,7 +1021,7 @@ function buildPage6(doc: PdfDocument, context: IndiaLocationContext, generatedAt
   drawPageFooter(doc, generatedAt);
 
   let y = MARGIN + 22;
-  const { decision, location } = context;
+  const { decision, infrastructure, location } = context;
 
   y = sectionHeading(doc, "6. DESTINATION ASSESSMENT & ROAD EVACUATION ROUTE", MARGIN, y, USABLE_W);
 
@@ -1026,11 +1029,12 @@ function buildPage6(doc: PdfDocument, context: IndiaLocationContext, generatedAt
   const dest = reloc?.bestCandidate;
   const destSafety = reloc?.destinationSafety;
   const routing = decision?.routingAssessment;
+  const screeningFacCount = decision?.capacityAssessment?.totalNearbyFacilities ?? infrastructure.items.length;
 
   // 6A: Destination Safety Gating
   y = subHeading(doc, "6A. Destination Candidate & Hazard Conflict Validation", MARGIN, y, USABLE_W);
 
-  let destSafetyLabel = "SAFETY UNKNOWN / UNSCREENED";
+  let destSafetyLabel = "CANDIDATE DESTINATION (SAFETY UNKNOWN / UNSCREENED)";
   let destSafetyColor: string = PALETTE.unknown;
   if (destSafety?.destinationSafetyStatus === "SAFE") {
     destSafetyLabel = "VERIFIED SAFE (Outside active hazard extents)";
@@ -1047,8 +1051,14 @@ function buildPage6(doc: PdfDocument, context: IndiaLocationContext, generatedAt
     ? `${formatCoord(dest.latitude, "lat")}, ${formatCoord(dest.longitude, "lon")}`
     : "UNAVAILABLE";
 
+  const destDisplayName = dest
+    ? (screeningFacCount === 0 && location.category === "State"
+        ? `${dest.name} (DISTRICT-LEVEL CANDIDATE FACILITY — OUTSIDE CURRENT SCREENING EXTENT)`
+        : dest.name)
+    : "No candidate facility identified";
+
   const destRows: KVRow[] = [
-    { key: "Candidate Destination", value: dest?.name ?? "No candidate facility identified", valueColor: dest ? PALETTE.body : PALETTE.high },
+    { key: "Candidate Destination", value: destDisplayName, valueColor: dest ? PALETTE.body : PALETTE.high },
     { key: "Facility Role", value: dest?.facilityRole ?? "SHELTER" },
     { key: "Destination Coordinates", value: destCoordsStr },
     { key: "Destination Safety Status", value: destSafetyLabel, valueColor: destSafetyColor },
@@ -1067,11 +1077,11 @@ function buildPage6(doc: PdfDocument, context: IndiaLocationContext, generatedAt
   const routeIsReal = Boolean(routing?.isRoadRoute && routing.distanceKm !== null);
   const routeDistStr = routeIsReal && routing?.distanceKm !== null && routing?.distanceKm !== undefined
     ? `${routing.distanceKm.toFixed(2)} km`
-    : "UNAVAILABLE (Road route unavailable)";
+    : "UNAVAILABLE";
 
   const routeDurStr = routeIsReal && routing?.durationMinutes !== null && routing?.durationMinutes !== undefined
     ? `${Math.floor(routing.durationMinutes / 60)}h ${Math.round(routing.durationMinutes % 60)}min`
-    : "UNAVAILABLE (No travel time without valid road route)";
+    : "UNAVAILABLE";
 
   const routeTypeStr = routeIsReal
     ? "OSRM road-network graph traversal (Verified road centerline geometry)"
@@ -1080,12 +1090,12 @@ function buildPage6(doc: PdfDocument, context: IndiaLocationContext, generatedAt
   const routeRows: KVRow[] = [
     { key: "Origin Point", value: `${location.displayName || location.name} (${formatCoord(location.latitude, "lat")}, ${formatCoord(location.longitude, "lon")})` },
     { key: "Destination Point", value: dest ? `${dest.name} (${destCoordsStr})` : "UNAVAILABLE" },
-    { key: "Road Route Status", value: routeIsReal ? "ROAD_ROUTE_VERIFIED" : "ROAD_ROUTING_UNAVAILABLE", valueColor: routeIsReal ? PALETTE.safe : PALETTE.high },
+    { key: "Road Route Status", value: routeIsReal ? "ROAD_ROUTE_VERIFIED" : "ROAD ROUTING UNAVAILABLE", valueColor: routeIsReal ? PALETTE.safe : PALETTE.high },
     { key: "Road Distance", value: routeDistStr, valueColor: routeIsReal ? PALETTE.body : PALETTE.high, provenanceType: routeIsReal ? "DERIVED" : "UNAVAILABLE", provenanceLabel: routeIsReal ? "OSRM" : "UNAVAILABLE" },
     { key: "Estimated Travel Time", value: routeDurStr, valueColor: routeIsReal ? PALETTE.body : PALETTE.high },
     { key: "Route Classification", value: routeTypeStr },
-    { key: "Route Status Badge", value: routing?.displayBadge ?? "ROAD_ROUTING_UNAVAILABLE" },
-    { key: "Geometry Validation", value: routing?.validation.geometryExists ? "Centerline geometry verified" : "No geometry returned" },
+    { key: "Route Status Badge", value: routing?.displayBadge ?? "ROAD ROUTING UNAVAILABLE" },
+    { key: "Geometry Validation", value: routeIsReal ? "Centerline geometry verified" : "NONE" },
     { key: "Source & Routing Engine", value: routing?.sourceNote ?? "Project OSRM / OpenStreetMap India road network" },
   ];
 
@@ -1164,7 +1174,7 @@ function buildPage7(doc: PdfDocument, context: IndiaLocationContext, generatedAt
       max: 20,
       color: PALETTE.moderate,
       isScored: decision.exposureAssessment.populationValue !== null,
-      displayValue: decision.exposureAssessment.populationValue !== null ? `${pri.components.populationExposure.normalizedValue} / 20` : "NOT SCORED — DATA UNAVAILABLE (Max: 20)",
+      displayValue: decision.exposureAssessment.populationValue !== null ? `${pri.components.populationExposure.normalizedValue} / 20` : "NOT SCORED — DATA UNAVAILABLE",
       statusNote: decision.exposureAssessment.populationValue !== null ? `${pri.components.populationExposure.source}` : "No population resolved at this spatial level (Unknown is not 0)",
     },
     {
@@ -1173,7 +1183,7 @@ function buildPage7(doc: PdfDocument, context: IndiaLocationContext, generatedAt
       max: 20,
       color: "#7C3AED",
       isScored: decision.vulnerabilityAssessment.vulnerabilityScore !== null,
-      displayValue: decision.vulnerabilityAssessment.vulnerabilityScore !== null ? `${pri.components.vulnerability.normalizedValue} / 20` : "DATA INSUFFICIENT (Max: 20)",
+      displayValue: decision.vulnerabilityAssessment.vulnerabilityScore !== null ? `${pri.components.vulnerability.normalizedValue} / 20` : "NOT SCORED — DATA UNAVAILABLE",
       statusNote: decision.vulnerabilityAssessment.demographicDataAvailable ? "Demographic factors available" : "Demographic data unverified",
     },
     {
@@ -1182,7 +1192,7 @@ function buildPage7(doc: PdfDocument, context: IndiaLocationContext, generatedAt
       max: 15,
       color: PALETTE.safe,
       isScored: decision.capacityAssessment.capacityVerified,
-      displayValue: decision.capacityAssessment.capacityVerified ? `${pri.components.capacityDeficit.normalizedValue} / 15` : "NOT SCORED — DATA UNAVAILABLE (Max: 15)",
+      displayValue: decision.capacityAssessment.capacityVerified ? `${pri.components.capacityDeficit.normalizedValue} / 15` : "NOT SCORED — DATA UNAVAILABLE",
       statusNote: decision.capacityAssessment.capacityVerified ? "Official capacity verified" : "Shelter capacity unverified from field registers (Not 0)",
     },
     {
@@ -1191,7 +1201,7 @@ function buildPage7(doc: PdfDocument, context: IndiaLocationContext, generatedAt
       max: 15,
       color: PALETTE.brandAccent,
       isScored: decision.routingAssessment.isRoadRoute,
-      displayValue: decision.routingAssessment.isRoadRoute ? `${pri.components.accessibility.normalizedValue} / 15` : "NOT SCORED — ROUTE UNAVAILABLE (Max: 15)",
+      displayValue: decision.routingAssessment.isRoadRoute ? `${pri.components.accessibility.normalizedValue} / 15` : "NOT SCORED — ROUTE UNAVAILABLE",
       statusNote: decision.routingAssessment.isRoadRoute ? "OSRM road route verified" : "Road route unavailable (Straight line distance is not a road)",
     },
   ];
@@ -1217,9 +1227,14 @@ function buildPage7(doc: PdfDocument, context: IndiaLocationContext, generatedAt
   const priStatusTitle = pri.criticalDataMissing
     ? `RESPONSE PRIORITY: UNKNOWN  (Reference Component Score: ${pri.priorityScore} / 100)`
     : `RESPONSE PRIORITY: ${pri.priorityLevel}  (Composite Score: ${pri.priorityScore} / 100)`;
+  const popSub = decision.exposureAssessment.populationValue !== null ? `${pri.components.populationExposure.normalizedValue}/20` : "NOT SCORED";
+  const vulnSub = decision.vulnerabilityAssessment.vulnerabilityScore !== null ? `${pri.components.vulnerability.normalizedValue}/20` : "NOT SCORED";
+  const capSub = decision.capacityAssessment.capacityVerified ? `${pri.components.capacityDeficit.normalizedValue}/15` : "NOT SCORED";
+  const accSub = decision.routingAssessment.isRoadRoute ? `${pri.components.accessibility.normalizedValue}/15` : "NOT SCORED";
+
   const priSubText = pri.criticalDataMissing
-    ? "OPERATIONAL STATUS: DATA INSUFFICIENT FOR DEFINITIVE TRIAGE — Critical exposure & verified capacity data are unavailable."
-    : `FORMULATION: Total = Hazard (${pri.components.hazardSeverity.normalizedValue}/30) + Population (${pri.components.populationExposure.normalizedValue}/20) + Vulnerability (${pri.components.vulnerability.normalizedValue}/20) + Capacity (${pri.components.capacityDeficit.normalizedValue}/15) + Accessibility (${pri.components.accessibility.normalizedValue}/15).`;
+    ? "OPERATIONAL STATUS: DATA INSUFFICIENT FOR DEFINITIVE TRIAGE — Critical exposure & verified capacity data are unavailable. Unscored components are excluded from calculation."
+    : `FORMULATION: Total = Hazard (${pri.components.hazardSeverity.normalizedValue}/30) + Population (${popSub}) + Vulnerability (${vulnSub}) + Capacity (${capSub}) + Accessibility (${accSub}).`;
 
   doc.font("Helvetica-Bold").fontSize(8.5).fillColor(pri.criticalDataMissing ? PALETTE.derived : PALETTE.ink).text(priStatusTitle, MARGIN + 10, y + 6);
   doc.font("Helvetica").fontSize(6.5).fillColor(PALETTE.body).text(priSubText, MARGIN + 10, y + 18, { width: USABLE_W - 20 });
@@ -1357,11 +1372,11 @@ function buildPage8(doc: PdfDocument, context: IndiaLocationContext, generatedAt
 
   // 8D: Legal & Operational Notice
   doc.save();
-  doc.roundedRect(MARGIN, y, USABLE_W, 36, 4).fill("#FEF2F2").lineWidth(0.6).strokeColor("#FCA5A5").stroke();
+  doc.roundedRect(MARGIN, y, USABLE_W, 40, 4).fill("#FEF2F2").lineWidth(0.6).strokeColor("#FCA5A5").stroke();
   doc.font("Helvetica-Bold").fontSize(7).fillColor("#991B1B").text("DECISION-SUPPORT NOTICE & STATUTORY DISCLAIMER", MARGIN + 8, y + 5);
-  doc.font("Helvetica").fontSize(6).fillColor("#7F1D1D")
+  doc.font("Helvetica").fontSize(5.8).fillColor("#7F1D1D")
     .text(
-      "This document is an automated decision-support report generated by the ResQ Disaster Intelligence Platform (SIH 2026 Problem Statement 191). " +
+      "This document is an automated decision-support report generated by RESQ REPORT ENGINE V3.2 (Report Schema Version: 3.2  |  Report Generator: selectedLocationReport.ts  |  SIH 2026 Problem Statement 191). " +
       "It is provided exclusively for operational triage and technical evaluation. It does NOT constitute a binding government directive or statutory evacuation order. " +
       "Authoritative incident control decisions remain the sole jurisdiction of the respective State Disaster Management Authority (SDMA) and District Disaster Management Authority (DDMA).",
       MARGIN + 8, y + 14, { width: USABLE_W - 16, lineGap: 1.5 }
@@ -1392,10 +1407,10 @@ export async function buildSelectedLocationPdf(context: IndiaLocationContext): P
         autoFirstPage: false,
         bufferPages: true,
         info: {
-          Title: `ResQ Decision Context — ${context.location.displayName || context.location.name}`,
-          Author: "ResQ Disaster Intelligence Platform (SIH 2026 / PS191)",
-          Subject: "Authoritative Location Decision Context & Triage Report (v4.2)",
-          Keywords: "Disaster Management, PS191, SIH2026, ResQ, Decision Support",
+          Title: `RESQ REPORT ENGINE V3.2 — ${context.location.displayName || context.location.name}`,
+          Author: "RESQ REPORT ENGINE V3.2",
+          Subject: "Report Schema Version: 3.2 | Report Generator: selectedLocationReport.ts",
+          Keywords: "RESQ REPORT ENGINE V3.2, Report Schema Version: 3.2, selectedLocationReport.ts, Disaster Management, PS191, SIH2026",
         },
       });
 

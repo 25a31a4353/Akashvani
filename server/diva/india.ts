@@ -172,7 +172,13 @@ async function enrichBoundary(location: IndiaLocation) {
   if (location.boundary) return location;
   try {
     const matches = await searchIndiaLocations(location.name);
-    const boundaryMatch = matches.find(item => item.boundary && Math.abs(item.latitude - location.latitude) < 1.2 && Math.abs(item.longitude - location.longitude) < 1.2);
+    const boundaryMatch = matches.find(
+      item =>
+        item.boundary &&
+        item.category === location.category &&
+        Math.abs(item.latitude - location.latitude) < 1.2 &&
+        Math.abs(item.longitude - location.longitude) < 1.2
+    );
     return boundaryMatch ? { ...location, boundary: boundaryMatch.boundary, boundingBox: boundaryMatch.boundingBox ?? location.boundingBox, source: `${location.source}; ${boundaryMatch.source}` } : location;
   } catch {
     return location;

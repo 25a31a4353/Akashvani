@@ -150,15 +150,28 @@ export async function computeCanonicalDecision(
     confidenceScore += 0.15;
     confidenceReasons.push("Empirical physical hazard spatial intersection confirmed");
   }
+  if (exposureAssessment.populationValue === null) {
+    confidenceScore -= 0.15;
+    confidenceReasons.push("Local population is unmeasured / unavailable at this spatial scale");
+  }
   if (!capacityAssessment.capacityVerified) {
-    confidenceReasons.push("Emergency facility capacity is unverified from OpenStreetMap geometry (marked null)");
+    confidenceScore -= 0.15;
+    confidenceReasons.push("Emergency facility capacity is unverified from official registers (marked null)");
   }
   if (!routingAssessment.isRoadRoute) {
+    confidenceScore -= 0.10;
     confidenceReasons.push("OSRM live road routing failed; route is geodesic proxy");
   }
 
-  const confidenceLevel =
-    confidenceScore >= 0.75 ? "HIGH" : confidenceScore >= 0.5 ? "MEDIUM" : "LOW";
+  confidenceScore = Math.max(0.1, Math.min(0.95, confidenceScore));
+
+  let confidenceLevel: "HIGH" | "MEDIUM" | "LOW" =
+    confidenceScore >= 0.75 ? "HIGH" : confidenceScore >= 0.45 ? "MEDIUM" : "LOW";
+
+  // HARD INVARIANT: Confidence cannot be HIGH if critical evidence (population/capacity) is missing
+  if (responsePriority.criticalDataMissing && confidenceLevel === "HIGH") {
+    confidenceLevel = "MEDIUM";
+  }
 
   const uncertaintyReasons: string[] = [];
   const missingDatasets: string[] = [];
