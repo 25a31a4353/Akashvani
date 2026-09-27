@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>ResQ PDF Visual Inspection</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <style>
+    body { background: #1e293b; color: white; font-family: sans-serif; padding: 20px; }
+    .page-container { margin-bottom: 30px; text-align: center; }
+    h2 { margin-bottom: 10px; }
+    canvas { box-shadow: 0 10px 25px rgba(0,0,0,0.5); background: white; max-width: 95%; height: auto; }
+  </style>
+</head>
+<body>
+  <h1>ResQ V3.2 Visual QA — Andhra Pradesh Production PDF</h1>
+  <div id="pages"></div>
+
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    async function loadPdf() {
+      const container = document.getElementById('pages');
+      // Fetch the fresh production downloaded PDF as arraybuffer
+      const res = await fetch('/fresh_production_downloaded.pdf');
+      const data = await res.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data }).promise;
+
+      console.log('Total pages:', pdf.numPages);
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const viewport = page.getViewport({ scale: 1.5 });
+        
+        const wrapper = document.createElement('div');
+        wrapper.className = 'page-container';
+        wrapper.id = 'page-wrapper-' + i;
+        
+        const title = document.createElement('h2');
+        title.textContent = 'Page ' + i + ' of ' + pdf.numPages;
+        wrapper.appendChild(title);
+
+        const canvas = document.createElement('canvas');
+        canvas.id = 'canvas-page-' + i;
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
+        wrapper.appendChild(canvas);
+        container.appendChild(wrapper);
+
+        const ctx = canvas.getContext('2d');
+        await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+        console.log('Rendered page', i);
+      }
+      document.body.setAttribute('data-rendered', 'true');
+    }
+
+    loadPdf().catch(console.error);
+  </script>
+</body>
+</html>
