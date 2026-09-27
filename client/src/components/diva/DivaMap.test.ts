@@ -77,7 +77,7 @@ describe("Zone Navigation Engine (Red & Orange Zones to Nearest Safe Haven)", ()
     expect(route.coordinates.length).toBeGreaterThan(2);
   });
 
-  it("computes dynamic safe haven and realistic curved road connection for any arbitrary red or orange zone across India", () => {
+  it("strictly enforces zero synthetic route fabrication for arbitrary zones until verified by OSRM", () => {
     // Arbitrary coordinates in East Godavari, AP
     const route = generateZoneNavigationRoute({
       name: "Godavari Lowland Habitation",
@@ -88,9 +88,10 @@ describe("Zone Navigation Engine (Red & Orange Zones to Nearest Safe Haven)", ()
     });
 
     expect(route.destinationLabel).toBeDefined();
-    expect(route.distanceKm).toBeGreaterThan(0);
-    expect(route.travelTimeMinutes).toBeGreaterThan(0);
-    expect(route.coordinates.length).toBe(9); // 8 steps = 9 points
+    // Invariant: No fabricated curves or synthetic polyline coordinates
+    expect(route.isRoadRoute).toBe(false);
+    expect(route.coordinates.length).toBe(0);
+    expect(route.routingStatus).toBe("ROAD_ROUTING_UNAVAILABLE");
     expect(route.originCoords).toEqual([82.2100, 16.9200]);
   });
 

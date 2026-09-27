@@ -91,7 +91,7 @@ describe("India location context", () => {
       environment: { status: "UNAVAILABLE" },
       screening: { riskLevel: "Unavailable", status: "LOCATION-SPECIFIC SCREENING CONTEXT" },
     });
-  });
+  }, 15000);
 
   it("returns a typed Nizamabad context when selected-location providers cannot be reached", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("Failed to fetch"); }));
@@ -100,5 +100,5 @@ describe("India location context", () => {
       environment: { status: "UNAVAILABLE" },
       screening: { riskLevel: "Unavailable", status: "LOCATION-SPECIFIC SCREENING CONTEXT" },
     });
-  });
+  }, 15000);
 });

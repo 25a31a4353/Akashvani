@@ -46,6 +46,7 @@ const primaryNavigation = navigation.slice(0, 4);
 const secondaryNavigation = navigation.slice(4);
 
 const initialLayers: Record<string, boolean> = {
+  placeLabels: true, // Progressive geographic place labels (OSM / CARTO)
   nationalStates: true,
   boundaries: true,
   population: false,

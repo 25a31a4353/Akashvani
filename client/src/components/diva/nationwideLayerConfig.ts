@@ -37,6 +37,7 @@ export const authoritativeHazardLayerControls = [
 ] as const;
 
 export const authoritativeHazardMapLayerVisibility = {
+  placeLabels: ["place-labels"],
   seismicOfficial: ["hazard-seismic-fill", "hazard-seismic-line"],
   cwcGauges: ["hazard-cwc-circle", "hazard-cwc-label"],
   floodPlains: ["hazard-floodplain-fill", "hazard-floodplain-line"],
@@ -59,6 +60,7 @@ export const auditedLayerGroups = [
   {
     label: "India Context",
     items: [
+      ["placeLabels", "Geographic place labels (OSM / CARTO)"],
       ["nationalStates", "States & union territories"],
       ["boundaries", "District boundary"],
       ["population", "Population density"],

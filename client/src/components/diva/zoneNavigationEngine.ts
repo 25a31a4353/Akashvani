@@ -40,6 +40,7 @@ export interface ZoneNavigationRoute {
   safeRole?: string;
   capacity?: number | null;
   capacityStatus?: "VERIFIED" | "ESTIMATED_REGISTRY" | "UNAVAILABLE";
+  safetyStatus?: "SAFE" | "CONDITIONAL" | "UNSAFE" | "UNKNOWN";
 }
 
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -261,6 +262,7 @@ export function generateZoneNavigationRoute(
         hazardType: origin.hazardType ?? "Critical Hazard Screening",
         safeRole: "Verified Safe Relocation Shelter",
         capacityStatus: "ESTIMATED_REGISTRY",
+        safetyStatus: "CONDITIONAL",
       };
     }
   }
@@ -270,36 +272,18 @@ export function generateZoneNavigationRoute(
   const destLat = destination.lat;
   const destLon = destination.lon;
 
-  const straightDist = haversineKm(origLat, origLon, destLat, destLon);
-  const roadDistKm = Math.round(Math.max(1.8, straightDist * 1.28) * 10) / 10;
-  const estMinutes = Math.max(5, Math.round((roadDistKm / 35) * 60));
-
-  // Synthesize provisional polyline with terrain curvature
-  const steps = 8;
-  const coords: number[][] = [];
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    const baseLon = origLon + t * (destLon - origLon);
-    const baseLat = origLat + t * (destLat - origLat);
-    const lateralDetour = Math.sin(t * Math.PI) * (straightDist > 5 ? 0.007 : 0.003);
-    const perpLon = -(destLat - origLat) * lateralDetour;
-    const perpLat = (destLon - origLon) * lateralDetour;
-    coords.push([
-      Math.round((baseLon + perpLon) * 100000) / 100000,
-      Math.round((baseLat + perpLat) * 100000) / 100000,
-    ]);
-  }
-
+  // When road corridor is not verified in advance, return unavailable status with empty coordinates
+  // Live OSRM call will asynchronously populate real turn-by-turn road geometry if available
   return {
     originLabel: `${origin.name} (${origin.classification} ZONE)`,
     destinationLabel: destination.name,
     originCoords: [origLon, origLat],
     destinationCoords: [destLon, destLat],
-    coordinates: coords,
-    distanceKm: roadDistKm,
-    travelTimeMinutes: estMinutes,
-    isRoadRoute: false, // Provisional geodesic until live OSRM confirms real road geometry
-    routingSource: "GEODESIC_DIRECT_PROVISIONAL",
+    coordinates: [], // Zero fabricated polyline coordinates
+    distanceKm: 0,
+    travelTimeMinutes: 0,
+    isRoadRoute: false,
+    routingSource: "UNAVAILABLE",
     routingStatus: "ROAD_ROUTING_UNAVAILABLE",
     timestamp,
     classification: origin.classification,
@@ -307,5 +291,6 @@ export function generateZoneNavigationRoute(
     safeRole: destination.role.replace(/_/g, " "),
     capacity: destination.capacity ?? null,
     capacityStatus: destination.capacityStatus ?? "UNAVAILABLE",
+    safetyStatus: "UNKNOWN",
   };
 }

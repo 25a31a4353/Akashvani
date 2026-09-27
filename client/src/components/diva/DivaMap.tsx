@@ -86,16 +86,30 @@ if (typeof window !== "undefined" && typeof (maplibregl as any).setWorkerUrl ===
     // ignore if already set
   }
 }
+const cartoLabelsTiles = [
+  "https://a.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}.png",
+  "https://b.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}.png",
+  "https://c.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}.png",
+  "https://d.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}.png"
+];
 const mapStyle: maplibregl.StyleSpecification = {
   version: 8,
   sources: {
     osm: { type: "raster", tiles: [osmTileUrl], tileSize: 256, maxzoom: MAP_MAX_ZOOM, attribution: "© OpenStreetMap contributors" },
-    satellite: { type: "raster", tiles: [satelliteTileUrl], tileSize: 256, maxzoom: MAP_MAX_ZOOM, attribution: "Tiles © Esri" }
+    satellite: { type: "raster", tiles: [satelliteTileUrl], tileSize: 256, maxzoom: MAP_MAX_ZOOM, attribution: "Tiles © Esri" },
+    placeLabels: {
+      type: "raster",
+      tiles: cartoLabelsTiles,
+      tileSize: 256,
+      maxzoom: MAP_MAX_ZOOM,
+      attribution: "© OpenStreetMap contributors, © CARTO"
+    }
   },
   layers: [
     { id: "background", type: "background", paint: { "background-color": "#0a1926" } },
     { id: "osm", type: "raster", source: "osm", layout: { "visibility": "none" }, paint: { "raster-opacity": 0.8 } },
-    { id: "satellite", type: "raster", source: "satellite", paint: { "raster-saturation": 0.08, "raster-contrast": 0.05, "raster-brightness-min": 0.0, "raster-brightness-max": 1.0, "raster-opacity": 1.0 } }
+    { id: "satellite", type: "raster", source: "satellite", paint: { "raster-saturation": 0.08, "raster-contrast": 0.05, "raster-brightness-min": 0.0, "raster-brightness-max": 1.0, "raster-opacity": 1.0 } },
+    { id: "place-labels", type: "raster", source: "placeLabels", layout: { "visibility": "visible" }, paint: { "raster-opacity": 0.95 } }
   ]
 };
 const riskColor = (score: number) => score >= 85 ? "#bd3034" : score >= 70 ? "#e66e2d" : score >= 50 ? "#d3a52d" : "#31825d";
@@ -117,6 +131,7 @@ function safeSetData(map: MapLibreMap, sourceId: string, data: unknown) {
 function setVisibility(map: MapLibreMap, id: string, enabled: boolean) { if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", enabled ? "visible" : "none"); }
 function applyLayers(map: MapLibreMap, layers: MapLayerState, opacity: number, baseStyle: "muted" | "terrain") {
   const layerMap: Array<[string, string]> = [
+    ["place-labels", "placeLabels"],
     ["population-points", "population"], ["boundary-line", "boundaries"], ["district-fill", "boundaries"],
     ["district-line", "boundaries"], ["selected-location-fill", "boundaries"], ["selected-location-line", "boundaries"],
     ["national-terrain", "terrain"], ["national-population", "population"],
@@ -125,9 +140,9 @@ function applyLayers(map: MapLibreMap, layers: MapLayerState, opacity: number, b
     ["national-state-line", "nationalStates"], ["national-state-label", "nationalStates"], ["national-weather-fill", "liveWeather"],
     ["national-weather-line", "liveWeather"], ["national-wind-symbol", "wind"], ["live-radar", "liveRadar"],
     ["hazard-redzone-fill", "redZones"], ["hazard-redzone-line", "redZones"], ["hazard-redzone-label", "redZones"],
-    ["hazard-seismic-fill", "seismicOfficial"], ["hazard-seismic-line", "seismicOfficial"],
+    ["hazard-seismic-fill", "seismicOfficial"], ["hazard-seismic-line", "seismicOfficial"], ["hazard-seismic-label", "seismicOfficial"],
     ["hazard-cwc-circle", "cwcGauges"], ["hazard-cwc-label", "cwcGauges"],
-    ["hazard-floodplain-fill", "floodPlains"], ["hazard-floodplain-line", "floodPlains"],
+    ["hazard-floodplain-fill", "floodPlains"], ["hazard-floodplain-line", "floodPlains"], ["hazard-floodplain-label", "floodPlains"],
     ["hazard-erosion-line", "erosionCorridors"],
     ["hazard-landslide-circle", "landslideEvents"], ["hazard-landslide-label", "landslideEvents"],
     ["hazard-cyclone-line", "cycloneTracks"], ["hazard-cyclone-label", "cycloneTracks"],
@@ -138,6 +153,7 @@ function applyLayers(map: MapLibreMap, layers: MapLayerState, opacity: number, b
     ["national-sensitivity-landslide-fill", "landslideSensitivity"], ["national-sensitivity-landslide-line", "landslideSensitivity"],
     ["national-sensitivity-flood-fill", "floodSensitivity"], ["national-sensitivity-flood-line", "floodSensitivity"],
     ["infrastructure-points", "infrastructure"],
+    ["active-marker", "redZones"], ["active-marker-label", "redZones"],
     ["relocation-corridor-base", "routes"], ["relocation-corridor-line", "routes"],
     ["relocation-route-glow", "routes"], ["relocation-route-casing", "routes"], ["relocation-route-line", "routes"],
     ["relocation-route-pulse", "routes"], ["relocation-midpoint-label", "routes"],
@@ -145,7 +161,10 @@ function applyLayers(map: MapLibreMap, layers: MapLayerState, opacity: number, b
     ["relocation-destination-halo", "routes"], ["relocation-route-destination", "routes"], ["relocation-destination-label", "routes"],
     ["relocation-sim-halo", "routes"], ["relocation-sim-vehicle", "routes"], ["relocation-sim-label", "routes"]
   ];
-  layerMap.forEach(([id, key]) => setVisibility(map, id, key === "routes" ? (layers[key] !== false) : Boolean(layers[key])));
+  layerMap.forEach(([id, key]) => {
+    const isVisible = key === "placeLabels" ? (layers[key] !== false) : key === "routes" ? (layers[key] !== false) : Boolean(layers[key]);
+    setVisibility(map, id, isVisible);
+  });
   ["hazard-fill", "landslide-fill", "hazard-redzone-fill", "hazard-floodplain-fill", "population-points"].forEach(id => {
     if (!map.getLayer(id)) return;
     map.setPaintProperty(id, id.endsWith("fill") ? "fill-opacity" : "circle-opacity", (id === "hazard-redzone-fill" ? 0.12 : id === "hazard-floodplain-fill" ? 0.14 : id.includes("hazard") || id.includes("landslide") ? 0.2 : 0.56) * opacity);
@@ -359,7 +378,7 @@ export function DivaMap({
     };
   }, [activeNavigation?.coordinates, simIndex]);
 
-  const currentNav = useMemo(() => {
+  const currentNav: ZoneNavigationRoute | null = useMemo(() => {
     if (activeNavigation) return activeNavigation;
     const active = data?.activeLocation;
     const canonicalDecision = active?.decision;
@@ -387,6 +406,8 @@ export function DivaMap({
         hazardType: canonicalMapState.primaryHazard,
         safeRole: canonicalMapState.destinationMarker?.role ?? "Safe Relocation Facility",
         capacity: canonicalMapState.destinationMarker?.capacity ?? null,
+        capacityStatus: canonicalMapState.destinationMarker?.capacity ? ("VERIFIED" as const) : ("UNAVAILABLE" as const),
+        safetyStatus: (canonicalMapState.destinationMarker?.safetyStatus as any) ?? (canonicalDecision?.relocationAssessment?.destinationSafety?.destinationSafetyStatus ?? "UNKNOWN"),
       };
     }
     if (data?.relocationRoute && data.relocationRoute.coordinates && data.relocationRoute.coordinates.length > 0) {
@@ -411,6 +432,9 @@ export function DivaMap({
         classification: "RED" as const,
         hazardType: data.relocationOrigin?.hazardType ?? "Critical Vulnerable Habitation",
         safeRole: data.relocationDestination?.role ?? "Safe Relocation Shelter",
+        capacity: (data.relocationDestination as any)?.capacity ?? null,
+        capacityStatus: (data.relocationDestination as any)?.capacity ? ("VERIFIED" as const) : ("UNAVAILABLE" as const),
+        safetyStatus: ((data.relocationDestination as any)?.safetyStatus as any) ?? "CONDITIONAL",
       };
     }
     return null;
@@ -423,32 +447,42 @@ export function DivaMap({
     const canonicalMapState = canonicalDecision?.mapState;
 
     const effectiveRoute = currentNav;
-    const routeCoords = effectiveRoute?.coordinates ?? [];
-    const midCoord = routeCoords.length > 1 ? routeCoords[Math.floor(routeCoords.length / 2)] : null;
+    const isRoadRouteVerified = Boolean(effectiveRoute?.isRoadRoute && effectiveRoute.coordinates && effectiveRoute.coordinates.length > 1);
+    const routeCoords = isRoadRouteVerified ? (effectiveRoute?.coordinates ?? []) : [];
+    const midCoord = isRoadRouteVerified && routeCoords.length > 1 ? routeCoords[Math.floor(routeCoords.length / 2)] : null;
+    
+    // Canonical Destination Safety and Capacity Note
+    const canonicalDestMarker = canonicalMapState?.destinationMarker;
+    const destSafetyStatus = (canonicalDestMarker?.safetyStatus ?? (data?.relocationDestination?.suitability === "PREFERRED" ? "SAFE" : "UNKNOWN")).toUpperCase();
+    const destCapacity = canonicalDestMarker?.capacity ?? effectiveRoute?.capacity ?? null;
+    const capacityText = destCapacity !== null && destCapacity !== undefined && Number(destCapacity) > 0
+      ? `Capacity: ~${Number(destCapacity).toLocaleString()} persons`
+      : "Capacity: UNKNOWN (Field Verification Required)";
+
     return {
       areas: { type: "FeatureCollection" as const, features: (active ? [] : data.areas).map(area => ({ type: "Feature" as const, properties: { ...area, markerColor: riskColor(area.hazardSeverity) }, geometry: { type: "Point" as const, coordinates: [area.longitude, area.latitude] } })) },
       selectedArea: { type: "FeatureCollection" as const, features: (!active ? data.areas.filter(area => area.id === selectedId) : []).map(area => ({ type: "Feature" as const, properties: { ...area }, geometry: { type: "Point" as const, coordinates: [area.longitude, area.latitude] } })) },
-      relocationRoute: effectiveRoute && routeCoords.length > 0 ? {
+      relocationRoute: isRoadRouteVerified ? {
         type: "FeatureCollection" as const,
         features: [{
           type: "Feature" as const,
           properties: {
-            destinationLabel: effectiveRoute.destinationLabel,
-            originLabel: effectiveRoute.originLabel,
-            distanceKm: effectiveRoute.distanceKm,
-            travelTimeMinutes: effectiveRoute.travelTimeMinutes,
-            isRoadRoute: effectiveRoute.isRoadRoute,
-            classification: effectiveRoute.classification,
+            destinationLabel: effectiveRoute?.destinationLabel ?? "Safe Relocation Haven",
+            originLabel: effectiveRoute?.originLabel ?? "Vulnerable Origin",
+            distanceKm: effectiveRoute?.distanceKm ?? null,
+            travelTimeMinutes: effectiveRoute?.travelTimeMinutes ?? null,
+            isRoadRoute: true,
+            classification: effectiveRoute?.classification ?? "ORANGE",
           },
           geometry: { type: "LineString" as const, coordinates: routeCoords }
         }]
       } : emptyCollection,
-      relocationMidpoint: effectiveRoute && midCoord ? {
+      relocationMidpoint: isRoadRouteVerified && midCoord && (effectiveRoute?.travelTimeMinutes ?? 0) > 0 ? {
         type: "FeatureCollection" as const,
         features: [{
           type: "Feature" as const,
           properties: {
-            label: `~${effectiveRoute.travelTimeMinutes} min (${effectiveRoute.distanceKm} km)`,
+            label: `~${effectiveRoute?.travelTimeMinutes} min (${effectiveRoute?.distanceKm} km)`,
           },
           geometry: { type: "Point" as const, coordinates: midCoord }
         }]
@@ -460,8 +494,10 @@ export function DivaMap({
           properties: {
             name: effectiveRoute.destinationLabel,
             role: effectiveRoute.safeRole ?? "Safe Relocation Facility",
-            suitability: "PREFERRED",
-            capacityNote: "Available safe shelter",
+            safetyStatus: destSafetyStatus,
+            suitability: destSafetyStatus === "SAFE" ? "PREFERRED" : destSafetyStatus === "CONDITIONAL" ? "CONDITIONAL" : "UNKNOWN",
+            capacityNote: capacityText,
+            markerColor: destSafetyStatus === "SAFE" ? "#16a34a" : destSafetyStatus === "CONDITIONAL" ? "#ea580c" : destSafetyStatus === "UNSAFE" ? "#dc2626" : "#f59e0b",
           },
           geometry: { type: "Point" as const, coordinates: effectiveRoute.destinationCoords }
         }]
@@ -479,7 +515,7 @@ export function DivaMap({
           geometry: { type: "Point" as const, coordinates: effectiveRoute.originCoords }
         }]
       } : emptyCollection,
-      relocationSim: simPoint ? {
+      relocationSim: simPoint && isRoadRouteVerified ? {
         type: "FeatureCollection" as const,
         features: [simPoint],
       } : emptyCollection,
@@ -490,6 +526,15 @@ export function DivaMap({
           properties: {
             id: active.location.id,
             name: active.location.name,
+            category: active.location.category,
+            categoryLabel: active.location.category === "State"
+              ? "STATE REFERENCE CENTROID"
+              : active.location.category === "District"
+              ? "DISTRICT REFERENCE CENTROID"
+              : active.location.category === "City"
+              ? "CITY LOCATION"
+              : "VILLAGE / HABITATION",
+            coordinatesFormatted: `${active.location.latitude.toFixed(4)}°N, ${active.location.longitude.toFixed(4)}°E`,
             priority: canonicalDecision?.recommendedAction?.tier ?? canonicalDecision?.responsePriority?.priorityLevel ?? active.screening.priority,
             riskScore: canonicalDecision?.responsePriority?.priorityScore ?? active.screening.riskScore,
             markerColor: canonicalMapState?.tierColor ?? riskColor(active.screening.riskScore ?? 50),
@@ -631,9 +676,10 @@ export function DivaMap({
       // Group 1: Base administrative boundaries and geographic context
       map.addLayer({ id: "national-state-fill", type: "fill", source: "states", paint: { "fill-color": "#cf4c3f", "fill-opacity": 0.035 } });
       map.addLayer({ id: "national-state-line", type: "line", source: "states", paint: { "line-color": "#24485a", "line-width": 1.15 } });
-      map.addLayer({ id: "national-state-label", type: "symbol", source: "states", layout: { "text-field": ["get", "stateName"], "text-size": 9 }, paint: { "text-color": "#153847", "text-halo-color": "#ffffff", "text-halo-width": 1.1 } });
+      map.addLayer({ id: "national-state-label", type: "symbol", source: "states", layout: { "text-field": ["get", "stateName"], "text-size": 9, "text-allow-overlap": false }, paint: { "text-color": "#153847", "text-halo-color": "#ffffff", "text-halo-width": 1.1 } });
       map.addLayer({ id: "district-fill", type: "fill", source: "districts", paint: { "fill-color": "transparent" } });
       map.addLayer({ id: "district-line", type: "line", source: "districts", paint: { "line-color": "#64748b", "line-width": 0.85, "line-opacity": 0.45 } });
+      map.addLayer({ minzoom: 6.5, maxzoom: 11, id: "district-label", type: "symbol", source: "districts", layout: { "text-field": ["coalesce", ["get", "districtName"], ["get", "name"], ""], "text-size": 10, "text-allow-overlap": false }, paint: { "text-color": "#cbd5e1", "text-halo-color": "#0b1d28", "text-halo-width": 2.2 } });
       map.addLayer({ id: "boundary-line", type: "line", source: "boundary", paint: { "line-color": "#a8d4b0", "line-width": 1.35, "line-dasharray": [3, 2] } });
       map.addLayer({ id: "selected-location-fill", type: "fill", source: "selected-location", paint: { "fill-color": "transparent", "fill-opacity": 0 } });
       map.addLayer({ id: "selected-location-line", type: "line", source: "selected-location", paint: { "line-color": "#f8fafc", "line-width": 2.0, "line-opacity": 0.85, "line-dasharray": [4, 2] } });
@@ -652,11 +698,13 @@ export function DivaMap({
       // Group 3: Macro authoritative hazard background fills
       map.addLayer({ id: "hazard-seismic-fill", type: "fill", source: "hazard-seismic", paint: { "fill-color": ["match", ["get", "zone"], "ZONE_V", "#9c27b0", "ZONE_IV", "#e91e63", "#ff9800"], "fill-opacity": 0.16 } });
       map.addLayer({ id: "hazard-seismic-line", type: "line", source: "hazard-seismic", paint: { "line-color": "#ab47bc", "line-width": 1.15 } });
+      map.addLayer({ minzoom: 5.5, maxzoom: 8.5, id: "hazard-seismic-label", type: "symbol", source: "hazard-seismic", layout: { "text-field": ["concat", "BIS IS 1893 SEISMIC ", ["get", "zone"]], "text-size": 9.5, "text-allow-overlap": false }, paint: { "text-color": "#86198f", "text-halo-color": "#ffffff", "text-halo-width": 1.6 } });
       
       // Actual authoritative CWC / riverine flood inundation corridor
       // Fill transparent to eliminate blue shade/wash; clean boundary stroke
       map.addLayer({ id: "hazard-floodplain-fill", type: "fill", source: "hazard-floodplains", paint: { "fill-color": "transparent", "fill-opacity": 0 } });
       map.addLayer({ id: "hazard-floodplain-line", type: "line", source: "hazard-floodplains", paint: { "line-color": "#38bdf8", "line-width": 1.2, "line-opacity": 0.45, "line-dasharray": [4, 2] } });
+      map.addLayer({ minzoom: 7, id: "hazard-floodplain-label", type: "symbol", source: "hazard-floodplains", layout: { "text-field": ["concat", "HISTORICAL FLOODPLAIN (NRSC): ", ["get", "name"]], "text-size": 8.5, "text-offset": [0, 1.2], "text-anchor": "top", "text-allow-overlap": false }, paint: { "text-color": "#0369a1", "text-halo-color": "#ffffff", "text-halo-width": 1.6 } });
       map.addLayer({ id: "hazard-fill", type: "fill", source: "hazards", layout: { "visibility": "none" }, filter: ["!=", ["get", "type"], "Landslide"], paint: { "fill-color": ["match", ["get", "level"], "Critical", "#d9534f", "High", "#e58b3a", "Moderate", "#edc856", "#e58b3a"], "fill-opacity": 0.2 } });
       map.addLayer({ id: "hazard-line", type: "line", source: "hazards", layout: { "visibility": "none" }, filter: ["!=", ["get", "type"], "Landslide"], paint: { "line-color": "#bc7041", "line-width": 1.2 } });
       map.addLayer({ id: "landslide-fill", type: "fill", source: "hazards", layout: { "visibility": "none" }, filter: ["==", ["get", "type"], "Landslide"], paint: { "fill-color": "#bd3034", "fill-opacity": 0.2 } });
@@ -667,21 +715,21 @@ export function DivaMap({
       // Note: GREEN classification on district polygons is suppressed to avoid misleading "safe zone" polygons
       map.addLayer({ id: "hazard-redzone-fill", type: "fill", source: "hazard-redzones", filter: ["!=", ["get", "classification"], "GREEN"], paint: { "fill-color": ["match", ["get", "classification"], "RED", "#dc2626", "ORANGE", "#ea580c", "YELLOW", "#eab308", "rgba(0,0,0,0)"], "fill-opacity": 0.12 } });
       map.addLayer({ id: "hazard-redzone-line", type: "line", source: "hazard-redzones", filter: ["!=", ["get", "classification"], "GREEN"], paint: { "line-color": ["match", ["get", "classification"], "RED", "#dc2626", "ORANGE", "#ea580c", "YELLOW", "#eab308", "rgba(0,0,0,0)"], "line-width": 2.2 } });
-      map.addLayer({ id: "hazard-redzone-label", type: "symbol", source: "hazard-redzones", filter: ["!=", ["get", "classification"], "GREEN"], layout: { "text-field": ["concat", ["get", "areaName"], " [", ["get", "classification"], " SCREENING]"], "text-size": 10.5, "text-offset": [0, 0], "text-anchor": "center" }, paint: { "text-color": ["match", ["get", "classification"], "RED", "#ffffff", "ORANGE", "#ffffff", "#ffffff"], "text-halo-color": ["match", ["get", "classification"], "RED", "#7f1d1d", "ORANGE", "#7c2d12", "#1e293b"], "text-halo-width": 2.4 } });
+      map.addLayer({ id: "hazard-redzone-label", type: "symbol", source: "hazard-redzones", filter: ["!=", ["get", "classification"], "GREEN"], layout: { "text-field": ["concat", ["get", "areaName"], " [", ["get", "classification"], " SCREENING]"], "text-size": 10.5, "text-offset": [0, 0], "text-anchor": "center", "text-allow-overlap": false }, paint: { "text-color": ["match", ["get", "classification"], "RED", "#ffffff", "ORANGE", "#ffffff", "#ffffff"], "text-halo-color": ["match", ["get", "classification"], "RED", "#7f1d1d", "ORANGE", "#7c2d12", "#1e293b"], "text-halo-width": 2.4 } });
 
       // Group 5: Linear hazards and background roads
       map.addLayer({ id: "roads", type: "line", source: "roads", layout: { "visibility": "none" }, paint: { "line-color": "#f3f7ef", "line-width": 1.35, "line-opacity": 0.82, "line-dasharray": [2.5, 2.5] } });
       map.addLayer({ id: "hazard-erosion-line", type: "line", source: "hazard-erosion", paint: { "line-color": "#d81b60", "line-width": 2.2, "line-dasharray": [2, 2] } });
       map.addLayer({ id: "hazard-cyclone-line", type: "line", source: "hazard-cyclones", paint: { "line-color": "#00897b", "line-width": 2.0, "line-dasharray": [3, 2] } });
-      map.addLayer({ id: "hazard-cyclone-label", type: "symbol", source: "hazard-cyclones", layout: { "text-field": ["get", "name"], "text-size": 9 }, paint: { "text-color": "#004d40", "text-halo-color": "#ffffff", "text-halo-width": 1 } });
+      map.addLayer({ id: "hazard-cyclone-label", type: "symbol", source: "hazard-cyclones", layout: { "text-field": ["concat", "CYCLONE TRACK: ", ["get", "name"]], "text-size": 8.5, "text-allow-overlap": false }, paint: { "text-color": "#004d40", "text-halo-color": "#ffffff", "text-halo-width": 1.2 } });
 
       // Group 6: Point features & facilities & infrastructure (underneath evacuation route) - Decluttered with minzoom
       map.addLayer({ minzoom: 5, id: "hazard-cwc-circle", type: "circle", source: "hazard-cwc", paint: { "circle-radius": 5.5, "circle-color": "#00acc1", "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.5 } });
-      map.addLayer({ minzoom: 8, id: "hazard-cwc-label", type: "symbol", source: "hazard-cwc", layout: { "text-field": ["get", "name"], "text-size": 9, "text-offset": [0, 1.2] }, paint: { "text-color": "#006064", "text-halo-color": "#ffffff", "text-halo-width": 1 } });
+      map.addLayer({ minzoom: 8, id: "hazard-cwc-label", type: "symbol", source: "hazard-cwc", layout: { "text-field": ["concat", "CWC GAUGE: ", ["get", "name"]], "text-size": 8.5, "text-offset": [0, 1.2], "text-allow-overlap": false }, paint: { "text-color": "#006064", "text-halo-color": "#ffffff", "text-halo-width": 1.2 } });
       map.addLayer({ minzoom: 5.5, id: "hazard-landslide-circle", type: "circle", source: "hazard-landslides", paint: { "circle-radius": 6.5, "circle-color": "#e53935", "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.8 } });
-      map.addLayer({ minzoom: 8.5, id: "hazard-landslide-label", type: "symbol", source: "hazard-landslides", layout: { "text-field": ["get", "name"], "text-size": 9, "text-offset": [0, 1.2] }, paint: { "text-color": "#b71c1c", "text-halo-color": "#ffffff", "text-halo-width": 1 } });
+      map.addLayer({ minzoom: 8.5, id: "hazard-landslide-label", type: "symbol", source: "hazard-landslides", layout: { "text-field": ["concat", "OBSERVED LANDSLIDE: ", ["get", "name"]], "text-size": 8.5, "text-offset": [0, 1.2], "text-allow-overlap": false }, paint: { "text-color": "#b71c1c", "text-halo-color": "#ffffff", "text-halo-width": 1.2 } });
       map.addLayer({ minzoom: 5, id: "hazard-habitation-circle", type: "circle", source: "hazard-habitations", paint: { "circle-radius": 5.5, "circle-color": "#fb8c00", "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.2 } });
-      map.addLayer({ minzoom: 8, id: "hazard-habitation-label", type: "symbol", source: "hazard-habitations", layout: { "text-field": ["get", "name"], "text-size": 8.5, "text-offset": [0, 1.2] }, paint: { "text-color": "#e65100", "text-halo-color": "#ffffff", "text-halo-width": 1 } });
+      map.addLayer({ minzoom: 8, id: "hazard-habitation-label", type: "symbol", source: "hazard-habitations", layout: { "text-field": ["get", "name"], "text-size": 8.5, "text-offset": [0, 1.2], "text-allow-overlap": false }, paint: { "text-color": "#e65100", "text-halo-color": "#ffffff", "text-halo-width": 1 } });
       
       // Evacuation Shelters & Relief Centres (excluding hospitals)
       map.addLayer({ minzoom: 6, id: "hazard-facility-circle", type: "circle", source: "hazard-facilities", filter: ["!=", ["get", "role"], "HOSPITAL_MEDICAL_SUPPORT"], paint: { "circle-radius": 6.5, "circle-color": ["match", ["get", "suitability"], "PREFERRED", "#15803d", "CONDITIONAL", "#ea580c", "UNSUITABLE", "#b91c1c", "#475569"], "circle-stroke-color": "#ffffff", "circle-stroke-width": 2 } });
@@ -697,14 +745,36 @@ export function DivaMap({
       map.addLayer({ id: "selected-area-core", type: "circle", source: "selected-area", paint: { "circle-radius": 7, "circle-color": "#ff4a4f", "circle-stroke-color": "#ffffff", "circle-stroke-width": 2.2 } });
       map.addLayer({ id: "assessment-labels", type: "symbol", source: "areas", layout: { "text-field": ["get", "name"], "text-size": 10, "text-offset": [0, 1.35], "text-anchor": "top" }, paint: { "text-color": "#ffffff", "text-halo-color": "#10232a", "text-halo-width": 1.4, "text-opacity": 0.92 } });
       map.addLayer({ id: "active-marker", type: "circle", source: "active-marker", paint: { "circle-radius": 9, "circle-color": ["coalesce", ["get", "markerColor"], "#1d788d"], "circle-stroke-color": "#ffffff", "circle-stroke-width": 2.3 } });
+      map.addLayer({
+        id: "active-marker-label",
+        type: "symbol",
+        source: "active-marker",
+        layout: {
+          "text-field": [
+            "concat",
+            "📍 ", ["get", "name"], "\n[", ["get", "categoryLabel"], "]\n",
+            ["get", "coordinatesFormatted"]
+          ],
+          "text-size": 10.5,
+          "text-offset": [0, -1.9],
+          "text-anchor": "bottom",
+          "text-justify": "center",
+          "text-line-height": 1.25
+        },
+        paint: {
+          "text-color": "#ffffff",
+          "text-halo-color": "#0b1d28",
+          "text-halo-width": 3.2
+        }
+      });
 
       // ── Group 7: GOOGLE MAPS NAVIGATION ROAD LINE (RED ZONE ➔ GREEN ZONE) ───────
-      // Layer A: Universal corridor baseline — renders ALL route types (road + planning corridor)
-      // Visible immediately even before OSRM responds; replaced visually by road layers when available.
+      // Layer A: Universal corridor baseline — ONLY rendered when isRoadRoute === true
       map.addLayer({
         id: "relocation-corridor-base",
         type: "line",
         source: "relocation-route",
+        filter: ["==", ["get", "isRoadRoute"], true],
         layout: { "line-join": "round", "line-cap": "round" },
         paint: { "line-color": "#0c4a6e", "line-width": 6.5, "line-opacity": 0.82, "line-dasharray": [4, 3] }
       });
@@ -712,6 +782,7 @@ export function DivaMap({
         id: "relocation-corridor-line",
         type: "line",
         source: "relocation-route",
+        filter: ["==", ["get", "isRoadRoute"], true],
         layout: { "line-join": "round", "line-cap": "round" },
         paint: { "line-color": "#38bdf8", "line-width": 3.5, "line-opacity": 0.88, "line-dasharray": [4, 3] }
       });
@@ -768,7 +839,7 @@ export function DivaMap({
         }
       });
 
-      // ── Group 8: RED ZONE ORIGIN & GREEN ZONE SAFE DESTINATION MARKERS ─────────
+      // ── Group 8: RED ZONE ORIGIN & SAFE / CANDIDATE DESTINATION MARKERS ─────────
       // Red Zone Origin Radar Halo & Marker
       map.addLayer({
         id: "relocation-origin-halo",
@@ -797,32 +868,62 @@ export function DivaMap({
         paint: { "text-color": "#ffffff", "text-halo-color": "#7f1d1d", "text-halo-width": 3.2 }
       });
 
-      // Green Zone Safe Destination Radar Halo & Marker
+      // Destination Radar Halo & Marker — Color and label reflect verified safety
       map.addLayer({
         id: "relocation-destination-halo",
         type: "circle",
         source: "relocation-destination",
-        paint: { "circle-radius": 20, "circle-color": "#22c55e", "circle-opacity": 0.28, "circle-stroke-color": "#16a34a", "circle-stroke-width": 2.0 }
+        paint: {
+          "circle-radius": 20,
+          "circle-color": ["match", ["get", "safetyStatus"], "SAFE", "#22c55e", "CONDITIONAL", "#ea580c", "UNSAFE", "#ef4444", "#f59e0b"],
+          "circle-opacity": 0.28,
+          "circle-stroke-color": ["match", ["get", "safetyStatus"], "SAFE", "#16a34a", "CONDITIONAL", "#c2410c", "UNSAFE", "#dc2626", "#d97706"],
+          "circle-stroke-width": 2.0
+        }
       });
       map.addLayer({
         id: "relocation-route-destination",
         type: "circle",
         source: "relocation-destination",
-        paint: { "circle-radius": 12, "circle-color": "#16a34a", "circle-stroke-color": "#ffffff", "circle-stroke-width": 3.5 }
+        paint: {
+          "circle-radius": 12,
+          "circle-color": ["match", ["get", "safetyStatus"], "SAFE", "#16a34a", "CONDITIONAL", "#ea580c", "UNSAFE", "#dc2626", "#f59e0b"],
+          "circle-stroke-color": "#ffffff",
+          "circle-stroke-width": 3.5
+        }
       });
       map.addLayer({
         id: "relocation-destination-label",
         type: "symbol",
         source: "relocation-destination",
         layout: {
-          "text-field": ["concat", "🟢 GREEN ZONE SAFE HAVEN\n", ["get", "name"], "\n[Safe Relocation Center]"],
+          "text-field": [
+            "concat",
+            ["match", ["get", "safetyStatus"],
+              "SAFE", "🟢 VERIFIED SAFE DESTINATION\n",
+              "CONDITIONAL", "🟠 CONDITIONAL DESTINATION\n",
+              "UNSAFE", "🔴 REJECTED DESTINATION (HAZARD CONFLICT)\n",
+              "🟡 CANDIDATE DESTINATION (SAFETY UNKNOWN)\n"
+            ],
+            ["get", "name"],
+            "\n[", ["get", "capacityNote"], "]"
+          ],
           "text-size": 11,
           "text-offset": [0, 2.0],
           "text-anchor": "top",
           "text-justify": "center",
           "text-line-height": 1.25
         },
-        paint: { "text-color": "#ffffff", "text-halo-color": "#14532d", "text-halo-width": 3.2 }
+        paint: {
+          "text-color": "#ffffff",
+          "text-halo-color": ["match", ["get", "safetyStatus"],
+            "SAFE", "#14532d",
+            "CONDITIONAL", "#7c2d12",
+            "UNSAFE", "#7f1d1d",
+            "#78350f"
+          ],
+          "text-halo-width": 3.2
+        }
       });
 
       // Simulation moving vehicle layers
@@ -978,13 +1079,15 @@ export function DivaMap({
         const feat = event.features?.[0];
         if (!feat || !feat.properties) return;
         const p = feat.properties as Record<string, unknown>;
-        const name = String(p.name || "Safe Relocation Facility");
+        const name = String(p.name || "Evacuation Destination");
         const role = String(p.role || "Emergency Shelter").replace(/_/g, " ");
-        const suitability = String(p.suitability || "PREFERRED");
-        const cap = String(p.capacityNote || "");
-        const capacityText = cap && !cap.includes("UNAVAILABLE") ? cap : "Available from local administration";
-        const popupHtml = `<div style="font-family:inherit;padding:4px 2px;max-width:280px;color:#0f172a"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px"><strong style="font-size:13px;color:#0f172a;font-weight:700">🟢 ${name}</strong><span style="background:#16a34a;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;letter-spacing:0.04em">GREEN ZONE SAFE HAVEN</span></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:6px 8px;font-size:11px;margin-bottom:6px;display:grid;gap:4px"><div><span style="color:#64748b">Role:</span> <strong style="color:#1e293b">${role}</strong></div><div><span style="color:#64748b">Suitability:</span> <strong style="color:#16a34a">${suitability === "PREFERRED" ? "Verified Suitable" : suitability}</strong></div><div><span style="color:#64748b">Capacity:</span> <strong style="color:#1e293b">${capacityText}</strong></div></div><div style="font-size:10px;font-weight:600;color:#166534;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:4px;padding:4px 6px">✓ Recommended Safe Evacuation Destination</div></div>`;
-        new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: "300px" }).setLngLat(event.lngLat).setHTML(popupHtml).addTo(map);
+        const safetyStatus = String(p.safetyStatus || "UNKNOWN").toUpperCase();
+        const cap = String(p.capacityNote || "Capacity: UNKNOWN (Field Verification Required)");
+        const isSafe = safetyStatus === "SAFE";
+        const badgeColor = isSafe ? "#16a34a" : safetyStatus === "CONDITIONAL" ? "#ea580c" : safetyStatus === "UNSAFE" ? "#dc2626" : "#f59e0b";
+        const badgeText = isSafe ? "VERIFIED SAFE DESTINATION" : safetyStatus === "CONDITIONAL" ? "CONDITIONAL DESTINATION" : safetyStatus === "UNSAFE" ? "REJECTED DESTINATION" : "CANDIDATE DESTINATION (SAFETY UNKNOWN)";
+        const popupHtml = `<div style="font-family:inherit;padding:4px 2px;max-width:290px;color:#0f172a"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px"><strong style="font-size:13px;color:#0f172a;font-weight:700">${isSafe ? "🟢" : "🟡"} ${name}</strong><span style="background:${badgeColor};color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;letter-spacing:0.04em">${badgeText}</span></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:6px 8px;font-size:11px;margin-bottom:6px;display:grid;gap:4px"><div><span style="color:#64748b">Role:</span> <strong style="color:#1e293b">${role}</strong></div><div><span style="color:#64748b">Safety Status:</span> <strong style="color:${badgeColor}">${safetyStatus}</strong></div><div><span style="color:#64748b">Capacity:</span> <strong style="color:#1e293b">${cap}</strong></div></div><div style="font-size:10px;font-weight:600;color:${isSafe ? "#166534" : "#92400e"};background:${isSafe ? "#f0fdf4" : "#fffbeb"};border:1px solid ${isSafe ? "#bbf7d0" : "#fef3c7"};border-radius:4px;padding:4px 6px">${isSafe ? "✓ Recommended Safe Evacuation Destination" : "⚠️ Candidate Facility — Field verification of structural integrity and carrying capacity required"}</div></div>`;
+        new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: "310px" }).setLngLat(event.lngLat).setHTML(popupHtml).addTo(map);
       };
       map.on("click", "relocation-route-destination", showDestPopup);
       map.on("click", "relocation-destination-label", showDestPopup);
@@ -1226,7 +1329,7 @@ export function DivaMap({
       <div className="pointer-events-none absolute bottom-4 left-4 z-10 flex items-center gap-1.5 rounded-lg border border-[#415c67] bg-[#081720]/90 px-2.5 py-1.5 text-[10px] font-bold tracking-[0.08em] text-[#add7b0] shadow-lg backdrop-blur"><Crosshair className="h-3.5 w-3.5" /> INDIA LOCATION CONTEXT</div>
 
 
-      {/* ── COMPACT COLLAPSIBLE NAVIGATION CONTROL (MAP UX FIX #1) ─── */}
+      {/* ── COMPACT MAP NAVIGATION DROPDOWN (PHASE 18) ─── */}
       {currentNav && (
         <div data-testid="safest-road-control-wrapper" className="absolute top-4 left-4 z-30 flex flex-col items-start gap-1.5 max-w-[360px]">
           {/* Compact Trigger Button */}
@@ -1234,7 +1337,7 @@ export function DivaMap({
             data-testid="safest-road-toggle-btn"
             onClick={() => setIsNavDropdownOpen(prev => !prev)}
             aria-expanded={isNavDropdownOpen}
-            aria-label="Toggle Safest Road Route Navigation"
+            aria-label="Toggle Navigation Control"
             className={cn(
               "group flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold shadow-2xl backdrop-blur-xl transition-all duration-200 border cursor-pointer",
               isNavDropdownOpen
@@ -1246,15 +1349,16 @@ export function DivaMap({
             <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-lg bg-cyan-500/20 text-cyan-400 group-hover:bg-cyan-500/30">
               <Send className="h-3 w-3 -rotate-45" />
             </div>
-            <span className="font-extrabold tracking-wide">Safest Road</span>
-            <span className={cn(
-              "rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider",
-              currentNav.classification === "RED"
-                ? "bg-red-950 border border-red-500/40 text-red-300"
-                : "bg-amber-950 border border-amber-500/40 text-amber-300"
-            )}>
-              ~{currentNav.travelTimeMinutes} min
-            </span>
+            <span className="font-extrabold tracking-wide">Navigate</span>
+            {currentNav.isRoadRoute && (currentNav.travelTimeMinutes ?? 0) > 0 ? (
+              <span className="rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider bg-emerald-950 border border-emerald-500/40 text-emerald-300">
+                ~{currentNav.travelTimeMinutes} min
+              </span>
+            ) : (
+              <span className="rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider bg-slate-800 border border-slate-600/40 text-slate-300">
+                Route Unavailable
+              </span>
+            )}
             <ChevronDown className={cn("h-3.5 w-3.5 transition-transform duration-200 text-cyan-400/80", isNavDropdownOpen && "rotate-180")} />
           </button>
 
@@ -1269,139 +1373,129 @@ export function DivaMap({
                 <div className="flex items-center gap-2 min-w-0">
                   <Navigation className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
                   <span className="text-[11px] font-black tracking-wider uppercase text-cyan-100 truncate">
-                    Verified Evacuation Corridor
+                    Navigate to:
                   </span>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <span className={cn(
-                    "rounded px-1.5 py-0.5 text-[8.5px] font-black uppercase tracking-wider text-white",
-                    currentNav.classification === "RED" ? "bg-red-600" : "bg-orange-600"
-                  )}>
-                    {currentNav.classification} ZONE
-                  </span>
-                  <button
-                    onClick={() => setIsNavDropdownOpen(false)}
-                    className="rounded-lg p-1 text-[#94a3b8] hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
-                    aria-label="Close dropdown"
-                    title="Close"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
+                <button
+                  onClick={() => setIsNavDropdownOpen(false)}
+                  className="rounded-lg p-1 text-[#94a3b8] hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+                  aria-label="Close dropdown"
+                  title="Close"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
               </div>
 
               {/* Body */}
               <div className="p-3 space-y-2.5">
-                {/* Distance & Time summary */}
-                <div className="flex items-baseline justify-between border-b border-[#163142] pb-2">
-                  <div>
-                    <span className="text-2xl font-black text-white tracking-tight">
-                      ~{currentNav.travelTimeMinutes} min
-                    </span>
-                    <span className="ml-2 text-xs font-bold text-cyan-400">
-                      ({currentNav.distanceKm} km)
-                    </span>
-                  </div>
-                  {currentNav.isRoadRoute ? (
-                    <span className="rounded-full bg-emerald-950/80 px-2 py-0.5 text-[9px] font-bold text-emerald-300 border border-emerald-500/40">
-                      OSRM Road Route
-                    </span>
-                  ) : (
-                    <span className="rounded-full bg-amber-950/80 px-2 py-0.5 text-[9px] font-bold text-amber-300 border border-amber-500/40">
-                      Geodesic Proxy
-                    </span>
-                  )}
-                </div>
-
-                {/* Origin -> Destination Flow */}
-                <div className="space-y-1.5 text-xs">
-                  <div className="flex items-start gap-2">
+                {/* Destination Options */}
+                <div className="space-y-2 text-xs">
+                  {/* Option 1: Selected Hazard Location */}
+                  <button
+                    onClick={() => {
+                      mapRef.current?.flyTo({ center: currentNav.originCoords, zoom: 12, duration: 750 });
+                      setIsNavDropdownOpen(false);
+                    }}
+                    className="w-full flex items-start gap-2 p-2 rounded-xl border border-[#1b3a4d] bg-[#0c2433] hover:bg-[#12364c] hover:border-cyan-500/50 text-left transition-all cursor-pointer"
+                  >
                     <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-red-600 text-[8px] font-black text-white">
                       📍
                     </span>
                     <div className="min-w-0 flex-1">
                       <p className="font-semibold text-white truncate text-[11px]">{currentNav.originLabel}</p>
-                      <p className="text-[9px] font-bold text-red-400 uppercase">Vulnerable Origin</p>
+                      <p className="text-[9px] font-bold text-red-400 uppercase">Selected Hazard Location · Center map</p>
                     </div>
-                  </div>
+                  </button>
 
-                  <div className="ml-2 flex items-center gap-1.5 border-l border-dashed border-cyan-500/40 pl-3 py-0.5 text-[10px] text-cyan-300 font-medium">
-                    <ArrowRight className="h-2.5 w-2.5 shrink-0 text-cyan-400" />
-                    <span>{currentNav.distanceKm} km {currentNav.isRoadRoute ? "via road network" : "direct line"}</span>
-                  </div>
-
-                  <div className="flex items-start gap-2">
-                    <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-[8px] font-black text-white">
+                  {/* Option 2: Safest / Candidate Destination */}
+                  <button
+                    onClick={() => {
+                      mapRef.current?.flyTo({ center: currentNav.destinationCoords, zoom: 12, duration: 750 });
+                      setIsNavDropdownOpen(false);
+                    }}
+                    className="w-full flex items-start gap-2 p-2 rounded-xl border border-[#1b3a4d] bg-[#0c2433] hover:bg-[#12364c] hover:border-emerald-500/50 text-left transition-all cursor-pointer"
+                  >
+                    <span className={cn(
+                      "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[8px] font-black text-white",
+                      currentNav.safetyStatus === "SAFE" ? "bg-emerald-600" : "bg-amber-600"
+                    )}>
                       🏁
                     </span>
                     <div className="min-w-0 flex-1">
                       <p className="font-semibold text-white truncate text-[11px]">{currentNav.destinationLabel}</p>
-                      <p className="text-[9px] font-bold text-emerald-400 uppercase">
-                        Safe Relocation Destination {currentNav.capacity ? `· Cap ~${currentNav.capacity.toLocaleString()}` : ""}
+                      <p className={cn(
+                        "text-[9px] font-bold uppercase",
+                        currentNav.safetyStatus === "SAFE" ? "text-emerald-400" : "text-amber-400"
+                      )}>
+                        {currentNav.safetyStatus === "SAFE" ? "Safest Validated Destination" : "Candidate Destination (Safety Unknown)"} · Center map
                       </p>
                     </div>
-                  </div>
+                  </button>
                 </div>
 
-                {/* Simulation indicator */}
-                {isSimulating && (
-                  <div className="flex items-center gap-2 rounded-lg bg-[#0c2a38] px-2.5 py-1 border border-[#164e63]">
-                    <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 animate-ping" />
-                    <span className="text-[9.5px] font-semibold text-cyan-300">
-                      Evacuation simulation: {Math.round(((simIndex + 1) / Math.max(currentNav.coordinates.length, 1)) * 100)}%
-                    </span>
+                {/* Road Routing Status */}
+                {currentNav.isRoadRoute && (currentNav.travelTimeMinutes ?? 0) > 0 ? (
+                  <div className="border-t border-[#163142] pt-2.5 space-y-2">
+                    <div className="flex items-baseline justify-between">
+                      <div>
+                        <span className="text-xl font-black text-white tracking-tight">
+                          ~{currentNav.travelTimeMinutes} min
+                        </span>
+                        <span className="ml-2 text-xs font-bold text-cyan-400">
+                          ({currentNav.distanceKm} km)
+                        </span>
+                      </div>
+                      <span className="rounded-full bg-emerald-950/80 px-2 py-0.5 text-[9px] font-bold text-emerald-300 border border-emerald-500/40">
+                        OSRM Road Route
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-1">
+                      <Button
+                        onClick={fitNavigationRoute}
+                        size="sm"
+                        className="h-7 flex-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-[10.5px] font-bold shadow-md gap-1 cursor-pointer"
+                      >
+                        <Compass className="h-3 w-3" />
+                        Fit Route
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          if (isSimulating) {
+                            setIsSimulating(false);
+                          } else {
+                            setSimIndex(0);
+                            setIsSimulating(true);
+                          }
+                        }}
+                        variant="outline"
+                        size="sm"
+                        className={cn(
+                          "h-7 rounded-lg text-[10.5px] font-bold border-cyan-500/40 gap-1 cursor-pointer",
+                          isSimulating
+                            ? "bg-red-600 text-white hover:bg-red-500"
+                            : "bg-[#0b202e] text-cyan-300 hover:bg-[#13324d]"
+                        )}
+                      >
+                        {isSimulating ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+                        {isSimulating ? "Stop" : "Simulate"}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="border-t border-[#163142] pt-2">
+                    <div className="p-2 rounded-lg bg-slate-900/80 border border-slate-700/60 text-[10px] text-slate-300">
+                      <strong>Status:</strong> ROAD ROUTING UNAVAILABLE. Turn-by-turn road network could not be verified between points. No vehicular route rendered.
+                    </div>
                   </div>
                 )}
-
-                {/* Action Buttons */}
-                <div className="flex items-center gap-2 pt-2 border-t border-[#163142]">
-                  <Button
-                    onClick={fitNavigationRoute}
-                    size="sm"
-                    className="h-7 flex-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-[10.5px] font-bold shadow-md gap-1 cursor-pointer"
-                  >
-                    <Compass className="h-3 w-3" />
-                    Fit Route
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      if (isSimulating) {
-                        setIsSimulating(false);
-                      } else {
-                        setSimIndex(0);
-                        setIsSimulating(true);
-                      }
-                    }}
-                    variant="outline"
-                    size="sm"
-                    className={cn(
-                      "h-7 rounded-lg text-[10.5px] font-bold border-cyan-500/40 gap-1 cursor-pointer",
-                      isSimulating
-                        ? "bg-red-600 text-white hover:bg-red-500"
-                        : "bg-[#0b202e] text-cyan-300 hover:bg-[#13324d]"
-                    )}
-                  >
-                    {isSimulating ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
-                    {isSimulating ? "Stop" : "Simulate"}
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      setIsNavDropdownOpen(false);
-                    }}
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 rounded-lg text-[10.5px] font-semibold text-[#94a3b8] hover:bg-[#132c3d] hover:text-white cursor-pointer"
-                  >
-                    Collapse
-                  </Button>
-                </div>
               </div>
             </div>
           )}
         </div>
       )}
 
-      {/* Persistent Map Legend */}
+      {/* Dynamic Map Legend — Displays only visible layers */}
       <div data-testid="map-persistent-legend" className="absolute bottom-12 right-4 z-20 max-w-xs">
         {isLegendOpen ? (
           <div className="rounded-xl border border-[#334e5b] bg-[#071722]/95 p-3 text-xs text-[#cbd5e1] shadow-2xl backdrop-blur-md">
@@ -1412,41 +1506,89 @@ export function DivaMap({
               </span>
               <button
                 onClick={() => setIsLegendOpen(false)}
-                className="text-[10px] text-[#94a3b8] hover:text-white px-1.5 py-0.5 rounded bg-[#0f2430] hover:bg-[#1a3848]"
+                className="text-[10px] text-[#94a3b8] hover:text-white px-1.5 py-0.5 rounded bg-[#0f2430] hover:bg-[#1a3848] cursor-pointer"
                 aria-label="Collapse map legend"
               >
                 Hide
               </button>
             </div>
             <div className="space-y-1.5 text-[11px]">
+              {/* Always show Selected Location */}
               <div className="flex items-center gap-2">
-                <span className="h-3 w-3 rounded-full bg-[#ef4444] border border-white/40 shadow-sm shrink-0" />
-                <span><strong className="text-red-400">RED:</strong> Vulnerable / Hazardous Habitation</span>
+                <span className="h-3 w-3 rounded-full bg-[#1d788d] border border-white/60 shadow-sm shrink-0" />
+                <span><strong className="text-cyan-300">Target:</strong> Selected Location Reference</span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="h-3 w-3 rounded-full bg-[#22c55e] border border-white/40 shadow-sm shrink-0" />
-                <span><strong className="text-emerald-400">GREEN:</strong> Safe-Haven Relocation Destination</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="h-1.5 w-4 rounded-full bg-[#06b6d4] shrink-0" />
-                <span><strong className="text-cyan-400">CYAN / BLUE:</strong> Verified Road Evacuation Route</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="h-3 w-3 rounded-full bg-[#f59e0b] border border-white/40 shadow-sm shrink-0" />
-                <span><strong className="text-amber-400">ORANGE / YELLOW:</strong> Hazard & Warning Context</span>
-              </div>
+              {layers.redZones !== false && (
+                <div className="flex items-center gap-2">
+                  <span className="h-3 w-3 rounded-full bg-[#dc2626] border border-white/40 shadow-sm shrink-0" />
+                  <span><strong className="text-red-400">RED:</strong> Screening Priority Tier P1</span>
+                </div>
+              )}
+              {layers.facilities !== false && (
+                <div className="flex items-center gap-2">
+                  <span className="h-3 w-3 rounded-full bg-[#16a34a] border border-white/40 shadow-sm shrink-0" />
+                  <span><strong className="text-emerald-400">GREEN:</strong> Verified Safe Haven</span>
+                </div>
+              )}
+              {layers.facilities !== false && (
+                <div className="flex items-center gap-2">
+                  <span className="h-3 w-3 rounded-full bg-[#f59e0b] border border-white/40 shadow-sm shrink-0" />
+                  <span><strong className="text-amber-400">AMBER:</strong> Candidate Facility (Safety Unknown)</span>
+                </div>
+              )}
+              {layers.routes !== false && (
+                <div className="flex items-center gap-2">
+                  <span className="h-1.5 w-4 rounded-full bg-[#38bdf8] shrink-0" />
+                  <span><strong className="text-cyan-400">BLUE:</strong> Verified Road Evacuation Route</span>
+                </div>
+              )}
+              {layers.floodPlains && (
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-4 rounded bg-[#38bdf8]/50 border border-[#38bdf8] shrink-0" />
+                  <span><strong className="text-sky-300">Floodplain:</strong> Historical Extent (NRSC)</span>
+                </div>
+              )}
+              {layers.cwcGauges && (
+                <div className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-[#00acc1] border border-white shrink-0" />
+                  <span><strong className="text-cyan-300">CWC:</strong> River Monitoring Gauge</span>
+                </div>
+              )}
+              {layers.landslideEvents && (
+                <div className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-[#e53935] border border-white shrink-0" />
+                  <span><strong className="text-rose-400">Landslide:</strong> Observed Event (ISRO/GSI)</span>
+                </div>
+              )}
+              {layers.cycloneTracks && (
+                <div className="flex items-center gap-2">
+                  <span className="h-1 w-4 bg-[#00897b] rounded shrink-0" />
+                  <span><strong className="text-teal-300">Cyclone:</strong> Track Line (NOAA/IMD)</span>
+                </div>
+              )}
+              {layers.seismicOfficial && (
+                <div className="flex items-center gap-2">
+                  <span className="h-2.5 w-4 bg-[#9c27b0]/40 border border-[#ab47bc] rounded shrink-0" />
+                  <span><strong className="text-purple-300">Seismic:</strong> BIS IS 1893 Zone IV/V</span>
+                </div>
+              )}
+              {layers.placeLabels !== false && (
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-slate-300 font-medium">Aa</span>
+                  <span><strong className="text-slate-300">Labels:</strong> OSM / CARTO Progressive</span>
+                </div>
+              )}
             </div>
-            <div className="mt-2.5 pt-2 border-t border-[#1e2f38] text-[10px] text-[#94a3b8] flex flex-wrap gap-1.5 items-center">
-              <span className="text-[9px] uppercase tracking-wider text-[#64748b]">Facility Data:</span>
-              <span className="px-1.5 py-0.5 rounded bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 font-bold text-[9px]">VERIFIED</span>
-              <span className="px-1.5 py-0.5 rounded bg-amber-950/80 border border-amber-500/40 text-amber-300 font-bold text-[9px]">SIMULATED</span>
-              <span className="px-1.5 py-0.5 rounded bg-slate-800/80 border border-slate-600/40 text-slate-300 font-bold text-[9px]">UNAVAILABLE</span>
+            <div className="mt-2.5 pt-2 border-t border-[#1e2f38] text-[9.5px] text-[#94a3b8] flex flex-wrap gap-1.5 items-center">
+              <span className="uppercase tracking-wider text-[#64748b]">CRS:</span>
+              <span className="font-mono text-cyan-300">EPSG:4326 (WGS84)</span>
+              <span className="ml-auto text-[9px] text-emerald-400 font-semibold">Canonical ResQ Sync</span>
             </div>
           </div>
         ) : (
           <button
             onClick={() => setIsLegendOpen(true)}
-            className="flex items-center gap-1.5 rounded-lg border border-[#334e5b] bg-[#071722]/90 px-2.5 py-1 text-[11px] font-bold text-[#94a3b8] hover:text-white shadow-lg backdrop-blur"
+            className="flex items-center gap-1.5 rounded-lg border border-[#334e5b] bg-[#071722]/90 px-2.5 py-1 text-[11px] font-bold text-[#94a3b8] hover:text-white shadow-lg backdrop-blur cursor-pointer"
             aria-label="Expand map legend"
           >
             <Layers className="h-3.5 w-3.5 text-cyan-400" /> ResQ Legend
