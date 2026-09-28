@@ -27,6 +27,9 @@ describe("Phase 18: ResQ Prototype Hardening & Feature Integration Tests", () =>
         address: { district: "Dibrugarh", state: "Assam" },
         population: 1326335,
         populationSource: "Census 2011",
+        boundingBox: null,
+        boundary: null,
+        source: "Census 2011",
       },
       screening: {
         riskScore: 2, // Active weather stress: calm/sunny day
@@ -34,18 +37,19 @@ describe("Phase 18: ResQ Prototype Hardening & Feature Integration Tests", () =>
         priority: "High", // Composite triage priority
         hazardContext: "High structural vulnerability (Zone V Seismic) with currently calm atmospheric conditions.",
         populationContext: "1.3M population in district extent",
+        status: "SCREENED",
       },
       hazardProfile: {
         redZone: {
           status: "RED",
           score: 82, // Geographic vulnerability
-          primaryHazard: "Earthquake & River Erosion",
+          primaryHazard: "EARTHQUAKE" as any,
           primaryDriverReason: "Seismic Zone V (BIS IS 1893:2016) and Brahmaputra active erosion corridor.",
           factors: [{ label: "Seismic Zone V", score: 85, weight: 0.5 }],
-        },
+        } as any,
         exposedHabitations: [],
         nearbyFacilities: [],
-      },
+      } as any,
     };
 
     const geographicVulnerability = mockContext.hazardProfile!.redZone.score;
@@ -101,10 +105,11 @@ describe("Phase 18: ResQ Prototype Hardening & Feature Integration Tests", () =>
   // Test 5: SOS Flow & Status Transitions (Phase 4 & 5)
   it("creates an SOS record and transitions statuses through SENT -> ACKNOWLEDGED -> RESOLVED", async () => {
     const sos = await createSosDispatch({
+      id: "SOS-TEST-01",
       category: "MEDICAL_EVACUATION",
       status: "SENT",
-      latitude: 27.4728,
-      longitude: 94.9120,
+      latitude: "27.4728",
+      longitude: "94.9120",
       locationSource: "DEVICE_GPS",
       isSimulated: "true",
       notes: "High risk inundation area emergency",

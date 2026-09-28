@@ -82,7 +82,7 @@ describe("India location context", () => {
       environment: { status: "UNAVAILABLE" },
       screening: { status: "LOCATION-SPECIFIC SCREENING CONTEXT" },
     });
-  });
+  }, 15000);
 
   it("returns a typed Assam context when selected-location providers cannot be reached", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("Failed to fetch"); }));

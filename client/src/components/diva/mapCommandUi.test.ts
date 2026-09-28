@@ -3,7 +3,7 @@ import type { AssessmentAnalysis } from "@shared/diva";
 import type { IndiaLocationContext } from "@shared/india";
 import { buildLocationPlanningCorridor, buildRelocationRoute, buildSelectedLocationSummary, formatMapMetric, getRecommendedSite, mapRiskColor } from "./mapCommandUi";
 
-const analysis = { candidateSites: [{ id: "SITE-01", name: "North bank ground", capacity: 600, availableCapacity: 420, serviceAccess: 82, suitability: 92, constraints: [], score: 90, recommendation: "Preferred for phased relocation." }] } as AssessmentAnalysis;
+const analysis = { candidateSites: [{ id: "SITE-01", name: "North bank ground", capacity: 600, availableCapacity: 420, serviceAccess: 82, suitability: 92, constraints: [], score: 90, recommendation: "Preferred for phased relocation." }] } as unknown as AssessmentAnalysis;
 const assamContext = {
   location: { id: "india-assam", name: "Assam", displayName: "Assam, India", category: "State", latitude: 26.2006, longitude: 92.9376, population: null, populationSource: "Population unavailable", boundingBox: null, boundary: null, address: { state: "Assam" }, source: "Selected search result" },
   environment: { temperatureC: 28, precipitationMm: 3.2, usAqi: 41, pm25: 12, observedAt: "2026-08-26T04:30:00.000Z", forecast: [{ date: "2026-08-27", temperatureMinC: 25, temperatureMaxC: 32, precipitationProbability: 60, precipitationSumMm: 8, windSpeedMaxKph: 14, windGustMaxKph: 24, weatherCode: 80 }], source: "Open-Meteo", status: "MODELLED CONTEXT" },
@@ -24,7 +24,7 @@ describe("map command presentation helpers", () => {
 
   it("selects the first candidate site as the recommendation shown in the panel", () => {
     expect(getRecommendedSite(analysis)?.name).toBe("North bank ground");
-    expect(getRecommendedSite({ candidateSites: [] } as AssessmentAnalysis)).toBeNull();
+    expect(getRecommendedSite({ candidateSites: [] } as unknown as AssessmentAnalysis)).toBeNull();
   });
 
   it("summarizes selected-location details without falling back to assessment data", () => {
@@ -50,7 +50,7 @@ describe("map command presentation helpers", () => {
   });
 
   it("builds a labeled route from the selected area to the nearest available context point", () => {
-    const route = buildRelocationRoute({ latitude: 10, longitude: 76, name: "Wayanad", district: "Wayanad", state: "Kerala, India", population: 1200, households: 300, areaKm2: 10, populationDensity: 120, vulnerablePopulation: 430, primaryHazard: "Flood", hazardSeverity: 72, rainfallMm: 10, temperatureC: 28, aqi: 42, hospitalDistanceKm: 4, shelterCapacity: 600, roadAccessScore: 82, waterAvailabilityScore: 70, incidentIndex: 65, dataStatus: "TEST", updatedAt: "TEST" }, { infrastructure: [{ name: "Transit campus", longitude: 76.03, latitude: 10.02 }] }, "North bank ground");
+    const route = buildRelocationRoute({ id: "area-1", latitude: 10, longitude: 76, name: "Wayanad", district: "Wayanad", state: "Kerala, India", population: 1200, households: 300, areaKm2: 10, populationDensity: 120, vulnerablePopulation: 430, primaryHazard: "Flood", hazardSeverity: 72, rainfallMm: 10, temperatureC: 28, aqi: 42, hospitalDistanceKm: 4, shelterCapacity: 600, roadAccessScore: 82, waterAvailabilityScore: 70, incidentIndex: 65, dataStatus: "TEST", updatedAt: "TEST" }, { infrastructure: [{ name: "Transit campus", longitude: 76.03, latitude: 10.02 }] }, "North bank ground");
     expect(route.coordinates).toHaveLength(3);
     expect(route.coordinates[0]).toEqual([76, 10]);
     expect(route.destinationLabel).toBe("North bank ground");

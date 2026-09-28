@@ -146,8 +146,9 @@ describe("Phase 18: End-to-End Location Consistency & Anti-Leakage Invariants", 
         priority: "Immediate",
         hazardContext: "Normal Baseline Atmospheric Profile",
         populationContext: "Statewide baseline",
+        status: "SCREENED",
       },
-      infrastructure: { status: "LOADED", items: [] },
+      infrastructure: { status: "CURATED BASELINE FACILITY REGISTER", items: [], source: "Test", observedAt: null },
     };
 
     const summary = buildSelectedLocationSummary(partialEnvContext as IndiaLocationContext);
@@ -161,8 +162,8 @@ describe("Phase 18: End-to-End Location Consistency & Anti-Leakage Invariants", 
     const failedFacilityContext: Partial<IndiaLocationContext> = {
       location: assamLocation,
       environment: { forecast: [] } as any,
-      screening: { riskScore: 23, riskLevel: "Low", priority: "Low", hazardContext: "Normal", populationContext: "" },
-      infrastructure: { status: "UNAVAILABLE", items: [] },
+      screening: { riskScore: 23, riskLevel: "Low", priority: "Low", hazardContext: "Normal", populationContext: "", status: "SCREENED" },
+      infrastructure: { status: "UNAVAILABLE", items: [], source: "Test", observedAt: null },
     };
 
     const summary = buildSelectedLocationSummary(failedFacilityContext as IndiaLocationContext);
@@ -172,7 +173,7 @@ describe("Phase 18: End-to-End Location Consistency & Anti-Leakage Invariants", 
 
     const zeroFacilityContext: Partial<IndiaLocationContext> = {
       ...failedFacilityContext,
-      infrastructure: { status: "LOADED", items: [] },
+      infrastructure: { status: "CURATED BASELINE FACILITY REGISTER", items: [], source: "Test", observedAt: null },
     };
     const zeroSummary = buildSelectedLocationSummary(zeroFacilityContext as IndiaLocationContext);
     expect(zeroSummary.facilityCount).toBe("0");
@@ -183,13 +184,15 @@ describe("Phase 18: End-to-End Location Consistency & Anti-Leakage Invariants", 
     const verifiedFacContext: Partial<IndiaLocationContext> = {
       location: assamLocation,
       environment: { forecast: [] } as any,
-      screening: { riskScore: 23, riskLevel: "Low", priority: "Low", hazardContext: "Normal", populationContext: "" },
+      screening: { riskScore: 23, riskLevel: "Low", priority: "Low", hazardContext: "Normal", populationContext: "", status: "SCREENED" },
       infrastructure: {
-        status: "LOADED",
+        status: "CURATED BASELINE FACILITY REGISTER",
         items: [
           { id: "osm-1", name: "Guwahati Medical College", type: "hospital", latitude: 26.15, longitude: 91.77 },
           { id: "osm-2", name: "Assam Engineering College", type: "shelter", latitude: 26.14, longitude: 91.66 },
         ] as any,
+        source: "Test",
+        observedAt: null,
       },
     };
 

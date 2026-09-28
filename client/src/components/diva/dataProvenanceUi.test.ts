@@ -115,13 +115,18 @@ describe("ResQ Data Provenance UI & 22-Source Audit Registry", () => {
       formation: "Brahmaputra Alluvial Formation",
       rockType: "Sedimentary alluvium and silt",
       age: "QUATERNARY",
+      geologicalAge: "QUATERNARY",
       supergroup: null,
+      group: null,
       stratigraphy: "Quaternary Sediments",
       faultPresent: true,
       faultDistanceKm: 3.2,
       nearestFaultName: "Fault Tectonic - Neotectonic Fault",
+      nearestFaultType: "Neotectonic Fault",
+      nearestFaultDesc: "Normal fault",
       lineamentPresent: true,
       geomorphology: "Fluvial Origin-Younger Alluvial Plain",
+      geomorphologyScale: "1:50,000",
       tectonicContext: "Neotectonic active fault 3.2 km from query location",
       sourceUrl: "https://livingatlas.esri.in/server1/rest/services/Geology/Geology/MapServer/0",
       retrievedAt: "2026-09-25T10:00:00.000Z",
@@ -150,7 +155,7 @@ describe("ResQ Data Provenance UI & 22-Source Audit Registry", () => {
       geology: mockGeology,
     };
 
-    render(React.createElement(IndiaOverviewProvenance, { locationContext: mockCtx as IndiaLocationContext }));
+    render(React.createElement(IndiaOverviewProvenance as any, { locationContext: mockCtx as IndiaLocationContext }));
 
     const toggleBtn = screen.getByTestId("data-provenance-toggle");
     fireEvent.click(toggleBtn);
@@ -199,6 +204,7 @@ describe("ResQ Data Provenance UI & 22-Source Audit Registry", () => {
         derivedSlopeMethod: "Horn's topographic slope algorithm",
         timestamp: "2026-09-25T07:24:32.456Z",
         confidence: "HIGH",
+        status: "AVAILABLE",
       },
     };
 
@@ -238,6 +244,7 @@ describe("ResQ Data Provenance UI & 22-Source Audit Registry", () => {
         derivedSlopeMethod: "Horn's topographic slope algorithm",
         timestamp: "2026-09-25T07:24:36.055Z",
         confidence: "HIGH",
+        status: "AVAILABLE",
       },
     };
 

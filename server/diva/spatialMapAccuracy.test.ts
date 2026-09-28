@@ -49,6 +49,7 @@ describe("RESQ — Map Precision V4: Spatial Invariants & Accuracy Test Suite", 
         // 4. Canonical ResQ Decision Context
         const decision = context.decision;
         expect(decision).toBeDefined();
+        if (!decision) return;
         expect(decision.location.id).toBe(loc.id);
 
         // 5. Canonical Map State exists and matches decision
@@ -113,6 +114,8 @@ describe("RESQ — Map Precision V4: Spatial Invariants & Accuracy Test Suite", 
       const sangliLoc = sangliResults[0];
       const context = await getIndiaLocationContext(sangliLoc);
       const decision = context.decision;
+      expect(decision).toBeDefined();
+      if (!decision) return;
 
       if (decision.relocationAssessment.bestCandidate && decision.mapState.destinationMarker) {
         const cand = decision.relocationAssessment.bestCandidate;
@@ -127,6 +130,8 @@ describe("RESQ — Map Precision V4: Spatial Invariants & Accuracy Test Suite", 
       const wayanadLoc = wayanadResults[0];
       const context = await getIndiaLocationContext(wayanadLoc);
       const decision = context.decision;
+      expect(decision).toBeDefined();
+      if (!decision) return;
 
       if (decision.routingAssessment.isRoadRoute && decision.mapState.route) {
         const routeCoords = decision.mapState.route.coordinates;
@@ -198,6 +203,8 @@ describe("RESQ — Map Precision V4: Spatial Invariants & Accuracy Test Suite", 
       const dibrugarhLoc = dibrugarhResults[0];
       const context = await getIndiaLocationContext(dibrugarhLoc);
       const decision = context.decision;
+      expect(decision).toBeDefined();
+      if (!decision) return;
 
       // Dibrugarh calibration set has road routing unavailable
       if (!decision.routingAssessment.isRoadRoute) {
@@ -214,6 +221,8 @@ describe("RESQ — Map Precision V4: Spatial Invariants & Accuracy Test Suite", 
         const loc = results[0];
         const context = await getIndiaLocationContext(loc);
         const decision = context.decision;
+        expect(decision).toBeDefined();
+        if (!decision) return;
 
         const safetyStatus = decision.relocationAssessment.destinationSafety.destinationSafetyStatus;
         const marker = decision.mapState.destinationMarker;

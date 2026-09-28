@@ -9,6 +9,6 @@ describe("Dataset Lab field mapping", () => {
 
     expect(data.features).toHaveLength(1);
     expect(data.features[0]?.geometry).toMatchObject({ type: "Point", coordinates: [76.132, 11.685] });
-    expect(data.features[0]?.properties.population).toBe(220);
+    expect(data.features[0]?.properties?.population).toBe(220);
   });
 });
