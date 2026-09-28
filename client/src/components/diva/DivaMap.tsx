@@ -86,12 +86,7 @@ if (typeof window !== "undefined" && typeof (maplibregl as any).setWorkerUrl ===
     // ignore if already set
   }
 }
-const cartoLabelsTiles = [
-  "https://a.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}.png",
-  "https://b.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}.png",
-  "https://c.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}.png",
-  "https://d.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}.png"
-];
+const labelTileUrl = import.meta.env.VITE_MAP_LABEL_URL ?? "https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}";
 const mapStyle: maplibregl.StyleSpecification = {
   version: 8,
   sources: {
@@ -99,10 +94,10 @@ const mapStyle: maplibregl.StyleSpecification = {
     satellite: { type: "raster", tiles: [satelliteTileUrl], tileSize: 256, maxzoom: MAP_MAX_ZOOM, attribution: "Tiles © Esri" },
     placeLabels: {
       type: "raster",
-      tiles: cartoLabelsTiles,
+      tiles: [labelTileUrl],
       tileSize: 256,
       maxzoom: MAP_MAX_ZOOM,
-      attribution: "© OpenStreetMap contributors, © CARTO"
+      attribution: "Tiles © Esri, HERE, Garmin, © OpenStreetMap contributors"
     }
   },
   layers: [
@@ -1308,11 +1303,39 @@ export function DivaMap({
         </div>
 
         {/* Zoom controls */}
-        <div className="flex flex-col overflow-hidden rounded-xl border border-[#395460] bg-[#0b202a]/90 shadow-2xl backdrop-blur">
-          <Button variant="ghost" size="icon" className="h-9 w-9 rounded-none border-b border-[#2b4651] text-[#d8e9ed] hover:bg-[#153440] hover:text-white" aria-label="Zoom in" onClick={() => changeZoom(1)}><Plus className="h-4 w-4" /></Button>
-          <Button variant="ghost" size="icon" className="h-9 w-9 rounded-none border-b border-[#2b4651] text-[#d8e9ed] hover:bg-[#153440] hover:text-white" aria-label="Zoom out" onClick={() => changeZoom(-1)}><Minus className="h-4 w-4" /></Button>
-          <Button variant="ghost" size="icon" className="h-9 w-9 rounded-none border-b border-[#2b4651] text-[#d8e9ed] hover:bg-[#153440] hover:text-white" aria-label="Reset map view" onClick={() => mapRef.current?.flyTo({ center: data?.center, zoom: clampMapZoom(zoom), duration: 650 })}><RotateCcw className="h-4 w-4" /></Button>
-          <Button variant="ghost" size="icon" className="h-9 w-9 rounded-none text-[#d8e9ed] hover:bg-[#153440] hover:text-white" aria-label="Toggle fullscreen map" onClick={() => containerRef.current?.requestFullscreen()}><Expand className="h-4 w-4" /></Button>
+        <div className="flex flex-col overflow-hidden rounded-xl border border-[#395460] bg-[#0b202a]/95 shadow-2xl backdrop-blur">
+          <Button
+            variant="ghost"
+            className="h-9 w-full rounded-none rounded-t-xl border-b border-[#2b4651] text-[#d8e9ed] hover:bg-[#153440] hover:text-white transition-colors flex items-center justify-center p-0 cursor-pointer focus-visible:ring-0 focus-visible:outline-none"
+            aria-label="Zoom in"
+            onClick={() => changeZoom(1)}
+          >
+            <Plus className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            className="h-9 w-full rounded-none border-b border-[#2b4651] text-[#d8e9ed] hover:bg-[#153440] hover:text-white transition-colors flex items-center justify-center p-0 cursor-pointer focus-visible:ring-0 focus-visible:outline-none"
+            aria-label="Zoom out"
+            onClick={() => changeZoom(-1)}
+          >
+            <Minus className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            className="h-9 w-full rounded-none border-b border-[#2b4651] text-[#d8e9ed] hover:bg-[#153440] hover:text-white transition-colors flex items-center justify-center p-0 cursor-pointer focus-visible:ring-0 focus-visible:outline-none"
+            aria-label="Reset map view"
+            onClick={() => mapRef.current?.flyTo({ center: data?.center, zoom: clampMapZoom(zoom), duration: 650 })}
+          >
+            <RotateCcw className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            className="h-9 w-full rounded-none rounded-b-xl text-[#d8e9ed] hover:bg-[#153440] hover:text-white transition-colors flex items-center justify-center p-0 cursor-pointer focus-visible:ring-0 focus-visible:outline-none"
+            aria-label="Toggle fullscreen map"
+            onClick={() => containerRef.current?.requestFullscreen()}
+          >
+            <Expand className="h-4 w-4" />
+          </Button>
         </div>
       </div>
 
@@ -1575,7 +1598,7 @@ export function DivaMap({
               {layers.placeLabels !== false && (
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] text-slate-300 font-medium">Aa</span>
-                  <span><strong className="text-slate-300">Labels:</strong> OSM / CARTO Progressive</span>
+                  <span><strong className="text-slate-300">Labels:</strong> Esri / OSM Reference</span>
                 </div>
               )}
             </div>

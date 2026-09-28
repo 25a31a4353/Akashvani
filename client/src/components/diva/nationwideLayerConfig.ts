@@ -60,7 +60,7 @@ export const auditedLayerGroups = [
   {
     label: "India Context",
     items: [
-      ["placeLabels", "Geographic place labels (OSM / CARTO)"],
+      ["placeLabels", "Geographic place labels (Esri / OSM Reference)"],
       ["nationalStates", "States & union territories"],
       ["boundaries", "District boundary"],
       ["population", "Population density"],

@@ -181,7 +181,7 @@ export function isSyntheticCircleBuffer(coordinatesOrGeometry: unknown): boolean
   
   // Unwrap nested array (e.g. Polygon coordinates [[[x, y], ...]])
   let ring: unknown = coordinates;
-  if (Array.isArray(ring[0]) && Array.isArray((ring[0] as unknown[])[0])) {
+  if (Array.isArray(ring) && Array.isArray(ring[0]) && Array.isArray((ring[0] as unknown[])[0])) {
     ring = ring[0];
   }
 
