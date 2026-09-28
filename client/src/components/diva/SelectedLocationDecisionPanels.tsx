@@ -72,14 +72,70 @@ const REAL_DISTRICT_MAP: Record<string, { id: string; name: string; stateCode: s
   "uttar pradesh": { id: "DIST-UP-GOR", name: "Gorakhpur", stateCode: "UP" },
 };
 
-export function lookupRealDistrict(name?: string | null, district?: string | null) {
+const STATE_NAME_TO_CODE: Record<string, string> = {
+  "assam": "AS",
+  "as": "AS",
+  "kerala": "KL",
+  "kl": "KL",
+  "uttarakhand": "UK",
+  "uk": "UK",
+  "odisha": "OD",
+  "orissa": "OD",
+  "od": "OD",
+  "andhra pradesh": "AP",
+  "ap": "AP",
+  "maharashtra": "MH",
+  "mh": "MH",
+  "rajasthan": "RJ",
+  "rj": "RJ",
+  "bihar": "BR",
+  "br": "BR",
+  "karnataka": "KA",
+  "ka": "KA",
+  "tamil nadu": "TN",
+  "tn": "TN",
+  "chhattisgarh": "CT",
+  "cg": "CT",
+  "ct": "CT",
+  "mizoram": "MZ",
+  "mz": "MZ",
+  "jharkhand": "JH",
+  "jh": "JH",
+  "uttar pradesh": "UP",
+  "up": "UP",
+};
+
+export function lookupRealDistrict(name?: string | null, district?: string | null, stateFilter?: string | null) {
+  const normState = (stateFilter || "").trim().toLowerCase();
+  const targetStateCode = normState ? STATE_NAME_TO_CODE[normState] ?? normState.toUpperCase() : null;
+
   const normDist = (district || "").trim().toLowerCase();
-  if (normDist && REAL_DISTRICT_MAP[normDist]) return REAL_DISTRICT_MAP[normDist];
   const normName = (name || "").trim().toLowerCase();
-  if (normName && REAL_DISTRICT_MAP[normName]) return REAL_DISTRICT_MAP[normName];
+
+  // If stateFilter is provided, do NOT match anything outside this state
+  const isMatchValidForState = (cand: { id: string; name: string; stateCode: string }) => {
+    if (!targetStateCode) return true;
+    return cand.stateCode.toUpperCase() === targetStateCode;
+  };
+
+  if (normDist && REAL_DISTRICT_MAP[normDist] && isMatchValidForState(REAL_DISTRICT_MAP[normDist])) {
+    return REAL_DISTRICT_MAP[normDist];
+  }
+  if (normName && REAL_DISTRICT_MAP[normName] && isMatchValidForState(REAL_DISTRICT_MAP[normName])) {
+    return REAL_DISTRICT_MAP[normName];
+  }
+
+  // Check substring matches constrained by state
   for (const [k, v] of Object.entries(REAL_DISTRICT_MAP)) {
+    if (!isMatchValidForState(v)) continue;
     if (normDist.includes(k) || normName.includes(k)) return v;
   }
+
+  // If stateFilter is provided, check if state itself is in REAL_DISTRICT_MAP
+  if (normState && REAL_DISTRICT_MAP[normState] && isMatchValidForState(REAL_DISTRICT_MAP[normState])) {
+    return REAL_DISTRICT_MAP[normState];
+  }
+
   return null;
 }
 
@@ -340,7 +396,7 @@ function AccordionSection({
 
 export function IndiaContextSidebar({ context, onOpenKeralaAssessment }: { context: IndiaLocationContext; onOpenKeralaAssessment: () => void }) {
   const next = context.environment.forecast[0];
-  const realDistrict = lookupRealDistrict(context.location.name, context.location.address.district);
+  const realDistrict = lookupRealDistrict(context.location.name, context.location.address.district, context.location.address.state);
 
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     hazardRisk: true,       // OPEN BY DEFAULT
@@ -619,19 +675,36 @@ export function IndiaContextSidebar({ context, onOpenKeralaAssessment }: { conte
           isOpen={openSections.capacity}
           onToggle={() => toggleSection("capacity")}
           badge={
-            <span className="rounded bg-[#e6f5ec] px-1.5 py-0.5 text-[8px] font-bold text-[#267553]">
-              {context.categorizedInfrastructure?.totalCount ?? context.infrastructure.items.length} Facilities
-            </span>
+            context.infrastructure.status === "UNAVAILABLE" ? (
+              <span className="rounded bg-[#f1f5f9] px-1.5 py-0.5 text-[8px] font-bold text-[#64748b]">
+                Unavailable
+              </span>
+            ) : (
+              <span className="rounded bg-[#e6f5ec] px-1.5 py-0.5 text-[8px] font-bold text-[#267553]">
+                {context.categorizedInfrastructure?.totalCount ?? context.infrastructure.items.length} Facilities
+              </span>
+            )
           }
           summary={
-            context.categorizedInfrastructure?.totalCount
-              ? `${context.categorizedInfrastructure.hospitals.length} Hosp · ${context.categorizedInfrastructure.shelters.length} Shelters · ${context.categorizedInfrastructure.emergencyFacilities.length} Emerg`
-              : (realDistrict ? "District capacity assessment" : "Nearby facility sample")
+            context.infrastructure.status === "UNAVAILABLE"
+              ? "Facility discovery unavailable"
+              : context.categorizedInfrastructure?.totalCount
+              ? `${context.categorizedInfrastructure.totalCount} mapped facilities; verified capacity unavailable`
+              : context.infrastructure.items.length === 0
+              ? "0 verified facilities"
+              : `${context.infrastructure.items.length} mapped facilities; verified capacity unavailable`
           }
           testId="accordion-capacity"
         >
           <div className="space-y-2.5">
-            {context.categorizedInfrastructure && context.categorizedInfrastructure.totalCount > 0 ? (
+            {context.infrastructure.status === "UNAVAILABLE" ? (
+              <div className="rounded-lg bg-[#f8fafb] p-2.5 text-[10px] text-[#6f858f]">
+                <p className="font-semibold text-[#8a3838]">Facility discovery unavailable</p>
+                <p className="mt-1 text-[9px] text-[#8ea0a8]">
+                  Open mapping query timed out or spatial data is unmapped at this administrative resolution. Evacuation capacity is strictly unavailable (not assumed zero).
+                </p>
+              </div>
+            ) : context.categorizedInfrastructure && context.categorizedInfrastructure.totalCount > 0 ? (
               <div>
                 <p className="text-[9.5px] font-bold uppercase tracking-[.08em] text-[#2b687a]">
                   Categorized Nearby Facilities ({context.categorizedInfrastructure.totalCount})
@@ -651,15 +724,18 @@ export function IndiaContextSidebar({ context, onOpenKeralaAssessment }: { conte
                   </div>
                 </div>
                 <p className="mt-2 text-[8.5px] leading-relaxed italic text-[#6f858f]">
-                  Evacuation capacity is unavailable from open mapping sources (strictly null — never fabricated). See Relocation Intelligence below for full PS191 carrying capacity evaluation.
+                  {context.categorizedInfrastructure.totalCount} mapped facilities; verified capacity unavailable from open mapping sources (strictly null — never fabricated). See Relocation Intelligence below for full PS191 carrying capacity evaluation.
                 </p>
               </div>
             ) : (
               <div className="rounded-lg bg-[#f8fafb] p-2.5 text-[10px] text-[#6f858f]">
-                <p>Nearby facility count: <strong>{context.infrastructure.items.length}</strong> mapped facilities.</p>
-                <p className="mt-1 text-[9px] text-[#8ea0a8]">Detailed occupancy & carrying capacity is evaluated at district resolution.</p>
-                <p className="mt-1.5 text-[8.5px] leading-relaxed italic text-[#78909c]">
-                  Evacuation capacity is unavailable from open mapping sources (strictly null). See Relocation Intelligence below for full PS191 evaluation.
+                {context.infrastructure.items.length === 0 ? (
+                  <p><strong>0 verified facilities</strong> identified in active monitoring extent.</p>
+                ) : (
+                  <p><strong>{context.infrastructure.items.length} mapped facilities; verified capacity unavailable</strong></p>
+                )}
+                <p className="mt-1 text-[9px] text-[#8ea0a8]">
+                  Detailed occupancy & carrying capacity is evaluated at district resolution. Evacuation capacity is unavailable from open mapping sources (strictly null).
                 </p>
               </div>
             )}

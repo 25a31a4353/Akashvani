@@ -136,7 +136,27 @@ export default function Home() {
   const environmentQuery = trpc.diva.environment.useQuery(selectedCoordinates, { staleTime: 10 * 60 * 1000 });
   const indiaContextRequest = trpc.diva.india.context.useQuery(indiaLocation, { staleTime: 10 * 60 * 1000, retry: 1, retryDelay: 500 });
   const nationwideMapQuery = trpc.diva.india.nationwideMap.useQuery(undefined, { staleTime: 5 * 60 * 1000, refetchInterval: 5 * 60 * 1000, retry: 1 });
-  const realDistrict = lookupRealDistrict(indiaLocation.name, indiaLocation.address?.district ?? indiaLocation.address?.city);
+  const realDistrict = lookupRealDistrict(
+    indiaLocation.name,
+    indiaLocation.address?.district ?? indiaLocation.address?.city,
+    indiaLocation.address?.state
+  );
+
+  const mapLocationContext = useMemo((): IndiaLocationContext | undefined => {
+    if (indiaContextRequest.data && (indiaContextRequest.data.location.id === indiaLocation.id || indiaContextRequest.data.location.name.toLowerCase() === indiaLocation.name.toLowerCase())) {
+      return indiaContextRequest.data;
+    }
+    if (indiaContextRequest.isError || (!indiaContextRequest.data && indiaLocation.id === "india-assam")) {
+      return {
+        location: indiaLocation,
+        environment: { temperatureC: null, precipitationMm: null, usAqi: null, pm25: null, observedAt: null, forecast: [], source: indiaContextRequest.isError ? "Selected-location context could not be refreshed. Existing Assam map location remains available." : "Live Assam weather context is still being retrieved; no current value is substituted.", status: indiaContextRequest.isError ? "LOCATION CONTEXT UNAVAILABLE" : "ASSAM LIVE CONTEXT LOADING" },
+        infrastructure: { items: [], source: indiaContextRequest.isError ? "Nearby facility context is unavailable while the selected-location request is retried." : "Nearby Assam facilities are being retrieved from the live source.", status: "UNAVAILABLE" as const, observedAt: null },
+        screening: { riskScore: null, riskLevel: "Unavailable" as const, priority: "Unavailable" as const, hazardContext: "Selected-location context is not yet available. No official warning is implied.", populationContext: "Population context is not yet available from the selected-location provider.", status: indiaContextRequest.isError ? "LOCATION CONTEXT UNAVAILABLE" : "ASSAM LIVE CONTEXT LOADING" },
+      };
+    }
+    return undefined;
+  }, [indiaContextRequest.data, indiaContextRequest.isError, indiaLocation]);
+  const indiaContextQuery = { ...indiaContextRequest, data: mapLocationContext };
 
   const habitationsQuery = trpc.diva.hazards.habitations.useQuery(
     {
@@ -146,7 +166,7 @@ export default function Home() {
       stateCode: realDistrict?.stateCode,
       radiusKm: 35,
     },
-    { enabled: Boolean(indiaLocation), staleTime: 10 * 60 * 1000 }
+    { enabled: Boolean(indiaLocation && realDistrict), staleTime: 10 * 60 * 1000 }
   );
   const habitationsList = habitationsQuery.data ?? [];
   const districtHabitations = realDistrict
@@ -169,101 +189,111 @@ export default function Home() {
     { enabled: Boolean(realDistrict?.id), staleTime: 10 * 60 * 1000 }
   );
 
-  const relRec = relocationQuery.data;
+  const relRec = (relocationQuery.data && realDistrict && relocationQuery.data.sourceAreaId?.toLowerCase() === realDistrict.id.toLowerCase())
+    ? relocationQuery.data
+    : null;
 
-  // Selected assessment area details for fallback context
-  const currentArea = assessmentQuery.data?.area;
-  const currentAnalysis = assessmentQuery.data?.analysis;
+  // Canonical ResQ Decision references (Phase 2 & 16 Invariant)
+  const canonicalDecision = mapLocationContext?.decision;
+  const canonicalOriginMarker = canonicalDecision?.mapState?.originMarker;
+  const canonicalDestinationMarker = canonicalDecision?.mapState?.destinationMarker;
 
-  // Red Zone Origin is ALWAYS resolved — guaranteed non-null
+  const canonicalOrigin = canonicalDecision?.exposureAssessment?.selectedOriginHabitation ? {
+    name: canonicalDecision.exposureAssessment.selectedOriginHabitation.name,
+    latitude: canonicalDecision.exposureAssessment.selectedOriginHabitation.latitude,
+    longitude: canonicalDecision.exposureAssessment.selectedOriginHabitation.longitude,
+    exposureLevel: canonicalDecision.exposureAssessment.selectedOriginHabitation.exposureLevel ?? "CRITICAL",
+    population: canonicalDecision.exposureAssessment.selectedOriginHabitation.population,
+    hazardType: canonicalDecision.exposureAssessment.selectedOriginHabitation.hazardType ?? canonicalDecision.hazardAssessment.primaryHazard,
+    insideHazardZone: true,
+  } : (canonicalOriginMarker ? {
+    name: canonicalOriginMarker.label,
+    latitude: canonicalOriginMarker.coordinates[1],
+    longitude: canonicalOriginMarker.coordinates[0],
+    exposureLevel: canonicalOriginMarker.exposureLevel ?? "CRITICAL",
+    population: canonicalOriginMarker.population,
+    hazardType: canonicalDecision?.mapState?.primaryHazard ?? "Red Zone Exposure",
+    insideHazardZone: true,
+  } : null);
+
   const selectedVulnerableHabitation = useMemo(() => {
+    if (canonicalOrigin) return canonicalOrigin;
     if (districtExposed.length > 0) return districtExposed[0];
     if (districtHabitations.length > 0) return districtHabitations[0];
-    if (exposedHabitations.length > 0) return exposedHabitations[0];
-    if (currentArea) {
-      return {
-        name: `${currentArea.name} (Red Zone Origin)`,
-        latitude: currentArea.latitude,
-        longitude: currentArea.longitude,
-        exposureLevel: "CRITICAL",
-        population: currentArea.population,
-        hazardType: `${currentArea.primaryHazard} Vulnerability Corridor`,
-        insideHazardZone: true,
-      };
-    }
+    if (exposedHabitations.length > 0 && realDistrict) return exposedHabitations[0];
     return {
-      name: `${realDistrict?.name ?? "Demo"} Red Zone Sector`,
+      name: `${indiaLocation.name} (Screened Origin)`,
       latitude: indiaLocation.latitude,
       longitude: indiaLocation.longitude,
       exposureLevel: "CRITICAL",
-      population: 4200,
-      hazardType: "Red Zone Hazard Screening",
+      population: mapLocationContext?.decision?.exposureAssessment?.populationValue ?? indiaLocation.population ?? null,
+      hazardType: mapLocationContext?.decision?.hazardAssessment?.primaryHazard ?? "Red Zone Hazard Screening",
       insideHazardZone: true,
     };
-  }, [currentArea, districtExposed, districtHabitations, exposedHabitations, indiaLocation.latitude, indiaLocation.longitude, realDistrict]);
+  }, [canonicalOrigin, districtExposed, districtHabitations, exposedHabitations, indiaLocation, mapLocationContext, realDistrict]);
 
-  // Green Zone Destination is ALWAYS resolved — guaranteed non-null
+  const canonicalDestination = canonicalDecision?.relocationAssessment?.bestCandidate ? {
+    name: canonicalDecision.relocationAssessment.bestCandidate.name,
+    facilityRole: canonicalDecision.relocationAssessment.bestCandidate.facilityRole,
+    relocationSuitability: canonicalDecision.relocationAssessment.destinationSafety?.destinationSafetyStatus === "SAFE" ? "PREFERRED" : "CONDITIONAL",
+    latitude: canonicalDecision.relocationAssessment.bestCandidate.latitude,
+    longitude: canonicalDecision.relocationAssessment.bestCandidate.longitude,
+    capacity: canonicalDecision.relocationAssessment.bestCandidate.capacity,
+  } : (canonicalDestinationMarker ? {
+    name: canonicalDestinationMarker.label,
+    facilityRole: canonicalDestinationMarker.role,
+    relocationSuitability: canonicalDestinationMarker.safetyStatus === "SAFE" ? "PREFERRED" : "CONDITIONAL",
+    latitude: canonicalDestinationMarker.coordinates[1],
+    longitude: canonicalDestinationMarker.coordinates[0],
+    capacity: canonicalDestinationMarker.capacity,
+  } : null);
+
   const destinationCandidate = useMemo(() => {
-    if (relRec?.bestCandidate) return relRec.bestCandidate;
-    const alt = (relRec?.conditionalAlternatives ?? []).find((f: any) => f.latitude != null && f.longitude != null);
-    if (alt) return alt;
-    const near = (relRec?.nearestFacilities ?? []).find((f: any) => f.relocationSuitability !== "UNSUITABLE" && f.facilityRole !== "HOSPITAL_MEDICAL_SUPPORT" && f.latitude != null && f.longitude != null);
-    if (near) return near;
-    if (currentAnalysis?.candidateSites?.[0]) {
-      const site = currentAnalysis.candidateSites[0];
-      return {
-        name: site.name,
-        facilityRole: "EMERGENCY_SHELTER",
-        relocationSuitability: "PREFERRED",
-        latitude: selectedVulnerableHabitation.latitude + 0.024,
-        longitude: selectedVulnerableHabitation.longitude + 0.035,
-        capacity: site.capacity,
-      };
+    if (canonicalDestination) return canonicalDestination;
+    if (relRec && realDistrict && relRec.sourceAreaId?.toLowerCase() === realDistrict.id.toLowerCase()) {
+      if (relRec.bestCandidate) return relRec.bestCandidate;
+      const alt = (relRec.conditionalAlternatives ?? []).find((f: any) => f.latitude != null && f.longitude != null);
+      if (alt) return alt;
+      const near = (relRec.nearestFacilities ?? []).find((f: any) => f.relocationSuitability !== "UNSUITABLE" && f.facilityRole !== "HOSPITAL_MEDICAL_SUPPORT" && f.latitude != null && f.longitude != null);
+      if (near) return near;
     }
-    return {
-      name: `${realDistrict?.name ?? "Safe Haven"} Relocation Campus`,
-      facilityRole: "RELIEF_CENTRE",
-      relocationSuitability: "PREFERRED",
-      latitude: selectedVulnerableHabitation.latitude + 0.024,
-      longitude: selectedVulnerableHabitation.longitude + 0.035,
-      capacity: 3500,
-    };
-  }, [currentAnalysis, realDistrict, relRec, selectedVulnerableHabitation.latitude, selectedVulnerableHabitation.longitude]);
+    return null;
+  }, [canonicalDestination, realDistrict, relRec]);
+
+  const origLat = selectedVulnerableHabitation.latitude;
+  const origLon = selectedVulnerableHabitation.longitude;
+  const dstLat = destinationCandidate?.latitude ?? 0;
+  const dstLon = destinationCandidate?.longitude ?? 0;
+  const straightDistKm = Math.hypot((dstLat - origLat) * 111, (dstLon - origLon) * 111 * Math.cos((origLat * Math.PI) / 180));
+  const calcDistKm = Math.round(Math.max(2.5, straightDistKm * 1.28) * 10) / 10;
+  const calcMinutes = Math.max(6, Math.round((calcDistKm / 35) * 60));
+
+  const isCandidateNearby = Boolean(destinationCandidate && straightDistKm <= 150);
 
   const routeQuery = trpc.diva.hazards.evacuationRoute.useQuery(
     {
       originLat: selectedVulnerableHabitation.latitude,
       originLon: selectedVulnerableHabitation.longitude,
-      destinationLat: destinationCandidate.latitude,
-      destinationLon: destinationCandidate.longitude,
+      destinationLat: destinationCandidate?.latitude ?? 0,
+      destinationLon: destinationCandidate?.longitude ?? 0,
       originName: selectedVulnerableHabitation.name,
-      destinationName: destinationCandidate.name,
+      destinationName: destinationCandidate?.name,
     },
     {
       enabled: Boolean(
+        isCandidateNearby &&
         selectedVulnerableHabitation &&
         destinationCandidate &&
         selectedVulnerableHabitation.latitude != null &&
-        selectedVulnerableHabitation.longitude != null &&
-        destinationCandidate.latitude != null &&
-        destinationCandidate.longitude != null
+        destinationCandidate.latitude != null
       ),
       staleTime: 15 * 60 * 1000,
     }
   );
 
-  // Compute realistic road distance & travel time fallback for immediate display
-  const origLat = selectedVulnerableHabitation.latitude;
-  const origLon = selectedVulnerableHabitation.longitude;
-  const dstLat = destinationCandidate.latitude;
-  const dstLon = destinationCandidate.longitude;
-  const straightDistKm = Math.hypot((dstLat - origLat) * 111, (dstLon - origLon) * 111 * Math.cos((origLat * Math.PI) / 180));
-  const calcDistKm = Math.round(Math.max(2.5, straightDistKm * 1.28) * 10) / 10;
-  const calcMinutes = Math.max(6, Math.round((calcDistKm / 35) * 60));
-
   const verifiedRoadRoute = routeQuery.data && routeQuery.data.status === "OK" && routeQuery.data.coordinates.length > 0 ? {
     coordinates: routeQuery.data.coordinates,
-    destinationLabel: destinationCandidate.name,
+    destinationLabel: destinationCandidate?.name ?? "Safe Relocation Haven",
     originLabel: selectedVulnerableHabitation.name,
     distanceKm: routeQuery.data.routeDistanceKm ?? calcDistKm,
     travelTimeMinutes: routeQuery.data.travelTimeMinutes ?? calcMinutes,
@@ -280,16 +310,16 @@ export default function Home() {
     hazardType: selectedVulnerableHabitation.hazardType ?? "Red Zone Exposure",
   };
 
-  const relocationDestination = {
+  const relocationDestination = destinationCandidate && isCandidateNearby ? {
     latitude: destinationCandidate.latitude,
     longitude: destinationCandidate.longitude,
     name: destinationCandidate.name,
     role: (destinationCandidate as any).facilityRole ?? (destinationCandidate as any).role ?? "Relocation Safe Haven",
     suitability: (destinationCandidate as any).relocationSuitability ?? (destinationCandidate as any).suitability ?? "PREFERRED",
-    capacityNote: (destinationCandidate as any).capacity ? `${(destinationCandidate as any).capacity} capacity` : "Verified safe capacity",
-  };
+    capacityNote: (destinationCandidate as any).capacity ? `${(destinationCandidate as any).capacity} capacity` : "Capacity unavailable from open mapping sources",
+  } : undefined;
 
-  const planningCorridorFallback = {
+  const planningCorridorFallback = isCandidateNearby && destinationCandidate ? {
     coordinates: [
       [origLon, origLat],
       [(origLon * 2 + dstLon) / 3 - 0.003, (origLat * 2 + dstLat) / 3 + 0.005],
@@ -303,23 +333,7 @@ export default function Home() {
     isRoadRoute: true,
     isPlanningCorridor: true as const,
     sourceNote: `Emergency road corridor: ${calcDistKm} km (~${calcMinutes} min). Road navigation active.`,
-  };
-
-  const mapLocationContext = useMemo((): IndiaLocationContext | undefined => {
-    if (indiaContextRequest.data && (indiaContextRequest.data.location.id === indiaLocation.id || indiaContextRequest.data.location.name.toLowerCase() === indiaLocation.name.toLowerCase())) {
-      return indiaContextRequest.data;
-    }
-    if (indiaContextRequest.isError || (!indiaContextRequest.data && indiaLocation.id === "india-assam")) {
-      return {
-        location: indiaLocation,
-        environment: { temperatureC: null, precipitationMm: null, usAqi: null, pm25: null, observedAt: null, forecast: [], source: indiaContextRequest.isError ? "Selected-location context could not be refreshed. Existing Assam map location remains available." : "Live Assam weather context is still being retrieved; no current value is substituted.", status: indiaContextRequest.isError ? "LOCATION CONTEXT UNAVAILABLE" : "ASSAM LIVE CONTEXT LOADING" },
-        infrastructure: { items: [], source: indiaContextRequest.isError ? "Nearby facility context is unavailable while the selected-location request is retried." : "Nearby Assam facilities are being retrieved from the live source.", status: "UNAVAILABLE" as const, observedAt: null },
-        screening: { riskScore: null, riskLevel: "Unavailable" as const, priority: "Unavailable" as const, hazardContext: "Selected-location context is not yet available. No official warning is implied.", populationContext: "Population context is not yet available from the selected-location provider.", status: indiaContextRequest.isError ? "LOCATION CONTEXT UNAVAILABLE" : "ASSAM LIVE CONTEXT LOADING" },
-      };
-    }
-    return undefined;
-  }, [indiaContextRequest.data, indiaContextRequest.isError, indiaLocation]);
-  const indiaContextQuery = { ...indiaContextRequest, data: mapLocationContext };
+  } : undefined;
   const selectedContextLoading = Boolean(initialIndiaLocation.requested) && (indiaContextRequest.isLoading || (indiaContextRequest.isFetching && indiaContextRequest.data?.location.id !== indiaLocation.id));
   const mappedAreas = useMemo(() => filteredQuery.data ? filteredQuery.data.map(item => item.area) : allAreas, [allAreas, filteredQuery.data]);
   const searchResults = useMemo(() => search.trim().length > 1 ? allAreas.filter(area => `${area.name} ${area.district} ${area.id}`.toLowerCase().includes(search.toLowerCase())).slice(0, 6) : [], [allAreas, search]);
@@ -337,8 +351,8 @@ export default function Home() {
 
     const effectiveRelocationRoute = canonicalRoute && canonicalRoute.coordinates.length > 0 ? {
       coordinates: canonicalRoute.coordinates,
-      destinationLabel: canonicalMapState.destinationMarker?.label ?? destinationCandidate.name,
-      originLabel: canonicalMapState.originMarker?.label ?? selectedVulnerableHabitation.name,
+      destinationLabel: canonicalMapState.destinationMarker?.label ?? destinationCandidate?.name ?? "Designated Shelter",
+      originLabel: canonicalMapState.originMarker?.label ?? selectedVulnerableHabitation?.name ?? "Vulnerable Origin",
       distanceKm: canonicalRoute.distanceKm,
       travelTimeMinutes: canonicalRoute.durationMinutes,
       isRoadRoute: canonicalRoute.isRoadRoute,
@@ -662,7 +676,7 @@ export default function Home() {
               <div className="absolute left-3 top-16 z-20 flex flex-col gap-2"><Button variant="outline" size="sm" onClick={() => setIsLayerOpen(!isLayerOpen)} className="h-9 rounded-xl border-white/90 bg-white/95 px-3 text-xs font-semibold text-[#2e5367] shadow-md backdrop-blur"><Layers3 className="mr-1.5 h-3.5 w-3.5 text-[#1e7890]" /> Layers <ChevronDown className={cn("ml-1 h-3.5 w-3.5 transition-transform", isLayerOpen && "rotate-180")} /></Button>{isLayerOpen && <div className="max-h-[440px] w-[268px] overflow-y-auto rounded-xl border border-white/90 bg-white/95 p-3 shadow-xl backdrop-blur"><div className="flex items-center justify-between pb-2 border-b border-[#e7edef]"><p className="text-xs font-bold text-[#284b60]">Map layers</p><span className="rounded bg-[#e9f5f7] px-1.5 py-0.5 text-[9px] font-bold uppercase text-[#1d7084]">{indiaLocation.id === "india-overview" ? "India overview" : "India context"}</span></div><IndiaOverviewLayerControls layers={layers} onChange={(id, checked) => setLayers(current => ({ ...current, [id]: checked }))} /><div className="mt-3 border-t border-[#e7edef] pt-3"><p className="mb-1.5 text-[9px] font-bold uppercase tracking-[0.12em] text-[#87959d]">Base style</p><div className="grid grid-cols-2 gap-1 rounded-lg bg-[#edf4f5] p-1"><button onClick={() => setBaseStyle("muted")} className={cn("rounded-md px-2 py-1 text-[10px] font-semibold", baseStyle === "muted" ? "bg-white text-[#1c6f85] shadow-sm" : "text-[#72848f]")}>Muted</button><button onClick={() => setBaseStyle("terrain")} className={cn("rounded-md px-2 py-1 text-[10px] font-semibold", baseStyle === "terrain" ? "bg-white text-[#1c6f85] shadow-sm" : "text-[#72848f]")}>Terrain</button></div><div className="mb-2 mt-3 flex items-center justify-between text-[10px] font-medium text-[#657883]"><span>Overlay opacity</span><span>{Math.round(opacity * 100)}%</span></div><Slider value={[opacity * 100]} min={25} max={100} step={5} onValueChange={values => setOpacity((values[0] ?? 90) / 100)} aria-label="Map overlay opacity" /></div></div>}</div>
               <div className="absolute bottom-3 left-3 z-10 hidden rounded-xl border border-white/90 bg-white/95 p-2.5 shadow-lg backdrop-blur sm:block"><p className="text-[9px] font-bold tracking-[0.1em] text-[#5f737e]">{layers.redZones ? "PS191 AREA CLASSIFICATION" : "ACTIVE LEGEND"}</p>{layers.redZones ? <div className="mt-1.5 flex flex-wrap items-center gap-2.5 text-[10px] font-medium text-[#5c6e78]"><span className="inline-flex items-center gap-1"><i className="h-2.5 w-2.5 rounded-full bg-[#c62828]" /> RED (Critical)</span><span className="inline-flex items-center gap-1"><i className="h-2.5 w-2.5 rounded-full bg-[#e65100]" /> ORANGE (Attention required)</span><span className="inline-flex items-center gap-1"><i className="h-2.5 w-2.5 rounded-full bg-[#2e7d32]" /> GREEN (Lower assessed concern)</span><span className="inline-flex items-center gap-1"><i className="h-2.5 w-2.5 rounded-full border border-[#8da2ac] bg-transparent" /> UNAVAILABLE</span>{layers.facilities && <span className="inline-flex items-center gap-1 border-l border-[#d0dbe0] pl-2"><i className="h-2.5 w-2.5 rounded-full bg-[#15803d]" /> Facilities (OSM)</span>}</div> : <div className="mt-1.5 flex items-center gap-2.5 text-[10px] font-medium text-[#5c6e78]"><span className="inline-flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-[#31825d]" /> Low</span><span className="inline-flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-[#d3a52d]" /> Moderate</span><span className="inline-flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-[#e66e2d]" /> High</span><span className="inline-flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-[#bd3034]" /> Critical</span></div>}</div>
             </div>
-              {indiaLocation.id !== "india-assam" && <aside className="rounded-2xl border border-[#dbe6e9] bg-white shadow-[0_12px_30px_rgba(28,55,70,0.05)]"><div className="flex items-start justify-between border-b border-[#e7edef] p-4"><div><p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#1e7890]">Selected assessment area</p><h2 className="mt-1 text-lg font-bold tracking-tight text-[#193d53]">{area.name}</h2><p className="mt-0.5 text-xs text-[#71828c]">{area.district} · {area.state}</p></div><Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-[#71828c]" aria-label="Close assessment panel"><X className="h-4 w-4" /></Button></div><div className="grid grid-cols-3 gap-px border-b border-[#e7edef] bg-[#e7edef]"><div className="bg-white px-3 py-3"><p className="text-[9px] font-bold uppercase text-[#819099]">Population</p><p className="mt-1 text-sm font-bold text-[#274b60]">{area.population.toLocaleString()}</p></div><div className="bg-white px-3 py-3"><p className="text-[9px] font-bold uppercase text-[#819099]">Risk</p><div className="mt-1"><RiskBadge level={analysis.riskLevel} className="px-1.5 py-0.5 text-[8px]" /></div></div><div className="bg-white px-3 py-3"><p className="text-[9px] font-bold uppercase text-[#819099]">Priority</p><div className="mt-1"><RiskBadge level={analysis.relocationPriority} className="px-1.5 py-0.5 text-[8px]" /></div></div></div><div className="p-4"><div className="mb-3 flex items-center justify-between"><p className="text-xs font-bold text-[#2a4c61]">Assessment snapshot</p><span className="rounded-md bg-[#eaf5f7] px-1.5 py-0.5 text-[9px] font-bold text-[#1c7084]">KERALA CONTEXT</span></div>{environmentQuery.data && <div className="mb-3 rounded-xl border border-[#d9e8ea] bg-[#f4faf9] p-2.5"><p className="text-[9px] font-bold uppercase tracking-[.1em] text-[#2b7585]">{environmentQuery.data.status}</p><p className="mt-1 text-[11px] font-semibold text-[#385a67]">{environmentQuery.data.temperatureC ?? "—"}°C · {environmentQuery.data.precipitationMm ?? "—"} mm current precipitation · US AQI {environmentQuery.data.usAqi ?? "—"}</p><p className="mt-1 text-[9px] leading-relaxed text-[#758b94]">{environmentQuery.data.source}</p></div>}<div className="space-y-1"><FactorBar label="Overall risk" score={analysis.overallRisk} description={`${area.primaryHazard} · analytical model`} /><FactorBar label="Hazard exposure" score={analysis.hazardExposure} description={environmentQuery.data?.status === "LIVE MODELLED ENVIRONMENTAL CONTEXT" ? `Live environmental context available · not a hazard forecast` : `Environmental context unavailable; analytical hazard review only`} /><FactorBar label="Carrying capacity" score={analysis.carryingCapacityScore} description={`${analysis.capacityStatus} service readiness`} /></div><Button disabled={rerunAnalysis.isPending} onClick={() => rerunAnalysis.mutate({ id: area.id })} variant="outline" className="mt-3 h-8 w-full rounded-lg border-[#d5e6e8] bg-[#f9fcfc] text-[11px] font-semibold text-[#416979]">{rerunAnalysis.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" />} Re-run deterministic analysis</Button><div className="mt-3 rounded-xl border border-[#dce8eb] bg-[#f4f9fa] p-3"><div className="flex items-start gap-2"><Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-[#1d7a8e]" /><div><p className="text-[11px] font-bold text-[#2b5062]">AI/ML decision-support narrative</p><p className="mt-1 text-[10px] leading-relaxed text-[#71848e]">Grounded only in the supplied analysis results. Every output remains pending analyst review.</p></div></div>{narrative && <div className="mt-2.5 border-t border-[#d9e7e9] pt-2.5"><p className="text-[11px] font-bold text-[#315263]">{narrative.headline}</p><p className="mt-1 text-[10px] leading-relaxed text-[#667b86]">{narrative.summary}</p><p className="mt-2 text-[9px] font-bold uppercase tracking-[0.1em] text-[#17718a]">Pending analyst review</p></div>}<Button disabled={generateNarrative.isPending} onClick={() => generateNarrative.mutate({ id: area.id })} variant="outline" className="mt-3 h-8 w-full rounded-lg border-[#bcd8dc] bg-white text-[11px] font-semibold text-[#1d7187]">{generateNarrative.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Bot className="mr-1.5 h-3.5 w-3.5" />}{narrative ? "Refresh narrative" : "Generate reviewed narrative"}</Button>{generateNarrative.error && <p className="mt-2 text-[10px] text-[#b03538]">Narrative generation is temporarily unavailable. The deterministic assessment remains available.</p>}</div><div className="mt-3 flex gap-2"><Button onClick={() => generateReport.mutate({ id: area.id, narrative })} disabled={generateReport.isPending} className="h-9 flex-1 rounded-xl bg-[#173d59] text-xs font-semibold text-white hover:bg-[#0d304a]">{generateReport.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1.5 h-3.5 w-3.5" />} Generate report</Button><Button onClick={() => setWorkspace("risk")} variant="outline" size="icon" className="h-9 w-9 rounded-xl border-[#d6e3e6]" aria-label="Open full assessment"><PanelRightOpen className="h-4 w-4" /></Button></div></div></aside>}
+              {!mapLocationContext && <aside className="rounded-2xl border border-[#dbe6e9] bg-white shadow-[0_12px_30px_rgba(28,55,70,0.05)]"><div className="flex items-start justify-between border-b border-[#e7edef] p-4"><div><p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#1e7890]">Selected assessment area</p><h2 className="mt-1 text-lg font-bold tracking-tight text-[#193d53]">{area.name}</h2><p className="mt-0.5 text-xs text-[#71828c]">{area.district} · {area.state}</p></div><Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-[#71828c]" aria-label="Close assessment panel"><X className="h-4 w-4" /></Button></div><div className="grid grid-cols-3 gap-px border-b border-[#e7edef] bg-[#e7edef]"><div className="bg-white px-3 py-3"><p className="text-[9px] font-bold uppercase text-[#819099]">Population</p><p className="mt-1 text-sm font-bold text-[#274b60]">{area.population.toLocaleString()}</p></div><div className="bg-white px-3 py-3"><p className="text-[9px] font-bold uppercase text-[#819099]">Risk</p><div className="mt-1"><RiskBadge level={analysis.riskLevel} className="px-1.5 py-0.5 text-[8px]" /></div></div><div className="bg-white px-3 py-3"><p className="text-[9px] font-bold uppercase text-[#819099]">Priority</p><div className="mt-1"><RiskBadge level={analysis.relocationPriority} className="px-1.5 py-0.5 text-[8px]" /></div></div></div><div className="p-4"><div className="mb-3 flex items-center justify-between"><p className="text-xs font-bold text-[#2a4c61]">Assessment snapshot</p><span className="rounded-md bg-[#eaf5f7] px-1.5 py-0.5 text-[9px] font-bold text-[#1c7084]">KERALA CONTEXT</span></div>{environmentQuery.data && <div className="mb-3 rounded-xl border border-[#d9e8ea] bg-[#f4faf9] p-2.5"><p className="text-[9px] font-bold uppercase tracking-[.1em] text-[#2b7585]">{environmentQuery.data.status}</p><p className="mt-1 text-[11px] font-semibold text-[#385a67]">{environmentQuery.data.temperatureC ?? "—"}°C · {environmentQuery.data.precipitationMm ?? "—"} mm current precipitation · US AQI {environmentQuery.data.usAqi ?? "—"}</p><p className="mt-1 text-[9px] leading-relaxed text-[#758b94]">{environmentQuery.data.source}</p></div>}<div className="space-y-1"><FactorBar label="Overall risk" score={analysis.overallRisk} description={`${area.primaryHazard} · analytical model`} /><FactorBar label="Hazard exposure" score={analysis.hazardExposure} description={environmentQuery.data?.status === "LIVE MODELLED ENVIRONMENTAL CONTEXT" ? `Live environmental context available · not a hazard forecast` : `Environmental context unavailable; analytical hazard review only`} /><FactorBar label="Carrying capacity" score={analysis.carryingCapacityScore} description={`${analysis.capacityStatus} service readiness`} /></div><Button disabled={rerunAnalysis.isPending} onClick={() => rerunAnalysis.mutate({ id: area.id })} variant="outline" className="mt-3 h-8 w-full rounded-lg border-[#d5e6e8] bg-[#f9fcfc] text-[11px] font-semibold text-[#416979]">{rerunAnalysis.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" />} Re-run deterministic analysis</Button><div className="mt-3 rounded-xl border border-[#dce8eb] bg-[#f4f9fa] p-3"><div className="flex items-start gap-2"><Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-[#1d7a8e]" /><div><p className="text-[11px] font-bold text-[#2b5062]">AI/ML decision-support narrative</p><p className="mt-1 text-[10px] leading-relaxed text-[#71848e]">Grounded only in the supplied analysis results. Every output remains pending analyst review.</p></div></div>{narrative && <div className="mt-2.5 border-t border-[#d9e7e9] pt-2.5"><p className="text-[11px] font-bold text-[#315263]">{narrative.headline}</p><p className="mt-1 text-[10px] leading-relaxed text-[#667b86]">{narrative.summary}</p><p className="mt-2 text-[9px] font-bold uppercase tracking-[0.1em] text-[#17718a]">Pending analyst review</p></div>}<Button disabled={generateNarrative.isPending} onClick={() => generateNarrative.mutate({ id: area.id })} variant="outline" className="mt-3 h-8 w-full rounded-lg border-[#bcd8dc] bg-white text-[11px] font-semibold text-[#1d7187]">{generateNarrative.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Bot className="mr-1.5 h-3.5 w-3.5" />}{narrative ? "Refresh narrative" : "Generate reviewed narrative"}</Button>{generateNarrative.error && <p className="mt-2 text-[10px] text-[#b03538]">Narrative generation is temporarily unavailable. The deterministic assessment remains available.</p>}</div><div className="mt-3 flex gap-2"><Button onClick={() => generateReport.mutate({ id: area.id, narrative })} disabled={generateReport.isPending} className="h-9 flex-1 rounded-xl bg-[#173d59] text-xs font-semibold text-white hover:bg-[#0d304a]">{generateReport.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1.5 h-3.5 w-3.5" />} Generate report</Button><Button onClick={() => setWorkspace("risk")} variant="outline" size="icon" className="h-9 w-9 rounded-xl border-[#d6e3e6]" aria-label="Open full assessment"><PanelRightOpen className="h-4 w-4" /></Button></div></div></aside>}
 		          {indiaContextQuery.data && <IndiaContextSidebar context={indiaContextQuery.data} onOpenKeralaAssessment={() => setWorkspace("risk")} />}
 	          </section>
           {indiaContextQuery.data && (

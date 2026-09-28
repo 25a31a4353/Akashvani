@@ -27,6 +27,7 @@ import {
 import { buildMultiHazardProfile } from "./hazards/engine";
 import { resolveGeologyContext } from "./hazards/data/gsiGeology";
 import { computeCanonicalDecision } from "./decision/pipeline";
+import { discoverFacilities } from "./hazards/facilityDiscovery";
 
 type NominatimResult = { place_id: number; display_name: string; lat: string; lon: string; type?: string; addresstype?: string; class?: string; boundingbox?: string[]; geojson?: { type: string; coordinates: unknown }; address?: Record<string, string> };
 type OpenMeteoResult = { id: number; name: string; latitude: number; longitude: number; population?: number; admin1?: string; admin2?: string; admin3?: string; admin4?: string; feature_code?: string };
@@ -183,24 +184,71 @@ async function enrichBoundary(location: IndiaLocation) {
   } catch {
     return location;
   }
-}
+}export const CENSUS_2011_STATE_POPULATION: Record<string, number> = {
+  "assam": 31205576,
+  "kerala": 33406061,
+  "andhra pradesh": 49386799,
+  "maharashtra": 112374333,
+  "odisha": 41974218,
+  "rajasthan": 68548437,
+  "bihar": 104099452,
+  "karnataka": 61095297,
+  "tamil nadu": 72147030,
+  "uttarakhand": 10086292,
+  "jharkhand": 32988134,
+  "chhattisgarh": 25545198,
+  "uttar pradesh": 199812341,
+  "mizoram": 1097206,
+};
 
 type OverpassElement = { type?: string; id?: number; lat?: number; lon?: number; center?: { lat?: number; lon?: number }; tags?: Record<string, string> };
 
-async function getNearbyInfrastructure(location: IndiaLocation): Promise<IndiaLocationContext["infrastructure"]> {
+async function getNearbyInfrastructure(location: IndiaLocation, stateCode?: string): Promise<IndiaLocationContext["infrastructure"]> {
   const key = `${location.latitude.toFixed(2)}:${location.longitude.toFixed(2)}`;
   const cached = infrastructureCache.get(key); if (cached && cached.expiresAt > Date.now()) return cached.value;
-  const unavailable: IndiaLocationContext["infrastructure"] = { items: [], source: "OpenStreetMap facility lookup did not return before the response deadline.", status: "UNAVAILABLE", observedAt: null };
-  const radius = location.category === "Locality" ? 5_000 : location.category === "City" ? 12_000 : 20_000;
-  const query = `[out:json][timeout:8];(nwr(around:${radius},${location.latitude},${location.longitude})["amenity"~"hospital|clinic|shelter|fire_station"];nwr(around:${radius},${location.latitude},${location.longitude})["emergency"~"ambulance_station|fire_station"];);out center 60;`;
-  const response = await fetch("https://overpass-api.de/api/interpreter", { method: "POST", headers: { "Content-Type": "text/plain", ...header }, body: query, signal: AbortSignal.timeout(7_500) });
-  const parsed = await parseProviderJson<{ elements?: unknown }>(response, {});
-  const elements = Array.isArray(parsed.elements) ? parsed.elements as OverpassElement[] : [];
-  const items = elements.map((element, index) => {
-    const latitude = element.lat ?? element.center?.lat; const longitude = element.lon ?? element.center?.lon; const tags = element.tags ?? {};
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
-    return { id: `osm-${element.type ?? "feature"}-${element.id ?? index}`, name: tags.name ?? tags.amenity ?? tags.emergency ?? "Mapped facility", type: tags.amenity ?? tags.emergency ?? "facility", latitude: Number(latitude), longitude: Number(longitude) };
-  }).filter((item): item is NonNullable<typeof item> => item !== null).slice(0, 40);
+  const unavailable: IndiaLocationContext["infrastructure"] = { items: [], source: "Facility discovery unavailable from open mapping sources at this spatial extent.", status: "UNAVAILABLE", observedAt: null };
+  const radius = location.category === "Locality" ? 5_000 : location.category === "City" ? 12_000 : 25_000;
+  let items: Array<{ id: string; name: string; type: string; latitude: number; longitude: number }> = [];
+
+  try {
+    const query = `[out:json][timeout:6];(nwr(around:${radius},${location.latitude},${location.longitude})["amenity"~"hospital|clinic|shelter|fire_station"];nwr(around:${radius},${location.latitude},${location.longitude})["emergency"~"ambulance_station|fire_station"];);out center 60;`;
+    const response = await fetch("https://overpass-api.de/api/interpreter", { method: "POST", headers: { "Content-Type": "text/plain", ...header }, body: query, signal: AbortSignal.timeout(5_000) });
+    const parsed = await parseProviderJson<{ elements?: unknown }>(response, {});
+    const elements = Array.isArray(parsed.elements) ? parsed.elements as OverpassElement[] : [];
+    items = elements.map((element, index) => {
+      const latitude = element.lat ?? element.center?.lat; const longitude = element.lon ?? element.center?.lon; const tags = element.tags ?? {};
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+      return { id: `osm-${element.type ?? "feature"}-${element.id ?? index}`, name: tags.name ?? tags.amenity ?? tags.emergency ?? "Mapped facility", type: tags.amenity ?? tags.emergency ?? "facility", latitude: Number(latitude), longitude: Number(longitude) };
+    }).filter((item): item is NonNullable<typeof item> => item !== null).slice(0, 40);
+  } catch {
+    // Overpass failed or timed out — proceed to curated baseline
+  }
+
+  if (items.length === 0) {
+    try {
+      const { facilities, source } = await discoverFacilities(location.latitude, location.longitude, Math.max(25, radius / 1000), stateCode);
+      if (facilities.length > 0) {
+        items = facilities.map(f => ({
+          id: f.facilityId,
+          name: f.name,
+          type: f.facilityRole,
+          latitude: f.latitude,
+          longitude: f.longitude,
+        }));
+        const value: IndiaLocationContext["infrastructure"] = {
+          items,
+          source: `Curated facility directory & OpenStreetMap baseline (${source}); ${facilities.length} facilities mapped within ${Math.max(25, radius / 1000)} km. Verified evacuation capacity unverified.`,
+          status: "CURATED BASELINE FACILITY REGISTER",
+          observedAt: new Date().toISOString()
+        };
+        infrastructureCache.set(key, { expiresAt: Date.now() + 10 * 60 * 1000, value });
+        return value;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   const value: IndiaLocationContext["infrastructure"] = items.length ? { items, source: `OpenStreetMap contributors via Overpass API; up to ${radius / 1000} km coordinate-centred facility sample. Coverage and tags vary by area.`, status: "LIVE OSM FACILITY SAMPLE", observedAt: new Date().toISOString() } : unavailable;
   infrastructureCache.set(key, { expiresAt: Date.now() + 10 * 60 * 1000, value });
   return value;
@@ -211,16 +259,16 @@ export async function getIndiaLocationContext(location: IndiaLocation): Promise<
   const stateName = seededLocation.address.state ?? seededLocation.name;
   const stateConfig = getStateByName(stateName) ?? (seededLocation.address.state ? getStateByCode(seededLocation.address.state) : undefined);
 
-  const unavailableEnvironment = { temperatureC: null, precipitationMm: null, weatherCode: null, usAqi: null, pm25: null, observedAt: null, forecast: [], source: "Selected-location environmental context could not be refreshed before the response deadline.", status: "UNAVAILABLE" as const };
-  const unavailableInfrastructure: IndiaLocationContext["infrastructure"] = { items: [], source: "OpenStreetMap facility lookup is temporarily unavailable.", status: "UNAVAILABLE", observedAt: null };
+  const unavailableEnvironment = { temperatureC: null, apparentTemperatureC: null, relativeHumidityPct: null, precipitationMm: null, surfacePressureHpa: null, windSpeedKph: null, windDirectionDeg: null, windGustKph: null, uvIndex: null, weatherCode: null, usAqi: null, pm25: null, pm10: null, observedAt: null, forecast: [], imdWarning: null, telemetryType: { temperature: "UNAVAILABLE" as const, wind: "UNAVAILABLE" as const, precipitation: "UNAVAILABLE" as const, airQuality: "UNAVAILABLE" as const, warning: "UNAVAILABLE" as const }, validPeriod: "Unavailable", retrievedAt: new Date().toISOString(), source: "Selected-location environmental context could not be refreshed before the response deadline.", status: "UNAVAILABLE" as const };
+  const unavailableInfrastructure: IndiaLocationContext["infrastructure"] = { items: [], source: "Facility discovery unavailable from open mapping sources at this spatial extent.", status: "UNAVAILABLE", observedAt: null };
 
   const [selectedWithBoundary, environment, infrastructure, terrain] = await Promise.all([
-    resolveWithin(enrichBoundary(seededLocation), 3_500, seededLocation),
-    resolveWithin(getEnvironmentalContext(seededLocation.latitude, seededLocation.longitude, seededLocation), 4_500, unavailableEnvironment),
-    resolveWithin(getNearbyInfrastructure(seededLocation), 4_500, unavailableInfrastructure),
+    resolveWithin(enrichBoundary(seededLocation), 4_000, seededLocation),
+    resolveWithin(getEnvironmentalContext(seededLocation.latitude, seededLocation.longitude, seededLocation), 8_000, unavailableEnvironment),
+    resolveWithin(getNearbyInfrastructure(seededLocation, stateConfig?.code), 7_000, unavailableInfrastructure),
     resolveWithin(
       resolveTerrain(seededLocation.latitude, seededLocation.longitude, stateConfig?.code),
-      3_500,
+      4_000,
       {
         elevationMeters: null,
         slopeDegrees: null,
@@ -250,6 +298,8 @@ export async function getIndiaLocationContext(location: IndiaLocation): Promise<
   const districtName = seededLocation.address.district ?? (finalLocation.category === "District" ? finalLocation.name : undefined);
   const distKey = districtName ? districtName.toLowerCase().trim() : finalLocation.name.toLowerCase().trim();
   const censusDistrictPop = CENSUS_2011_DISTRICT_POPULATION[distKey] ?? null;
+  const stateKey = (stateConfig?.name ?? finalLocation.address.state ?? finalLocation.name).toLowerCase().trim();
+  const censusStatePop = finalLocation.category === "State" ? (CENSUS_2011_STATE_POPULATION[stateKey] ?? null) : null;
 
   // Check if matching a verified habitation
   const habMatch = TARGET_STATE_HABITATIONS.find(h =>
@@ -267,6 +317,19 @@ export async function getIndiaLocationContext(location: IndiaLocation): Promise<
       source: habMatch.source,
       provenance: "OFFICIAL",
       formatted: `${habMatch.population.toLocaleString("en-IN")} people`,
+      countType: "COUNT",
+    };
+  } else if (finalLocation.category === "State" && censusStatePop !== null) {
+    finalLocation.population = censusStatePop;
+    finalLocation.populationSource = "Census of India 2011 (Primary Census Abstract — State)";
+    finalLocation.populationMeta = {
+      value: censusStatePop,
+      unit: "people",
+      resolution: "State",
+      year: 2011,
+      source: "Census of India 2011 (Primary Census Abstract — State)",
+      provenance: "OFFICIAL",
+      formatted: censusStatePop >= 1_000_000 ? `${(censusStatePop / 1_000_000).toFixed(1)}M people` : `${(censusStatePop / 1000).toFixed(0)}K people`,
       countType: "COUNT",
     };
   } else if (censusDistrictPop !== null && (finalLocation.population === null || finalLocation.category === "District")) {

@@ -25,7 +25,7 @@ async function getImdNowcasts(): Promise<ImdNowcastItem[]> {
   try {
     const res = await fetch("https://mausam.imd.gov.in/responsive/districtWiseNowcast.php", {
       headers: { "User-Agent": "ResQ-Disaster-Intelligence/1.0" },
-      signal: AbortSignal.timeout(6000),
+      signal: AbortSignal.timeout(2500),
     });
     if (!res.ok) return imdNowcastCache?.data ?? [];
     const text = await res.text();
@@ -187,15 +187,15 @@ export async function getEnvironmentalContext(
       fetch(
         `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=${currentFields}&daily=${dailyFields}&forecast_days=7&timezone=Asia%2FKolkata`,
         { signal: AbortSignal.timeout(7000) }
-      ),
+      ).catch(() => null),
       fetch(
         `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${latitude}&longitude=${longitude}&current=us_aqi,pm2_5,pm10&timezone=Asia%2FKolkata`,
         { signal: AbortSignal.timeout(7000) }
-      ),
-      resolveImdDistrictWarning(districtName, stateName)
+      ).catch(() => null),
+      resolveImdDistrictWarning(districtName, stateName).catch(() => null)
     ]);
 
-    const weather = await safeJson<{
+    const weather = weatherResponse ? await safeJson<{
       current?: {
         temperature_2m?: number;
         relative_humidity_2m?: number;
@@ -221,45 +221,45 @@ export async function getEnvironmentalContext(
         uv_index_max?: number[];
         weather_code?: number[];
       };
-    }>(weatherResponse);
+    }>(weatherResponse) : null;
 
-    const quality = await safeJson<{
+    const quality = qualityResponse ? await safeJson<{
       current?: {
         us_aqi?: number;
         pm2_5?: number;
         pm10?: number;
       };
-    }>(qualityResponse);
+    }>(qualityResponse) : null;
 
-    if (!weather || !quality) throw new Error("Environmental source unavailable");
+    if (!weather && !quality) throw new Error("Environmental source unavailable");
 
-    const forecast = forecastFromDaily(weather.daily);
-    const weatherCode = weather.current?.weather_code ?? null;
-    const weatherDesc = decodeWmoWeather(weatherCode).label;
+    const forecast = weather?.daily ? forecastFromDaily(weather.daily) : [];
+    const weatherCode = weather?.current?.weather_code ?? null;
+    const weatherDesc = weatherCode !== null ? decodeWmoWeather(weatherCode).label : "Forecast telemetry unavailable";
 
     const envPayload = {
-      temperatureC: weather.current?.temperature_2m ?? null,
-      apparentTemperatureC: weather.current?.apparent_temperature ?? null,
-      relativeHumidityPct: weather.current?.relative_humidity_2m ?? null,
-      precipitationMm: weather.current?.precipitation ?? null,
-      surfacePressureHpa: weather.current?.surface_pressure ?? null,
-      windSpeedKph: weather.current?.wind_speed_10m ?? null,
-      windDirectionDeg: weather.current?.wind_direction_10m ?? null,
-      windGustKph: weather.current?.wind_gusts_10m ?? null,
+      temperatureC: weather?.current?.temperature_2m ?? null,
+      apparentTemperatureC: weather?.current?.apparent_temperature ?? null,
+      relativeHumidityPct: weather?.current?.relative_humidity_2m ?? null,
+      precipitationMm: weather?.current?.precipitation ?? null,
+      surfacePressureHpa: weather?.current?.surface_pressure ?? null,
+      windSpeedKph: weather?.current?.wind_speed_10m ?? null,
+      windDirectionDeg: weather?.current?.wind_direction_10m ?? null,
+      windGustKph: weather?.current?.wind_gusts_10m ?? null,
       uvIndex: forecast[0]?.uvIndexMax ?? null,
       weatherCode,
-      weatherDescription: weatherDesc,
-      usAqi: quality.current?.us_aqi ?? null,
-      pm25: quality.current?.pm2_5 ?? null,
-      pm10: quality.current?.pm10 ?? null,
-      observedAt: weather.current?.time ?? new Date().toISOString(),
+      weatherDescription: weather ? weatherDesc : "Weather telemetry unavailable",
+      usAqi: quality?.current?.us_aqi ?? null,
+      pm25: quality?.current?.pm2_5 ?? null,
+      pm10: quality?.current?.pm10 ?? null,
+      observedAt: weather?.current?.time ?? new Date().toISOString(),
       forecast,
       imdWarning,
       telemetryType: {
-        temperature: "MODELLED" as const,
-        wind: "MODELLED" as const,
-        precipitation: "MODELLED" as const,
-        airQuality: "MODELLED" as const,
+        temperature: (weather?.current?.temperature_2m != null ? "MODELLED" : "UNAVAILABLE") as "MODELLED" | "UNAVAILABLE",
+        wind: (weather?.current?.wind_speed_10m != null ? "MODELLED" : "UNAVAILABLE") as "MODELLED" | "UNAVAILABLE",
+        precipitation: (weather?.current?.precipitation != null ? "MODELLED" : "UNAVAILABLE") as "MODELLED" | "UNAVAILABLE",
+        airQuality: (quality?.current?.us_aqi != null ? "MODELLED" : "UNAVAILABLE") as "MODELLED" | "UNAVAILABLE",
         warning: (imdWarning ? (imdWarning.warningLevel === "NO_WARNING" ? "OFFICIAL_NOWCAST" : "OFFICIAL_WARNING") : "UNAVAILABLE") as "OFFICIAL_WARNING" | "OFFICIAL_NOWCAST" | "UNAVAILABLE",
       },
       validPeriod: imdWarning?.validUpto ? `Valid upto ${imdWarning.validUpto}` : "3-hour operational cycle",
@@ -284,19 +284,27 @@ export async function getEnvironmentalContext(
   } catch {
     return {
       temperatureC: null,
+      apparentTemperatureC: null,
+      relativeHumidityPct: null,
       precipitationMm: null,
+      surfacePressureHpa: null,
+      windSpeedKph: null,
+      windDirectionDeg: null,
+      windGustKph: null,
+      uvIndex: null,
       weatherCode: null,
-      weatherDescription: "Telemetry temporarily unavailable",
+      weatherDescription: "Weather telemetry unavailable",
       usAqi: null,
       pm25: null,
+      pm10: null,
       observedAt: null,
       forecast: [],
       imdWarning: null,
       telemetryType: {
-        temperature: "MODELLED",
-        wind: "MODELLED",
-        precipitation: "MODELLED",
-        airQuality: "MODELLED",
+        temperature: "UNAVAILABLE",
+        wind: "UNAVAILABLE",
+        precipitation: "UNAVAILABLE",
+        airQuality: "UNAVAILABLE",
         warning: "UNAVAILABLE",
       },
       validPeriod: "Unavailable",

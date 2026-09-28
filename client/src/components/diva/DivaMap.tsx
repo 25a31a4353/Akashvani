@@ -108,7 +108,12 @@ const mapStyle: maplibregl.StyleSpecification = {
   ]
 };
 const riskColor = (score: number) => score >= 85 ? "#bd3034" : score >= 70 ? "#e66e2d" : score >= 50 ? "#d3a52d" : "#31825d";
-const activeZoom = (location?: IndiaLocationContext["location"]) => location?.category === "Locality" ? 11 : location?.category === "City" ? 9.5 : location?.category === "District" ? 8.4 : location ? 7.1 : 6.65;
+const activeZoom = (location?: IndiaLocationContext["location"]) =>
+  location?.category === "Locality" ? 12 :
+  location?.category === "City" ? 10.5 :
+  location?.category === "District" ? 8.8 :
+  location?.category === "State" ? 6.8 :
+  location ? 7.1 : 6.65;
 
 // Safely update a GeoJSON source without crashing if it doesn't exist yet
 function safeSetData(map: MapLibreMap, sourceId: string, data: unknown) {
@@ -220,7 +225,7 @@ export function DivaMap({
     setIsNavDropdownOpen(false);
     setIsSimulating(false);
     setSimIndex(0);
-  }, [data?.activeLocation?.location.id, selectedId]);
+  }, [data?.activeLocation?.location.id, selectedId, data?.center?.[0], data?.center?.[1]]);
 
   const is3D = is3DMode !== undefined ? is3DMode : internal3D;
 
@@ -406,6 +411,16 @@ export function DivaMap({
       };
     }
     if (data?.relocationRoute && data.relocationRoute.coordinates && data.relocationRoute.coordinates.length > 0) {
+      const origLng = data.relocationOrigin?.longitude ?? data.relocationRoute.coordinates[0][0];
+      const origLat = data.relocationOrigin?.latitude ?? data.relocationRoute.coordinates[0][1];
+      // Proximity guard: Discard route if origin is > 200 km from center to prevent cross-state stale route rendering
+      if (data?.center) {
+        const [centerLng, centerLat] = data.center;
+        const distKm = Math.hypot((origLat - centerLat) * 111, (origLng - centerLng) * 111 * Math.cos((centerLat * Math.PI) / 180));
+        if (distKm > 200) {
+          return null;
+        }
+      }
       return {
         originLabel: data.relocationRoute.originLabel ?? active?.location.name ?? "Vulnerable Habitation",
         destinationLabel: data.relocationRoute.destinationLabel ?? "Safe Relocation Haven",
@@ -433,7 +448,7 @@ export function DivaMap({
       };
     }
     return null;
-  }, [activeNavigation, data?.activeLocation, data?.relocationRoute, data?.relocationOrigin, data?.relocationDestination]);
+  }, [activeNavigation, data?.activeLocation, data?.relocationRoute, data?.relocationOrigin, data?.relocationDestination, data?.center]);
 
   const sources = useMemo(() => {
     if (!data) return null;
@@ -1195,14 +1210,20 @@ export function DivaMap({
   useEffect(() => {
     const map = mapRef.current;
     const location = data?.activeLocation?.location;
-    if (!map || !location) return;
+    if (!map) return;
     const doFly = () => {
       if (!mapRef.current) return;
-      if (location.boundingBox) {
+      if (location?.boundingBox) {
         const [south, west, north, east] = location.boundingBox;
-        map.fitBounds([[west, south], [east, north]], { padding: 56, maxZoom: activeZoom(location), duration: 720 });
-      } else {
+        if (Math.abs(north - south) > 0.001 && Math.abs(east - west) > 0.001) {
+          map.fitBounds([[west, south], [east, north]], { padding: 56, maxZoom: activeZoom(location), duration: 720 });
+          return;
+        }
+      }
+      if (location) {
         map.flyTo({ center: [location.longitude, location.latitude], zoom: activeZoom(location), duration: 720, essential: true });
+      } else if (data?.center) {
+        map.flyTo({ center: data.center, zoom: zoomOverride ?? 6.8, duration: 720, essential: true });
       }
     };
     if (map.isStyleLoaded()) {
@@ -1210,7 +1231,7 @@ export function DivaMap({
     } else {
       map.once("load", doFly);
     }
-  }, [data?.activeLocation]);
+  }, [data?.activeLocation?.location?.id, data?.activeLocation?.location?.latitude, data?.activeLocation?.location?.longitude, data?.center?.[0], data?.center?.[1]]);
 
   // ── Simulation animation loop ─────────────────────────────────────────────
   useEffect(() => {

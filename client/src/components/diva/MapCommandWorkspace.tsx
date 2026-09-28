@@ -17,6 +17,7 @@ import { LanguageSelector } from "@/components/LanguageSelector";
 import { SosModal } from "./SosModal";
 import { SosResponderDrawer } from "./SosResponderDrawer";
 import { ResqAiAssistant } from "./ResqAiAssistant";
+import { LocationConsistencyDiagnostics } from "./LocationConsistencyDiagnostics";
 
 function PanelHeading({ icon: Icon, children }: { icon: typeof MapPin; children: string }) {
   return <div className="flex items-center gap-2 text-[12px] font-semibold text-[#f0f6f3]"><Icon className="h-4 w-4 text-[#d9e7ec]" />{children}</div>;
@@ -51,9 +52,64 @@ export function MapCommandWorkspace({ data, selectedId, area, analysis, indiaLoc
   const priorityLabel = selectedContext?.screening.priority ?? analysis.relocationPriority;
   const actionLabel = selectedContext?.screening.hazardContext ?? analysis.recommendedAction;
 
-  const realDistrict = lookupRealDistrict(selectedLocation.name, selectedLocation.address?.district ?? selectedLocation.address?.city ?? area.district);
+  const stateFilter = selectedLocation?.address?.state ?? selectedContext?.location?.address?.state ?? null;
+  const realDistrict = lookupRealDistrict(
+    selectedLocation?.name,
+    selectedLocation?.address?.district ?? selectedLocation?.address?.city,
+    stateFilter
+  );
 
-  // Habitations query for the selected district/coords
+  // Canonical ResQ Decision references (Phase 2 & 16 Invariant)
+  const canonicalDecision = selectedContext?.decision;
+  const canonicalOriginMarker = canonicalDecision?.mapState?.originMarker;
+  const canonicalDestinationMarker = canonicalDecision?.mapState?.destinationMarker;
+  const canonicalRouteData = canonicalDecision?.mapState?.route;
+
+  const canonicalOrigin = selectedContext?.decision?.exposureAssessment?.selectedOriginHabitation ? {
+    name: selectedContext.decision.exposureAssessment.selectedOriginHabitation.name,
+    latitude: selectedContext.decision.exposureAssessment.selectedOriginHabitation.latitude,
+    longitude: selectedContext.decision.exposureAssessment.selectedOriginHabitation.longitude,
+    exposureLevel: selectedContext.decision.exposureAssessment.selectedOriginHabitation.exposureLevel ?? (risk >= 70 ? "CRITICAL" : "HIGH"),
+    population: selectedContext.decision.exposureAssessment.selectedOriginHabitation.population,
+    hazardType: selectedContext.decision.exposureAssessment.selectedOriginHabitation.hazardType ?? selectedContext.decision.hazardAssessment.primaryHazard,
+    insideHazardZone: true,
+  } : (canonicalOriginMarker ? {
+    name: canonicalOriginMarker.label,
+    latitude: canonicalOriginMarker.coordinates[1],
+    longitude: canonicalOriginMarker.coordinates[0],
+    exposureLevel: canonicalOriginMarker.exposureLevel ?? (risk >= 70 ? "CRITICAL" : "HIGH"),
+    population: canonicalOriginMarker.population,
+    hazardType: canonicalDecision?.mapState?.primaryHazard ?? "Red Zone Exposure",
+    insideHazardZone: true,
+  } : null);
+
+  const canonicalDestination = selectedContext?.decision?.relocationAssessment?.bestCandidate ? {
+    name: selectedContext.decision.relocationAssessment.bestCandidate.name,
+    facilityRole: selectedContext.decision.relocationAssessment.bestCandidate.facilityRole,
+    relocationSuitability: selectedContext.decision.relocationAssessment.destinationSafety?.destinationSafetyStatus === "SAFE" ? "PREFERRED" : "CONDITIONAL",
+    latitude: selectedContext.decision.relocationAssessment.bestCandidate.latitude,
+    longitude: selectedContext.decision.relocationAssessment.bestCandidate.longitude,
+    capacity: selectedContext.decision.relocationAssessment.bestCandidate.capacity,
+  } : (canonicalDestinationMarker ? {
+    name: canonicalDestinationMarker.label,
+    facilityRole: canonicalDestinationMarker.role,
+    relocationSuitability: canonicalDestinationMarker.safetyStatus === "SAFE" ? "PREFERRED" : "CONDITIONAL",
+    latitude: canonicalDestinationMarker.coordinates[1],
+    longitude: canonicalDestinationMarker.coordinates[0],
+    capacity: canonicalDestinationMarker.capacity,
+  } : null);
+
+  const canonicalRoute = canonicalRouteData && canonicalRouteData.coordinates && canonicalRouteData.coordinates.length > 0 ? {
+    coordinates: canonicalRouteData.coordinates,
+    destinationLabel: canonicalDestination?.name ?? "Safe Relocation Haven",
+    originLabel: canonicalOrigin?.name ?? "Vulnerable Origin",
+    distanceKm: canonicalRouteData.distanceKm,
+    travelTimeMinutes: canonicalRouteData.durationMinutes,
+    isRoadRoute: canonicalRouteData.isRoadRoute,
+    sourceNote: canonicalRouteData.displayBadge,
+  } : undefined;
+
+  // Habitations query for the selected district/coords (only enabled when realDistrict exists)
   const habitationsQuery = trpc.diva.hazards.habitations.useQuery(
     {
       latitude: selectedLocation.latitude,
@@ -62,36 +118,37 @@ export function MapCommandWorkspace({ data, selectedId, area, analysis, indiaLoc
       stateCode: realDistrict?.stateCode,
       radiusKm: 35,
     },
-    { enabled: Boolean(selectedLocation), staleTime: 10 * 60 * 1000 }
+    { enabled: Boolean(selectedLocation && realDistrict), staleTime: 10 * 60 * 1000 }
   );
 
-  // Relocation recommendation query for the selected district
+  // Relocation recommendation query for the selected district (only enabled when realDistrict exists)
   const relocationQuery = trpc.diva.hazards.relocation.useQuery(
     {
-      districtId: realDistrict?.id ?? "DIST-AS-DIB",
+      districtId: realDistrict?.id || "",
       stateCode: realDistrict?.stateCode,
       radiusKm: 35,
     },
-    { enabled: Boolean(realDistrict), staleTime: 10 * 60 * 1000 }
+    { enabled: Boolean(realDistrict?.id), staleTime: 10 * 60 * 1000 }
   );
 
   // Identify highest priority exposed habitation with valid coordinates in Red Zone
   const habitationsList = habitationsQuery.data ?? [];
   const exposedHabitations = habitationsList.filter((h: any) => h.insideHazardZone && h.latitude != null && h.longitude != null);
-  const selectedVulnerableHabitation = exposedHabitations[0] ?? habitationsList.find((h: any) => h.latitude != null && h.longitude != null) ?? (selectedLocation ? {
-    name: `${selectedLocation.name} (Red Zone Origin)`,
+  const selectedVulnerableHabitation = canonicalOrigin ?? exposedHabitations[0] ?? habitationsList.find((h: any) => h.latitude != null && h.longitude != null) ?? (selectedLocation ? {
+    name: `${selectedLocation.name} (Screened Origin)`,
     latitude: selectedLocation.latitude,
     longitude: selectedLocation.longitude,
     exposureLevel: risk >= 70 ? "CRITICAL" : "HIGH",
-    population: selectedLocation.population ?? null,
-    hazardType: selectedLocation.category ? `${selectedLocation.category} Hazard Exposure` : "Multi-Hazard Red Zone",
+    population: selectedContext?.decision?.exposureAssessment?.populationValue ?? selectedLocation.population ?? null,
+    hazardType: selectedContext?.decision?.hazardAssessment?.primaryHazard ?? (selectedLocation.category ? `${selectedLocation.category} Hazard Exposure` : "Multi-Hazard Red Zone"),
     insideHazardZone: true,
   } : null);
 
   const origLat = selectedVulnerableHabitation?.latitude ?? 0;
   const origLon = selectedVulnerableHabitation?.longitude ?? 0;
 
-  const matchedCorridor = selectedVulnerableHabitation
+  // Only match pre-verified corridors if habitation is within tolerance AND state matches
+  const matchedCorridor = selectedVulnerableHabitation && realDistrict
     ? VERIFIED_ROAD_CORRIDORS.find(c => {
         const d = Math.hypot((c.matchLat - origLat) * 111, (c.matchLon - origLon) * 111 * Math.cos((origLat * Math.PI) / 180));
         return d <= c.toleranceKm;
@@ -99,15 +156,29 @@ export function MapCommandWorkspace({ data, selectedId, area, analysis, indiaLoc
     : null;
 
   // Identify recommended relocation destination facility in Green Zone (no fake coordinates)
-  const relRec = relocationQuery.data;
-  const destinationCandidate = relRec?.bestCandidate ?? (relRec?.conditionalAlternatives ?? []).find((f: any) => f.latitude != null && f.longitude != null) ?? (relRec?.nearestFacilities ?? []).find((f: any) => f.relocationSuitability !== "UNSUITABLE" && f.facilityRole !== "HOSPITAL_MEDICAL_SUPPORT" && f.latitude != null && f.longitude != null) ?? (matchedCorridor ? {
+  const relRec = (relocationQuery.data && realDistrict && relocationQuery.data.sourceAreaId?.toLowerCase() === realDistrict.id.toLowerCase())
+    ? relocationQuery.data
+    : null;
+
+  const destinationCandidate = canonicalDestination ?? relRec?.bestCandidate ?? (relRec?.conditionalAlternatives ?? []).find((f: any) => f.latitude != null && f.longitude != null) ?? (relRec?.nearestFacilities ?? []).find((f: any) => f.relocationSuitability !== "UNSUITABLE" && f.facilityRole !== "HOSPITAL_MEDICAL_SUPPORT" && f.latitude != null && f.longitude != null) ?? (matchedCorridor ? {
     name: matchedCorridor.destName,
     facilityRole: "RELIEF_CENTRE",
     relocationSuitability: "PREFERRED",
     latitude: matchedCorridor.coordinates[matchedCorridor.coordinates.length - 1][1],
     longitude: matchedCorridor.coordinates[matchedCorridor.coordinates.length - 1][0],
-    capacity: 2500,
+    capacity: null,
   } : null);
+
+  const dstLat = destinationCandidate?.latitude ?? 0;
+  const dstLon = destinationCandidate?.longitude ?? 0;
+  const straightDistKm = Math.hypot((dstLat - origLat) * 111, (dstLon - origLon) * 111 * Math.cos((origLat * Math.PI) / 180));
+  const calcDistKm = Math.round(Math.max(2.5, straightDistKm * 1.28) * 10) / 10;
+  const calcMinutes = Math.max(6, Math.round((calcDistKm / 35) * 60));
+
+  // Destination must be in proximity (< 150 km) to prevent cross-state routing leakage
+  const isCandidateNearby = selectedVulnerableHabitation && destinationCandidate &&
+    destinationCandidate.latitude != null && destinationCandidate.longitude != null &&
+    straightDistKm <= 150;
 
   // Fetch verified OSRM evacuation road route
   const routeQuery = trpc.diva.hazards.evacuationRoute.useQuery(
@@ -121,6 +192,8 @@ export function MapCommandWorkspace({ data, selectedId, area, analysis, indiaLoc
     },
     {
       enabled: Boolean(
+        !canonicalRoute &&
+        isCandidateNearby &&
         selectedVulnerableHabitation &&
         destinationCandidate &&
         selectedVulnerableHabitation.latitude != null &&
@@ -132,29 +205,25 @@ export function MapCommandWorkspace({ data, selectedId, area, analysis, indiaLoc
     }
   );
 
-  const dstLat = destinationCandidate?.latitude ?? 0;
-  const dstLon = destinationCandidate?.longitude ?? 0;
-  const straightDistKm = Math.hypot((dstLat - origLat) * 111, (dstLon - origLon) * 111 * Math.cos((origLat * Math.PI) / 180));
-  const calcDistKm = Math.round(Math.max(2.5, straightDistKm * 1.28) * 10) / 10;
-  const calcMinutes = Math.max(6, Math.round((calcDistKm / 35) * 60));
-
-  const verifiedRoadRoute = routeQuery.data && routeQuery.data.status === "OK" && routeQuery.data.coordinates.length > 0 ? {
-    coordinates: routeQuery.data.coordinates,
-    destinationLabel: destinationCandidate?.name ?? "Green Zone Safe Haven",
-    originLabel: selectedVulnerableHabitation?.name ?? "Red Zone Origin",
-    distanceKm: routeQuery.data.routeDistanceKm ?? calcDistKm,
-    travelTimeMinutes: routeQuery.data.travelTimeMinutes ?? calcMinutes,
-    isRoadRoute: true,
-    sourceNote: routeQuery.data.note,
-  } : (matchedCorridor ? {
-    coordinates: matchedCorridor.coordinates,
-    destinationLabel: destinationCandidate?.name ?? matchedCorridor.destName,
-    originLabel: selectedVulnerableHabitation?.name ?? "Vulnerable Habitation",
-    distanceKm: matchedCorridor.distanceKm,
-    travelTimeMinutes: matchedCorridor.travelTimeMinutes,
-    isRoadRoute: true,
-    sourceNote: `Verified turn-by-turn road route (${matchedCorridor.districtName}): ${matchedCorridor.distanceKm} km (~${matchedCorridor.travelTimeMinutes} min). Roadway network geometry.`,
-  } : undefined);
+  const verifiedRoadRoute = canonicalRoute ?? (
+    routeQuery.data && routeQuery.data.status === "OK" && routeQuery.data.coordinates.length > 0 ? {
+      coordinates: routeQuery.data.coordinates,
+      destinationLabel: destinationCandidate?.name ?? "Green Zone Safe Haven",
+      originLabel: selectedVulnerableHabitation?.name ?? "Red Zone Origin",
+      distanceKm: routeQuery.data.routeDistanceKm ?? calcDistKm,
+      travelTimeMinutes: routeQuery.data.travelTimeMinutes ?? calcMinutes,
+      isRoadRoute: true,
+      sourceNote: routeQuery.data.note,
+    } : (matchedCorridor ? {
+      coordinates: matchedCorridor.coordinates,
+      destinationLabel: destinationCandidate?.name ?? matchedCorridor.destName,
+      originLabel: selectedVulnerableHabitation?.name ?? "Vulnerable Habitation",
+      distanceKm: matchedCorridor.distanceKm,
+      travelTimeMinutes: matchedCorridor.travelTimeMinutes,
+      isRoadRoute: true,
+      sourceNote: `Verified turn-by-turn road route (${matchedCorridor.districtName}): ${matchedCorridor.distanceKm} km (~${matchedCorridor.travelTimeMinutes} min). Roadway network geometry.`,
+    } : undefined)
+  );
 
   const relocationOrigin = selectedVulnerableHabitation ? {
     latitude: selectedVulnerableHabitation.latitude,
@@ -165,19 +234,19 @@ export function MapCommandWorkspace({ data, selectedId, area, analysis, indiaLoc
     hazardType: selectedVulnerableHabitation.hazardType,
   } : undefined;
 
-  const relocationDestination = destinationCandidate ? {
+  const relocationDestination = destinationCandidate && isCandidateNearby ? {
     latitude: destinationCandidate.latitude,
     longitude: destinationCandidate.longitude,
     name: destinationCandidate.name,
     role: destinationCandidate.facilityRole,
     suitability: destinationCandidate.relocationSuitability,
-    capacityNote: destinationCandidate.capacity ? `${destinationCandidate.capacity} capacity` : "UNAVAILABLE from OSM",
+    capacityNote: destinationCandidate.capacity ? `${destinationCandidate.capacity} capacity` : "Capacity unavailable from open mapping sources",
   } : undefined;
 
   const commandLayers: Record<string, boolean> = { ...layers, routes: true, redZones: true, liveRadar: Boolean(layers.liveRadar) };
 
-  // Direct geometric planning corridor when OSRM route is unavailable but origin + destination exist.
-  const planningCorridorFallback = !verifiedRoadRoute && selectedVulnerableHabitation && destinationCandidate &&
+  // Direct geometric planning corridor when OSRM route is unavailable but origin + destination exist within local perimeter.
+  const planningCorridorFallback = !verifiedRoadRoute && isCandidateNearby && selectedVulnerableHabitation && destinationCandidate &&
     selectedVulnerableHabitation.latitude != null && destinationCandidate.latitude != null ? {
       coordinates: [
         [origLon, origLat],
@@ -231,16 +300,20 @@ export function MapCommandWorkspace({ data, selectedId, area, analysis, indiaLoc
 
       <main className="relative min-h-[720px] min-w-0 bg-[#0a1a20]">
         <div className="absolute inset-0"><DivaMap data={commandData} selectedId={selectedId} onSelect={onSelectArea} layers={commandLayers} opacity={opacity} baseStyle={baseStyle} className="h-full w-full" zoomOverride={isSearchContext ? undefined : 10.2} /></div>
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-3 p-4 sm:p-5">
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-2.5 p-3 sm:p-4">
           <div className="pointer-events-auto flex min-w-0 flex-1 items-center gap-2">
-            <div className="w-full max-w-[295px]"><IndiaLocationSearch tone="dark" onSelect={onSelectLocation} /></div>
-            <div className="hidden items-center gap-1.5 rounded-lg border border-[#49646c] bg-[#0b1e27]/85 px-2.5 py-2 text-[10px] font-semibold text-[#c4d8dc] shadow-xl backdrop-blur-md sm:flex"><Crosshair className="h-3.5 w-3.5 text-[#75c987]" />{indiaLocation.name}</div>
+            <div className="w-full max-w-[280px]">
+              <IndiaLocationSearch tone="dark" onSelect={onSelectLocation} />
+            </div>
+            <div className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-[#3b5561] bg-[#091b24]/90 px-3 py-2 text-[11px] font-semibold text-[#c8dce0] shadow-xl backdrop-blur-md">
+              <Crosshair className="h-3.5 w-3.5 text-[#5eead4]" />
+              <span className="truncate max-w-[140px]">{indiaLocation.name}</span>
+              <span className="text-[9px] text-[#7d99a2]">({indiaLocation.category})</span>
+            </div>
           </div>
           <div className="pointer-events-auto flex items-center gap-1.5">
-            {/* Language Selector */}
             <LanguageSelector tone="dark" />
 
-            {/* ResQ AI Assistant Trigger */}
             <Button
               data-testid="map-ai-assistant-btn"
               variant="outline"
@@ -253,36 +326,44 @@ export function MapCommandWorkspace({ data, selectedId, area, analysis, indiaLoc
               <span className="hidden sm:inline">ResQ AI</span>
             </Button>
 
-            {/* Responder Dispatch Log */}
             <Button
               data-testid="map-responder-log-btn"
               variant="outline"
               size="sm"
               onClick={() => setIsResponderDrawerOpen(true)}
               className="h-9 gap-1.5 rounded-xl border-[#3a5866] bg-[#091b26]/95 text-xs font-semibold text-[#94a3b8] hover:bg-[#123142] hover:text-white shadow-xl backdrop-blur-md"
-              title="View SOS Dispatches (Responder View)"
+              title="View SOS Dispatches"
             >
               <Radio className="h-3.5 w-3.5 text-rose-400" />
               <span className="hidden md:inline">Dispatches</span>
             </Button>
 
-            {/* Emergency SOS Action */}
             <Button
               data-testid="map-sos-btn"
               size="sm"
               onClick={() => setIsSosOpen(true)}
-              className="h-9 gap-1.5 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white font-black text-xs shadow-xl animate-pulse"
+              className="h-9 gap-1.5 rounded-xl bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-700 hover:to-rose-800 text-white font-black text-xs shadow-xl animate-pulse"
               title="Trigger Emergency SOS"
             >
               <span className="h-2 w-2 rounded-full bg-white" />
               SOS
             </Button>
 
-            <Button variant="ghost" size="icon" onClick={onOpenDashboard} className="h-9 w-9 rounded-lg border border-[#405a63] bg-[#0b1e27]/90 text-[#d7e5e8] shadow-xl backdrop-blur-md hover:bg-[#173541]" aria-label="Open dashboard"><MoreHorizontal className="h-4 w-4" /></Button>
-            <Button variant="ghost" size="icon" onClick={() => setIsMobileMenuOpen(true)} className="h-9 w-9 rounded-lg border border-[#405a63] bg-[#0b1e27]/90 text-[#d7e5e8] shadow-xl backdrop-blur-md hover:bg-[#173541] lg:hidden" aria-label="Open map menu"><Menu className="h-4 w-4" /></Button>
+            <Button variant="ghost" size="icon" onClick={onOpenDashboard} className="h-9 w-9 rounded-xl border border-[#405a63] bg-[#0b1e27]/90 text-[#d7e5e8] shadow-xl backdrop-blur-md hover:bg-[#173541]" aria-label="Open dashboard"><MoreHorizontal className="h-4 w-4" /></Button>
+            <Button variant="ghost" size="icon" onClick={() => setIsMobileMenuOpen(true)} className="h-9 w-9 rounded-xl border border-[#405a63] bg-[#0b1e27]/90 text-[#d7e5e8] shadow-xl backdrop-blur-md hover:bg-[#173541] lg:hidden" aria-label="Open map menu"><Menu className="h-4 w-4" /></Button>
           </div>
         </div>
-        <div className="absolute left-1/2 top-[76px] z-20 flex -translate-x-1/2 items-center gap-1 rounded-lg border border-[#405a63] bg-[#0b1e27]/90 p-1 shadow-2xl backdrop-blur-md"><Button variant="ghost" size="sm" onClick={() => setIsLayersOpen(value => !value)} className={cn("h-8 rounded-md px-2.5 text-[11px] font-semibold text-[#e1ecee] hover:bg-[#1b3c46]", isLayersOpen && "bg-[#193d45] text-[#8be090]")}><Layers3 className="mr-1.5 h-3.5 w-3.5" />Layers</Button><Button variant="ghost" size="sm" onClick={() => setIsLegendOpen(value => !value)} className={cn("h-8 rounded-md px-2.5 text-[11px] font-semibold text-[#e1ecee] hover:bg-[#1b3c46]", isLegendOpen && "bg-[#193d45] text-[#8be090]")}><span className="mr-1.5 grid grid-cols-2 gap-0.5"><span className="h-1.5 w-1.5 bg-[#7fc58e]" /><span className="h-1.5 w-1.5 bg-[#f2be55]" /></span>Legend</Button><Button variant="ghost" size="icon" onClick={() => document.querySelector<HTMLElement>('[data-testid="india-gis-map"]')?.requestFullscreen()} className="h-8 w-8 rounded-md text-[#e1ecee] hover:bg-[#1b3c46]" aria-label="Toggle fullscreen map"><Expand className="h-3.5 w-3.5" /></Button></div>
+        <div className="absolute left-1/2 top-[68px] z-20 flex -translate-x-1/2 items-center gap-1 rounded-xl border border-[#3e5d67] bg-[#091a23]/92 px-1.5 py-1 shadow-2xl backdrop-blur-md">
+          <Button variant="ghost" size="sm" onClick={() => setIsLayersOpen(value => !value)} className={cn("h-7 rounded-lg px-2.5 text-[11px] font-semibold text-[#e1ecee] hover:bg-[#1b3c46]", isLayersOpen && "bg-[#193d45] text-[#8be090]")}>
+            <Layers3 className="mr-1.5 h-3.5 w-3.5" />Layers
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setIsLegendOpen(value => !value)} className={cn("h-7 rounded-lg px-2.5 text-[11px] font-semibold text-[#e1ecee] hover:bg-[#1b3c46]", isLegendOpen && "bg-[#193d45] text-[#8be090]")}>
+            <span className="mr-1.5 grid grid-cols-2 gap-0.5"><span className="h-1.5 w-1.5 bg-[#7fc58e]" /><span className="h-1.5 w-1.5 bg-[#f2be55]" /></span>Legend
+          </Button>
+          <Button variant="ghost" size="icon" onClick={() => document.querySelector<HTMLElement>('[data-testid="india-gis-map"]')?.requestFullscreen()} className="h-7 w-7 rounded-lg text-[#e1ecee] hover:bg-[#1b3c46]" aria-label="Toggle fullscreen map">
+            <Expand className="h-3.5 w-3.5" />
+          </Button>
+        </div>
         {isLayersOpen && <div className="absolute left-1/2 top-[124px] z-30 w-[268px] max-h-[460px] overflow-y-auto -translate-x-1/2 rounded-xl border border-[#3e5c65] bg-[#0b1d26]/96 p-3 shadow-2xl backdrop-blur-md"><div className="flex items-center justify-between"><p className="text-[11px] font-bold text-[#e6f3ef]">Map layers</p><span className="rounded bg-[#173d3d] px-1.5 py-0.5 text-[9px] font-bold uppercase text-[#84d58d]">Live view</span></div><div className="mt-2 [&_label]:text-[#bdd0d4] [&_label:hover]:text-white [&_div]:text-[#6c8c96]"><IndiaOverviewLayerControls layers={commandLayers} onChange={(id, enabled) => onLayerChange(id, enabled)} /></div><div className="mt-2 border-t border-[#25404a] pt-2"><div className="grid grid-cols-2 gap-1 rounded-md bg-[#102832] p-1"><button onClick={() => onBaseStyleChange("muted")} className={cn("rounded px-2 py-1 text-[9px] font-semibold", baseStyle === "muted" ? "bg-[#315159] text-white" : "text-[#8fa9af]")}>Muted</button><button onClick={() => onBaseStyleChange("terrain")} className={cn("rounded px-2 py-1 text-[9px] font-semibold", baseStyle === "terrain" ? "bg-[#315159] text-white" : "text-[#8fa9af]")}>Terrain</button></div><div className="mt-2 flex items-center justify-between text-[9px] text-[#8fa9af]"><span>Overlay opacity</span><span>{Math.round(opacity * 100)}%</span></div><Slider value={[opacity * 100]} min={25} max={100} step={5} onValueChange={values => onOpacityChange((values[0] ?? 90) / 100)} className="mt-2" aria-label="Map overlay opacity" /></div></div>}
         {isLegendOpen && <div className="absolute left-1/2 top-[124px] z-30 w-[228px] -translate-x-1/2 rounded-xl border border-[#3e5c65] bg-[#0b1d26]/96 p-3 shadow-2xl backdrop-blur-md"><p className="text-[11px] font-bold text-[#e6f3ef]">Active legend</p><div className="mt-2 space-y-2 text-[10px] text-[#bdd0d4]"><div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#c62828]" />RED (Critical red zone)</div><div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#e65100]" />ORANGE (Attention required)</div><div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#2e7d32]" />GREEN (Low assessed risk)</div><div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#ea580c]" />📍 Vulnerable habitation</div><div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#16a34a]" />🟢 Safe destination</div></div></div>}
         <div className="pointer-events-none absolute bottom-4 left-4 z-20 hidden rounded-lg border border-[#405a63] bg-[#0b1e27]/88 px-2.5 py-2 text-[10px] text-[#c9d9dc] shadow-xl backdrop-blur-md sm:block"><div className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-[#ff3d43]" />{isSearchContext ? "Screening risk" : `${riskLabel} analytical risk`} <strong className="text-white">{selectedSummary?.risk ?? `${risk}/100`}</strong></div><div className="mt-1 text-[9px] text-[#8da6ad]">{isSearchContext ? `${selectedLocation.category} · ${selectedLocation.population == null ? "Population unavailable" : `${formatMapMetric(selectedLocation.population)} population reported`}` : `${area.primaryHazard} · ${formatMapMetric(area.population)} people in assessment extent`}</div></div>
@@ -360,6 +441,7 @@ export function MapCommandWorkspace({ data, selectedId, area, analysis, indiaLoc
                   districtName={realDistrict.name}
                   classification={risk >= 70 ? "RED" : risk >= 40 ? "ORANGE" : "GREEN"}
                   stateCode={realDistrict.stateCode}
+                  decision={selectedContext?.decision}
                 />
               </div>
             )}
@@ -391,6 +473,12 @@ export function MapCommandWorkspace({ data, selectedId, area, analysis, indiaLoc
     <ResqAiAssistant
       isOpen={isAiAssistantOpen}
       onClose={() => setIsAiAssistantOpen(false)}
+      context={selectedContext}
+      selectedLocation={selectedLocation}
+    />
+
+    {/* Location Consistency & Provenance Diagnostics (Phase 15) */}
+    <LocationConsistencyDiagnostics
       context={selectedContext}
       selectedLocation={selectedLocation}
     />

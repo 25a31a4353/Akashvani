@@ -130,7 +130,7 @@ export function LiveWeatherCommandCenter({ context }: { context: IndiaLocationCo
               </span>
             </h2>
             <p className="mt-0.5 text-[11px] text-[#718b96]">
-              Real-time atmospheric telemetry and AI hazard forecast · Observed {observedDateStr}
+              Real-time atmospheric telemetry and AI hazard forecast · {environment.status === "LIVE IMD WARNING & MODELLED TELEMETRY" ? "Observed IMD bulletin & NWP telemetry" : "High-Resolution NWP Model (ECMWF/GFS)"}
             </p>
           </div>
         </div>
@@ -163,7 +163,7 @@ export function LiveWeatherCommandCenter({ context }: { context: IndiaLocationCo
                     <span className="text-4xl font-black tracking-tight text-[#13384f]">
                       {environment.temperatureC !== null ? `${environment.temperatureC.toFixed(1)}°` : "—"}
                     </span>
-                    <span className="text-sm font-semibold text-[#5a7683]">C</span>
+                    {environment.temperatureC !== null && <span className="text-sm font-semibold text-[#5a7683]">C</span>}
                     {environment.apparentTemperatureC != null && (
                       <span className="ml-2 inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2 py-0.5 text-[11px] font-bold text-orange-700 ring-1 ring-orange-200">
                         Feels like {environment.apparentTemperatureC.toFixed(1)}°C
@@ -209,9 +209,11 @@ export function LiveWeatherCommandCenter({ context }: { context: IndiaLocationCo
                     <span className="text-[10px] font-bold uppercase">Precip</span>
                   </div>
                   <p className="mt-1 text-sm font-extrabold text-[#1a3d52]">
-                    {environment.precipitationMm !== null ? `${environment.precipitationMm} mm` : "0.0 mm"}
+                    {environment.precipitationMm !== null ? `${environment.precipitationMm} mm` : "—"}
                   </p>
-                  <p className="text-[9px] text-[#718b96]">Surface rainfall</p>
+                  <p className="text-[9px] text-[#718b96]">
+                    {environment.precipitationMm !== null ? "Surface rainfall" : "Precipitation unavailable"}
+                  </p>
                 </div>
 
                 {/* Wind & Gusts */}
@@ -224,10 +226,10 @@ export function LiveWeatherCommandCenter({ context }: { context: IndiaLocationCo
                     {environment.windSpeedKph !== null && environment.windSpeedKph !== undefined
                       ? `${Math.round(environment.windSpeedKph)}`
                       : "—"}{" "}
-                    <span className="text-[10px] font-medium text-[#718b96]">km/h</span>
+                    {environment.windSpeedKph !== null && <span className="text-[10px] font-medium text-[#718b96]">km/h</span>}
                   </p>
                   <p className="text-[9px] text-[#718b96]">
-                    Gusts: {environment.windGustKph ? `${Math.round(environment.windGustKph)} km/h` : "Mild"}
+                    {environment.windGustKph ? `Gusts: ${Math.round(environment.windGustKph)} km/h` : (environment.windSpeedKph !== null ? "Gusts: Mild" : "Wind unavailable")}
                   </p>
                 </div>
 
@@ -240,10 +242,10 @@ export function LiveWeatherCommandCenter({ context }: { context: IndiaLocationCo
                   <p className="mt-1 text-sm font-extrabold text-[#1a3d52]">
                     {environment.surfacePressureHpa
                       ? `${Math.round(environment.surfacePressureHpa)}`
-                      : "1012"}{" "}
-                    <span className="text-[10px] font-medium text-[#718b96]">hPa</span>
+                      : "—"}{" "}
+                    {environment.surfacePressureHpa && <span className="text-[10px] font-medium text-[#718b96]">hPa</span>}
                   </p>
-                  <p className="text-[9px] text-[#718b96]">Barometric level</p>
+                  <p className="text-[9px] text-[#718b96]">{environment.surfacePressureHpa ? "Barometric level" : "Pressure unavailable"}</p>
                 </div>
 
                 {/* UV Index */}

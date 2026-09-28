@@ -458,9 +458,13 @@ export function PS191DecisionPanel({
     { staleTime: 5 * 60_000, retry: 1 }
   );
 
-  const assessment = capacityQuery.data;
-  const recommendation = relocationQuery.data;
-  const isLoading = capacityQuery.isLoading || relocationQuery.isLoading;
+  const validAssessment = (capacityQuery.data && capacityQuery.data.areaId.toLowerCase() === districtId.toLowerCase()) ? capacityQuery.data : null;
+  const validRecommendation = (relocationQuery.data && relocationQuery.data.sourceAreaId.toLowerCase() === districtId.toLowerCase()) ? relocationQuery.data : null;
+  const isLoading = capacityQuery.isLoading || relocationQuery.isLoading ||
+    (!validAssessment && capacityQuery.isFetching) ||
+    (!validRecommendation && relocationQuery.isFetching);
+  const assessment = validAssessment;
+  const recommendation = validRecommendation;
 
   return (
     <div
@@ -545,7 +549,7 @@ export function PS191DecisionPanel({
         {isLoading && (
           <div className="flex items-center justify-center gap-2 py-6 text-[11px] text-[#64748b]">
             <Loader2 className="h-4 w-4 animate-spin text-[#4338ca]" />
-            Discovering facilities and computing capacity…
+            Discovering facilities and computing capacity for {districtName}…
           </div>
         )}
 

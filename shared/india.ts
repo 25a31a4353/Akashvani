@@ -88,10 +88,10 @@ export type EnvironmentalContext = {
   predictions?: WeatherPredictionReport;
   imdWarning?: ImdWarningContext | null;
   telemetryType?: {
-    temperature: "MODELLED";
-    wind: "MODELLED";
-    precipitation: "MODELLED" | "OBSERVED";
-    airQuality: "MODELLED";
+    temperature: "MODELLED" | "OBSERVED" | "FORECAST" | "UNAVAILABLE";
+    wind: "MODELLED" | "OBSERVED" | "FORECAST" | "UNAVAILABLE";
+    precipitation: "MODELLED" | "OBSERVED" | "FORECAST" | "UNAVAILABLE";
+    airQuality: "MODELLED" | "OBSERVED" | "FORECAST" | "UNAVAILABLE";
     warning: "OFFICIAL_WARNING" | "OFFICIAL_NOWCAST" | "UNAVAILABLE";
   };
   validPeriod?: string;
@@ -106,7 +106,7 @@ export type { ResQDecisionContext };
 export type IndiaLocationContext = {
   location: IndiaLocation;
   environment: EnvironmentalContext;
-  infrastructure: { items: Array<{ id: string; name: string; type: string; latitude: number; longitude: number }>; source: string; status: "LIVE OSM FACILITY SAMPLE" | "UNAVAILABLE"; observedAt: string | null };
+  infrastructure: { items: Array<{ id: string; name: string; type: string; latitude: number; longitude: number }>; source: string; status: "LIVE OSM FACILITY SAMPLE" | "CURATED BASELINE FACILITY REGISTER" | "UNAVAILABLE"; observedAt: string | null };
   screening: { riskScore: number | null; riskLevel: "Low" | "Moderate" | "High" | "Unavailable"; priority: "Immediate" | "High" | "Moderate" | "Low" | "Unavailable"; hazardContext: string; populationContext: string; status: string };
   terrain?: TerrainContext;
   hydrology?: HydrologyContext;

@@ -27,11 +27,18 @@ export function getRecommendedSite(analysis: AssessmentAnalysis) {
 }
 
 export function buildSelectedLocationSummary(context: IndiaLocationContext) {
-  const next = context.environment.forecast[0];
+  const next = context.environment.forecast?.[0];
+  const popVal = context.decision?.exposureAssessment?.populationValue ?? context.location.population;
+  const popStr = popVal != null ? formatMapMetric(popVal) : "Unavailable";
+
+  const facCountStr = context.infrastructure.status === "UNAVAILABLE"
+    ? "Discovery unavailable"
+    : formatMapMetric(context.infrastructure.items.length);
+
   return {
     title: `${context.location.category}: ${context.location.name}`,
     subtitle: context.location.displayName,
-    population: context.location.population == null ? "Unavailable" : formatMapMetric(context.location.population),
+    population: popStr,
     risk: context.screening.riskScore == null ? "Unavailable" : `${context.screening.riskScore}/100`,
     riskLevel: context.screening.riskLevel,
     priority: context.screening.priority,
@@ -39,7 +46,7 @@ export function buildSelectedLocationSummary(context: IndiaLocationContext) {
     precipitation: context.environment.precipitationMm == null ? "Unavailable" : `${context.environment.precipitationMm} mm`,
     airQuality: context.environment.usAqi == null ? "Unavailable" : `AQI ${context.environment.usAqi}`,
     nextForecast: next ? `${next.temperatureMinC ?? "—"}–${next.temperatureMaxC ?? "—"}°C` : "Unavailable",
-    facilityCount: context.infrastructure.items.length ? formatMapMetric(context.infrastructure.items.length) : "Unavailable",
+    facilityCount: facCountStr,
     action: context.screening.hazardContext,
     source: context.location.source,
   };

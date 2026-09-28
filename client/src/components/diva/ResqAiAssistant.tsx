@@ -136,6 +136,11 @@ export function ResqAiAssistant({ isOpen, onClose, context, selectedLocation }: 
   // Initial trigger or cached result
   const [explanation, setExplanation] = useState<AssistantExplanation | null>(null);
 
+  // Invalidate explanation when location changes to prevent stale leakage
+  React.useEffect(() => {
+    setExplanation(null);
+  }, [structuredCtx.locationName, structuredCtx.latitude, structuredCtx.longitude]);
+
   const fetchExplanation = async () => {
     try {
       const res = await explainMutation.mutateAsync(structuredCtx);
@@ -147,10 +152,13 @@ export function ResqAiAssistant({ isOpen, onClose, context, selectedLocation }: 
 
   React.useEffect(() => {
     if (isOpen && !explanation && !explainMutation.isPending) {
+      if (!structuredCtx.locationName || structuredCtx.locationName === "Unknown") {
+        return;
+      }
       fetchExplanation();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, structuredCtx.locationName]);
+  }, [isOpen, explanation, structuredCtx.locationName]);
 
   if (!isOpen) return null;
 
@@ -225,15 +233,15 @@ export function ResqAiAssistant({ isOpen, onClose, context, selectedLocation }: 
           <span>{t.aiDisclaimer}</span>
         </div>
 
-        {/* Quick Question Chips */}
-        <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50 overflow-x-auto whitespace-nowrap scrollbar-none flex gap-1.5">
+        {/* Quick Question Chips - Horizontally scrollable with clean pills, no native scrollbar dominating UI */}
+        <div className="px-4 py-2 border-b border-slate-100 bg-slate-50/90 flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           <button
             onClick={() => setActiveFilter("ALL")}
             className={cn(
-              "px-2.5 py-1 rounded-full text-[10px] font-bold transition shrink-0",
+              "px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap transition-colors shrink-0",
               activeFilter === "ALL"
-                ? "bg-[#18485e] text-white"
-                : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-100"
+                ? "bg-[#18485e] text-white shadow-sm"
+                : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-900"
             )}
           >
             All Responses
@@ -243,10 +251,10 @@ export function ResqAiAssistant({ isOpen, onClose, context, selectedLocation }: 
               key={q.id}
               onClick={() => setActiveFilter(q.section)}
               className={cn(
-                "px-2.5 py-1 rounded-full text-[10px] font-medium transition shrink-0",
+                "px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors shrink-0",
                 activeFilter === q.section
-                  ? "bg-[#18485e] text-white font-bold"
-                  : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-100"
+                  ? "bg-[#18485e] text-white font-semibold shadow-sm"
+                  : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-900"
               )}
             >
               {q.label}
