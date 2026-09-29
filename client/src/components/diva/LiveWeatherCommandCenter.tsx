@@ -28,6 +28,47 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+/**
+ * Builds the most precise available location label from the IndiaLocation object.
+ * Hierarchy: locality → city/name → district → state
+ * Never fabricates a name; only uses data actually present in the address object.
+ */
+function buildLocationLabel(location: { name: string; category: string; address: { state?: string; district?: string; city?: string; locality?: string } }): string {
+  const { name, category, address } = location;
+  const parts: string[] = [];
+
+  // Most-specific part first: for sub-district places, prefer the name itself
+  if (category === "Locality" || category === "Place" || category === "City") {
+    parts.push(name);
+    // Add district if different from name and available
+    if (address.district && address.district.toLowerCase() !== name.toLowerCase()) {
+      parts.push(address.district);
+    }
+    if (address.state) parts.push(address.state);
+  } else if (category === "District") {
+    parts.push(name);
+    if (address.state) parts.push(address.state);
+  } else {
+    // State-level: just return the name (state)
+    parts.push(name);
+  }
+
+  return parts.join(", ");
+}
+
+/** Short label: up to city + state (e.g. "Dibrugarh, Assam") — used in inline badges */
+function buildShortLocationLabel(location: { name: string; category: string; address: { state?: string; district?: string; city?: string; locality?: string } }): string {
+  const { name, category, address } = location;
+  if (category === "State") return name;
+  // For district: "Dibrugarh District, Assam"
+  if (category === "District") {
+    return address.state ? `${name}, ${address.state}` : name;
+  }
+  // For city/locality/place: "Dibrugarh, Assam"
+  if (address.state) return `${name}, ${address.state}`;
+  return name;
+}
+
 function getWeatherIcon(iconName?: string, className = "h-5 w-5") {
   switch (iconName) {
     case "Sun":
@@ -124,9 +165,9 @@ export function LiveWeatherCommandCenter({ context }: { context: IndiaLocationCo
               </span>
             </div>
             <h2 className="mt-0.5 text-lg font-extrabold tracking-tight text-[#163c58]">
-              {location.name}
+              {buildLocationLabel(location)}
               <span className="ml-2 text-xs font-semibold text-[#66828f]">
-                ({location.category} · {location.address.district ?? location.address.state ?? "India"})
+                ({location.category} · {location.latitude.toFixed(3)}°N, {location.longitude.toFixed(3)}°E)
               </span>
             </h2>
             <p className="mt-0.5 text-[11px] text-[#718b96]">
@@ -338,6 +379,10 @@ export function LiveWeatherCommandCenter({ context }: { context: IndiaLocationCo
                     <p className="text-[10px] font-extrabold uppercase tracking-wider text-[#496b79]">
                       AI Predictive Hazard Assessment
                     </p>
+                    <p className="text-[9px] font-semibold text-[#1b768a] flex items-center gap-1 mt-0.5 mb-0.5">
+                      <MapPin className="h-2.5 w-2.5 shrink-0" />
+                      {buildLocationLabel(location)}
+                    </p>
                     <h3 className="text-sm font-extrabold text-[#153a50]">
                       {predictions?.primaryThreat ?? "Normal Baseline Atmospheric Profile"}
                     </h3>
@@ -369,7 +414,9 @@ export function LiveWeatherCommandCenter({ context }: { context: IndiaLocationCo
             {problems.length > 0 ? (
               <div className="space-y-3">
                 <p className="text-[10px] font-extrabold uppercase tracking-wider text-[#5f7d8c]">
-                  Anticipated Problems & Operational Directives ({problems.length} Detected)
+                  Anticipated Problems &amp; Operational Directives
+                  <span className="ml-1 normal-case font-semibold text-[#1b768a]">— {buildShortLocationLabel(location)}</span>
+                  <span className="ml-1 text-[#7a9aaa]">({problems.length} Detected)</span>
                 </p>
 
                 {problems.map((prob) => (
@@ -397,6 +444,10 @@ export function LiveWeatherCommandCenter({ context }: { context: IndiaLocationCo
                           <p className="text-[10px] font-medium text-[#76909c]">
                             Horizon: <span className="font-semibold text-[#305566]">{prob.triggerHorizon}</span>
                           </p>
+                          <span className="mt-0.5 inline-flex items-center gap-1 text-[9px] font-semibold text-[#1b768a]">
+                            <MapPin className="h-2.5 w-2.5 shrink-0" />
+                            {buildShortLocationLabel(location)}
+                          </span>
                         </div>
                       </div>
 
@@ -486,7 +537,7 @@ export function LiveWeatherCommandCenter({ context }: { context: IndiaLocationCo
                 7-Day Weather Forecast
               </p>
               <h3 className="mt-0.5 text-sm font-extrabold text-[#163c58]">
-                Meteorological Outlook for {location.name}
+                Meteorological Outlook for {buildLocationLabel(location)}
               </h3>
             </div>
             <p className="text-[10px] text-[#718b96]">
@@ -598,6 +649,10 @@ export function LiveWeatherCommandCenter({ context }: { context: IndiaLocationCo
                 </span>
                 <span className="rounded-lg bg-white px-2 py-0.5 text-[10px] font-bold text-[#1b768a] shadow-xs">
                   {activeDay.weatherDescription}
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-lg bg-[#e8f4f7] px-2 py-0.5 text-[9px] font-semibold text-[#1b768a]">
+                  <MapPin className="h-2.5 w-2.5 shrink-0" />
+                  {buildShortLocationLabel(location)}
                 </span>
               </div>
               <div className="flex flex-wrap items-center gap-4 text-[11px]">
