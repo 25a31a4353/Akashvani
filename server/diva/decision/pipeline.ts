@@ -40,6 +40,38 @@ export interface DecisionPipelineOptions {
   radiusKm?: number;
 }
 
+const STATE_NAME_TO_CODE: Record<string, string> = {
+  "assam": "AS", "as": "AS",
+  "kerala": "KL", "kl": "KL",
+  "uttarakhand": "UK", "uk": "UK",
+  "odisha": "OD", "orissa": "OD", "od": "OD",
+  "andhra pradesh": "AP", "ap": "AP",
+  "maharashtra": "MH", "mh": "MH",
+  "rajasthan": "RJ", "rj": "RJ",
+  "bihar": "BR", "br": "BR",
+  "karnataka": "KA", "ka": "KA",
+  "tamil nadu": "TN", "tn": "TN",
+  "chhattisgarh": "CT", "cg": "CT", "ct": "CT",
+  "mizoram": "MZ", "mz": "MZ",
+  "jharkhand": "JH", "jh": "JH",
+  "uttar pradesh": "UP", "up": "UP",
+  "telangana": "TG", "tg": "TG",
+  "west bengal": "WB", "wb": "WB",
+  "himachal pradesh": "HP", "hp": "HP",
+  "sikkim": "SK", "sk": "SK",
+  "meghalaya": "ML", "ml": "ML",
+  "manipur": "MN", "mn": "MN",
+  "nagaland": "NL", "nl": "NL",
+  "tripura": "TR", "tr": "TR",
+  "arunachal pradesh": "AR", "ar": "AR",
+  "goa": "GA", "ga": "GA",
+  "gujarat": "GJ", "gj": "GJ",
+  "madhya pradesh": "MP", "mp": "MP",
+  "punjab": "PB", "pb": "PB",
+  "haryana": "HR", "hr": "HR",
+  "delhi": "DL", "dl": "DL",
+};
+
 export async function computeCanonicalDecision(
   options: DecisionPipelineOptions
 ): Promise<ResQDecisionContext> {
@@ -65,7 +97,8 @@ export async function computeCanonicalDecision(
 
   // 3. Evaluate Exposure (Hierarchical Resolution)
   const districtName = location.address?.district ?? location.address?.city ?? location.name;
-  const stateCode = location.address?.state;
+  const rawState = location.address?.state;
+  const stateCode = hazardProfile.stateCode ?? (rawState ? (STATE_NAME_TO_CODE[rawState.trim().toLowerCase()] ?? rawState.trim().toUpperCase()) : undefined);
   const exposureAssessment = evaluateExposure(location, districtName, stateCode, radiusKm);
 
   // 4. Evaluate Vulnerability (Separated from Exposure, Demographic Gating)

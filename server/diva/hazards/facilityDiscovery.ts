@@ -623,12 +623,35 @@ export function discoverFacilitiesSync(
   radiusKm: number = 30,
   stateCode?: string
 ): EvacuationFacility[] {
-  return CURATED_BASELINE
-    .filter((f) => !stateCode || f.stateCode === stateCode || haversineKm(lat, lon, f.lat, f.lon) <= radiusKm)
+  const normState = stateCode?.trim().toUpperCase();
+
+  // 1. Strict radius match (preferred and prioritized)
+  const withinRadius = CURATED_BASELINE
+    .filter((f) => !normState || f.stateCode.toUpperCase() === normState || haversineKm(lat, lon, f.lat, f.lon) <= radiusKm)
     .map((f) => buildFacilityFromBaseline(f, lat, lon))
     .filter((f) => f.straightLineDistanceKm <= radiusKm)
+    .sort((a, b) => a.straightLineDistanceKm - b.straightLineDistanceKm);
+
+  if (withinRadius.length > 0) {
+    return withinRadius.slice(0, 10);
+  }
+
+  // 2. Regional fallback (if location center is slightly outside radiusKm from nearest baseline facility in same state)
+  const regional = CURATED_BASELINE
+    .filter((f) => (normState && f.stateCode.toUpperCase() === normState) || haversineKm(lat, lon, f.lat, f.lon) <= 75)
+    .map((f) => buildFacilityFromBaseline(f, lat, lon))
+    .filter((f) => f.straightLineDistanceKm <= 100)
+    .sort((a, b) => a.straightLineDistanceKm - b.straightLineDistanceKm);
+
+  if (regional.length > 0) {
+    return regional.slice(0, 10);
+  }
+
+  // 3. Global closest fallback
+  return CURATED_BASELINE
+    .map((f) => buildFacilityFromBaseline(f, lat, lon))
     .sort((a, b) => a.straightLineDistanceKm - b.straightLineDistanceKm)
-    .slice(0, 10);
+    .slice(0, 5);
 }
 
 /**

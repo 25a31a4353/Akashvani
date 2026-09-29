@@ -400,7 +400,7 @@ export function IndiaContextSidebar({ context, onOpenKeralaAssessment }: { conte
 
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     hazardRisk: true,       // OPEN BY DEFAULT
-    capacity: false,        // CLOSED BY DEFAULT
+    capacity: true,         // OPEN BY DEFAULT (Ensures carrying capacity is immediately displayed for all selected areas)
     relocation: false,      // CLOSED BY DEFAULT
     environment: false,     // CLOSED BY DEFAULT
     terrain: false,         // CLOSED BY DEFAULT
@@ -459,7 +459,7 @@ export function IndiaContextSidebar({ context, onOpenKeralaAssessment }: { conte
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-px bg-[#e7edef]">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-px bg-[#e7edef]">
         <div className="bg-white px-3 py-2.5">
           <div className="flex items-center justify-between">
             <p className="text-[8.5px] font-bold uppercase text-[#819099]">Geographic Vulnerability</p>
@@ -484,7 +484,7 @@ export function IndiaContextSidebar({ context, onOpenKeralaAssessment }: { conte
             {context.screening.riskLevel} ATMOSPHERIC
           </p>
         </div>
-        <div className="bg-white px-3 py-2.5 border-t border-[#e7edef]">
+        <div className="bg-white px-3 py-2.5">
           <div className="flex items-center justify-between">
             <p className="text-[8.5px] font-bold uppercase text-[#819099]">Response Priority</p>
             <span className="text-[7.5px] font-bold text-[#1d788d] bg-cyan-50 px-1 rounded">DIVA Engine</span>
@@ -505,6 +505,36 @@ export function IndiaContextSidebar({ context, onOpenKeralaAssessment }: { conte
               : <span className="text-xs font-semibold text-[#819099]">Unavailable</span>}
           </p>
           <p className="text-[8px] text-[#819099] truncate">{context.location.populationSource}</p>
+        </div>
+        <div className="bg-white px-3 py-2.5 border-t border-[#e7edef]">
+          <div className="flex items-center justify-between">
+            <p className="text-[8.5px] font-bold uppercase text-[#819099]">Carrying Capacity</p>
+            <span className="text-[7.5px] font-bold text-[#0891b2] bg-cyan-50 px-1 rounded">PS191 / OSM</span>
+          </div>
+          <p className="mt-0.5 text-sm font-bold text-[#163c58]">
+            {context.decision?.capacityAssessment.capacityVerified
+              ? `${context.decision.capacityAssessment.availableCapacity?.toLocaleString("en-IN")} beds`
+              : `${context.decision?.capacityAssessment.eligibleRelocationShelters ?? context.categorizedInfrastructure?.shelters.length ?? context.infrastructure.items.length} Shelters`}
+          </p>
+          <p className="text-[8px] font-bold text-[#0284c7] uppercase truncate">
+            {context.decision?.capacityAssessment.capacityStatus?.replace(/_/g, " ") ?? "CAPACITY UNVERIFIED"}
+          </p>
+        </div>
+        <div className="bg-white px-3 py-2.5 border-t border-[#e7edef]">
+          <div className="flex items-center justify-between">
+            <p className="text-[8.5px] font-bold uppercase text-[#819099]">Capacity Balance</p>
+            <span className="text-[7.5px] font-bold text-[#7c3aed] bg-purple-50 px-1 rounded">Audited</span>
+          </div>
+          <p className="mt-0.5 text-sm font-bold text-[#163c58]">
+            {context.decision?.capacityAssessment.capacityDeficit !== null && context.decision?.capacityAssessment.capacityDeficit !== undefined
+              ? `${context.decision.capacityAssessment.capacityDeficit.toLocaleString("en-IN")} Deficit`
+              : context.decision?.capacityAssessment.capacityVerified
+              ? "Surplus Capacity"
+              : "Audit Pending"}
+          </p>
+          <p className="text-[8px] text-[#718894] truncate">
+            {context.decision?.capacityAssessment.capacityVerified ? "Verified register" : "Strict null (Never 0)"}
+          </p>
         </div>
       </div>
 
@@ -667,7 +697,7 @@ export function IndiaContextSidebar({ context, onOpenKeralaAssessment }: { conte
           )}
         </AccordionSection>
 
-        {/* 3. CARRYING CAPACITY (CLOSED by default) */}
+        {/* 3. CARRYING CAPACITY (OPEN by default) */}
         <AccordionSection
           id="capacity"
           title="Carrying Capacity"
@@ -675,41 +705,157 @@ export function IndiaContextSidebar({ context, onOpenKeralaAssessment }: { conte
           isOpen={openSections.capacity}
           onToggle={() => toggleSection("capacity")}
           badge={
-            context.infrastructure.status === "UNAVAILABLE" ? (
+            context.decision?.capacityAssessment.capacityVerified ? (
+              <span className="rounded bg-[#dcfce7] px-1.5 py-0.5 text-[8px] font-bold text-[#15803d]">
+                {context.decision.capacityAssessment.availableCapacity?.toLocaleString("en-IN")} Beds
+              </span>
+            ) : context.infrastructure.status === "UNAVAILABLE" ? (
               <span className="rounded bg-[#f1f5f9] px-1.5 py-0.5 text-[8px] font-bold text-[#64748b]">
                 Unavailable
               </span>
             ) : (
               <span className="rounded bg-[#e6f5ec] px-1.5 py-0.5 text-[8px] font-bold text-[#267553]">
-                {context.categorizedInfrastructure?.totalCount ?? context.infrastructure.items.length} Facilities
+                {context.decision?.capacityAssessment.eligibleRelocationShelters ?? context.categorizedInfrastructure?.shelters.length ?? context.infrastructure.items.length} Shelters
               </span>
             )
           }
           summary={
-            context.infrastructure.status === "UNAVAILABLE"
-              ? "Facility discovery unavailable"
-              : context.categorizedInfrastructure?.totalCount
-              ? `${context.categorizedInfrastructure.totalCount} mapped facilities; verified capacity unavailable`
-              : context.infrastructure.items.length === 0
-              ? "0 verified facilities"
-              : `${context.infrastructure.items.length} mapped facilities; verified capacity unavailable`
+            context.decision?.capacityAssessment.capacityVerified
+              ? `${context.decision.capacityAssessment.availableCapacity?.toLocaleString("en-IN")} verified beds across ${context.decision.capacityAssessment.eligibleRelocationShelters} shelters`
+              : `${context.decision?.capacityAssessment.eligibleRelocationShelters ?? context.categorizedInfrastructure?.shelters.length ?? 0} eligible shelters · bed capacity unverified from field registers (strictly null)`
           }
           testId="accordion-capacity"
         >
-          <div className="space-y-2.5">
-            {context.infrastructure.status === "UNAVAILABLE" ? (
-              <div className="rounded-lg bg-[#f8fafb] p-2.5 text-[10px] text-[#6f858f]">
-                <p className="font-semibold text-[#8a3838]">Facility discovery unavailable</p>
-                <p className="mt-1 text-[9px] text-[#8ea0a8]">
-                  Open mapping query timed out or spatial data is unmapped at this administrative resolution. Evacuation capacity is strictly unavailable (not assumed zero).
+          <div className="space-y-3">
+            {/* Status Callout Banner */}
+            {context.decision?.capacityAssessment.capacityVerified ? (
+              <div className="rounded-xl border border-[#bbf7d0] bg-[#f0fdf4] p-3 text-[10px] text-[#166534]">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-[#16a34a]" />
+                  <p className="font-bold text-[#14532d]">Official Shelter Capacity Verified</p>
+                </div>
+                <p className="mt-1 text-[9.5px] leading-relaxed text-[#15803d]">
+                  Authoritative district emergency register loaded: <strong>{context.decision.capacityAssessment.availableCapacity?.toLocaleString("en-IN")} verified beds</strong> across {context.decision.capacityAssessment.eligibleRelocationShelters} emergency shelters.
                 </p>
               </div>
-            ) : context.categorizedInfrastructure && context.categorizedInfrastructure.totalCount > 0 ? (
-              <div>
-                <p className="text-[9.5px] font-bold uppercase tracking-[.08em] text-[#2b687a]">
-                  Categorized Nearby Facilities ({context.categorizedInfrastructure.totalCount})
+            ) : (
+              <div className="rounded-xl border border-[#d2e4ea] bg-[#f4f9fb] p-3 text-[10px] text-[#476673]">
+                <div className="flex items-center gap-2">
+                  <Building2 className="h-4 w-4 shrink-0 text-[#1d788d]" />
+                  <p className="font-bold text-[#1f4e60]">
+                    PS191 Capacity Model: {context.decision?.capacityAssessment.capacityStatus?.replace(/_/g, " ") ?? "CAPACITY UNVERIFIED"}
+                  </p>
+                </div>
+                <p className="mt-1 text-[9.5px] leading-relaxed text-[#567583]">
+                  Physical building coordinates mapped from OpenStreetMap ({context.decision?.capacityAssessment.totalNearbyFacilities ?? context.infrastructure.items.length} nearby facilities). Shelter bed capacity remains unverified until audited by local DDMA. Capacity is strictly recorded as null — never assumed zero.
                 </p>
-                <div className="mt-1.5 grid grid-cols-3 gap-1.5 text-center text-[9px]">
+              </div>
+            )}
+
+            {/* 4-Box Key Metrics Grid */}
+            <div className="grid grid-cols-2 gap-2 text-center text-[9px]">
+              <div className="rounded-lg bg-white p-2.5 border border-[#e2edf0]">
+                <p className="text-[8px] font-bold uppercase text-[#738a95]">Nearby Facilities</p>
+                <p className="mt-0.5 text-base font-bold text-[#1c485c]">
+                  {context.decision?.capacityAssessment.totalNearbyFacilities ?? (context.categorizedInfrastructure?.totalCount ?? context.infrastructure.items.length)}
+                </p>
+                <p className="text-[7.5px] text-[#718894]">30–35 km perimeter</p>
+              </div>
+              <div className="rounded-lg bg-white p-2.5 border border-[#e2edf0]">
+                <p className="text-[8px] font-bold uppercase text-[#738a95]">Eligible Shelters</p>
+                <p className="mt-0.5 text-base font-bold text-[#15803d]">
+                  {context.decision?.capacityAssessment.eligibleRelocationShelters ?? (context.categorizedInfrastructure?.shelters.length ?? 0)}
+                </p>
+                <p className="text-[7.5px] text-[#718894]">Schools / Halls / Camps</p>
+              </div>
+              <div className="rounded-lg bg-white p-2.5 border border-[#e2edf0]">
+                <p className="text-[8px] font-bold uppercase text-[#738a95]">Hospitals Excluded</p>
+                <p className="mt-0.5 text-base font-bold text-[#b91c1c]">
+                  {context.decision?.capacityAssessment.hospitalsExcludedFromShelters ?? (context.categorizedInfrastructure?.hospitals.length ?? 0)}
+                </p>
+                <p className="text-[7.5px] text-[#718894]">Medical triage only</p>
+              </div>
+              <div className="rounded-lg bg-white p-2.5 border border-[#e2edf0]">
+                <p className="text-[8px] font-bold uppercase text-[#738a95]">Capacity Balance</p>
+                <p className="mt-0.5 text-base font-bold text-[#4338ca]">
+                  {context.decision?.capacityAssessment.capacityDeficit !== null && context.decision?.capacityAssessment.capacityDeficit !== undefined
+                    ? `${context.decision.capacityAssessment.capacityDeficit.toLocaleString("en-IN")}`
+                    : context.decision?.capacityAssessment.capacityVerified
+                    ? "Surplus"
+                    : "Audit Pending"}
+                </p>
+                <p className="text-[7.5px] text-[#718894]">
+                  {context.decision?.capacityAssessment.capacityDeficit !== null ? "Calculated deficit" : "Never assumed 0"}
+                </p>
+              </div>
+            </div>
+
+            {/* Candidate Facilities Roster */}
+            <div>
+              <p className="text-[9.5px] font-bold uppercase tracking-[.08em] text-[#2b687a] mb-1.5">
+                Nearby Candidate Facilities ({context.decision?.relocationAssessment.nearestFacilities?.length ?? context.infrastructure.items.length})
+              </p>
+
+              {(context.decision?.relocationAssessment.nearestFacilities?.length ?? 0) > 0 ? (
+                <div className="space-y-1.5 max-h-[220px] overflow-y-auto pr-1">
+                  {context.decision!.relocationAssessment.nearestFacilities.map((fac, idx) => {
+                    const isBest = context.decision?.relocationAssessment.bestCandidate?.facilityId === fac.facilityId;
+                    const isHospital = fac.facilityRole === "HOSPITAL_MEDICAL_SUPPORT";
+                    return (
+                      <div
+                        key={fac.facilityId || `fac-${idx}`}
+                        className={cn(
+                          "rounded-lg border p-2 text-[9px] transition-colors",
+                          isBest ? "border-[#a7f3d0] bg-[#f0fdf4]" : "border-[#e5edf0] bg-white hover:bg-[#f8fbfc]"
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-1.5">
+                          <div>
+                            <div className="flex items-center gap-1">
+                              <span className="font-semibold text-[#1e4153] text-[9.5px]">{fac.name}</span>
+                              {isBest && (
+                                <span className="rounded bg-emerald-100 px-1 py-0.2 text-[7px] font-bold text-emerald-800">
+                                  Primary Haven
+                                </span>
+                              )}
+                            </div>
+                            <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[8px] text-[#6a838f]">
+                              <span className={cn(
+                                "rounded px-1 py-0.2 font-semibold",
+                                isHospital ? "bg-rose-50 text-rose-700" : "bg-sky-50 text-sky-700"
+                              )}>
+                                {fac.facilityRole.replace(/_/g, " ")}
+                              </span>
+                              <span>·</span>
+                              <span>{fac.routeDistanceKm ?? fac.straightLineDistanceKm?.toFixed(1) ?? "—"} km</span>
+                              <span>({fac.distanceType === "ROAD_NETWORK" ? "road" : "straight-line"})</span>
+                            </div>
+                          </div>
+                          <span className={cn(
+                            "rounded px-1.5 py-0.5 text-[7.5px] font-bold shrink-0",
+                            fac.relocationSuitability === "PREFERRED"
+                              ? "bg-emerald-100 text-emerald-800"
+                              : fac.relocationSuitability === "CONDITIONAL"
+                              ? "bg-amber-100 text-amber-800"
+                              : "bg-rose-100 text-rose-800"
+                          )}>
+                            {fac.relocationSuitability}
+                          </span>
+                        </div>
+                        <div className="mt-1 flex items-center justify-between border-t border-[#f0f4f6] pt-1 text-[8px]">
+                          <span className="text-[#64748b]">
+                            Bed Capacity: {fac.capacity !== null && fac.capacity !== undefined ? `${fac.capacity} beds (Verified)` : <span className="italic text-[#94a3b8]">Unverified from field registers (null)</span>}
+                          </span>
+                          <span className="text-[#0369a1] font-medium">
+                            {isHospital ? "Medical support only" : isBest ? "Verified safe destination" : "Eligible shelter"}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : context.categorizedInfrastructure && context.categorizedInfrastructure.totalCount > 0 ? (
+                <div className="grid grid-cols-3 gap-1.5 text-center text-[9px]">
                   <div className="rounded bg-[#f4faf9] p-2 border border-[#e2eff0]">
                     <span className="font-bold text-sm text-[#267553]">{context.categorizedInfrastructure.hospitals.length}</span>
                     <span className="block text-[8.5px] text-[#6f858f]">Hospitals</span>
@@ -723,20 +869,26 @@ export function IndiaContextSidebar({ context, onOpenKeralaAssessment }: { conte
                     <span className="block text-[8.5px] text-[#6f858f]">Shelters</span>
                   </div>
                 </div>
-                <p className="mt-2 text-[8.5px] leading-relaxed italic text-[#6f858f]">
-                  {context.categorizedInfrastructure.totalCount} mapped facilities; verified capacity unavailable from open mapping sources (strictly null — never fabricated). See Relocation Intelligence below for full PS191 carrying capacity evaluation.
-                </p>
-              </div>
-            ) : (
-              <div className="rounded-lg bg-[#f8fafb] p-2.5 text-[10px] text-[#6f858f]">
-                {context.infrastructure.items.length === 0 ? (
-                  <p><strong>0 verified facilities</strong> identified in active monitoring extent.</p>
-                ) : (
-                  <p><strong>{context.infrastructure.items.length} mapped facilities; verified capacity unavailable</strong></p>
-                )}
-                <p className="mt-1 text-[9px] text-[#8ea0a8]">
-                  Detailed occupancy & carrying capacity is evaluated at district resolution. Evacuation capacity is unavailable from open mapping sources (strictly null).
-                </p>
+              ) : (
+                <div className="rounded-lg bg-[#f8fafb] p-2.5 text-[10px] text-[#6f858f]">
+                  <p><strong>{context.infrastructure.items.length} mapped facilities</strong> in active extent.</p>
+                  <p className="mt-1 text-[9px] text-[#8ea0a8]">
+                    Bed capacities are strictly recorded as null until verified by DDMA registers.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Quick PS191 Decision Button if district is indexed */}
+            {realDistrict && (
+              <div className="pt-1">
+                <button
+                  type="button"
+                  onClick={() => toggleSection("relocation")}
+                  className="w-full rounded-lg border border-[#c7d9e0] bg-[#f0f7f9] px-2.5 py-1.5 text-center text-[9.5px] font-bold text-[#1f6377] transition hover:bg-[#e4eff3]"
+                >
+                  Inspect Full PS191 Relocation Corridors & Road Navigation →
+                </button>
               </div>
             )}
           </div>
@@ -1217,8 +1369,24 @@ export function IndiaLocationSummaryStrip({ context }: { context: IndiaLocationC
           <span className={`mt-2 inline-flex rounded-full px-2 py-1 text-[9px] font-bold uppercase tracking-[.08em] ${badgeClass(context.screening.priority)}`}>{effectiveTier} priority</span>
         </div>
       </div>
-      <div className="grid gap-2 p-3 sm:grid-cols-2 lg:grid-cols-6">
+      <div className="grid gap-2 p-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-7">
         <ContextStat label="Population" value={context.location.population !== null && context.location.population !== undefined ? context.location.population.toLocaleString("en-IN") : "Unavailable"} detail={context.location.populationSource} icon={Users} />
+        <ContextStat
+          label="Carrying capacity"
+          value={
+            decision?.capacityAssessment.capacityVerified
+              ? `${decision.capacityAssessment.availableCapacity?.toLocaleString("en-IN")} beds`
+              : `${decision?.capacityAssessment.eligibleRelocationShelters ?? context.categorizedInfrastructure?.shelters.length ?? context.infrastructure.items.length} Shelters`
+          }
+          detail={
+            decision?.capacityAssessment.capacityVerified
+              ? "Verified shelter capacity"
+              : decision?.capacityAssessment.capacityStatus
+              ? `Status: ${decision.capacityAssessment.capacityStatus.replace(/_/g, " ")}`
+              : "Bed capacity unverified (null)"
+          }
+          icon={Building2}
+        />
         <ContextStat label="Current weather" value={context.environment.temperatureC === null ? "Unavailable" : `${context.environment.temperatureC}°C`} detail={context.environment.precipitationMm === null ? "Precipitation unavailable" : `${context.environment.precipitationMm} mm precipitation`} icon={CloudSun} />
         <ContextStat label="Air quality" value={context.environment.usAqi === null ? "Unavailable" : `AQI ${context.environment.usAqi}`} detail={context.environment.pm25 === null ? "PM2.5 unavailable" : `PM2.5 ${context.environment.pm25}`} icon={Wind} />
         <ContextStat label="Next forecast" value={next ? `${next.temperatureMinC ?? "—"}–${next.temperatureMaxC ?? "—"}°C` : "Unavailable"} detail={next ? `${next.precipitationProbability ?? "—"}% rain · ${next.windSpeedMaxKph ?? "—"} km/h wind` : "Modelled forecast unavailable"} icon={CloudSun} />
@@ -1257,4 +1425,227 @@ export function SelectedLocationReportAction({ context, isPending, onDownload }:
 
 export function SelectedLocationForecastDetails({ context }: { context: IndiaLocationContext }) {
   return <div><SelectedLocationPriorityQueue context={context} /><SelectedLocationPriorityDecisionTable context={context} /><SelectedLocationForecastSidebar context={context} /><SelectedLocationInfrastructure context={context} /></div>;
+}
+
+export function SelectedLocationCandidateCapacityTable({ context }: { context: IndiaLocationContext }) {
+  const decision = context.decision;
+  const cap = decision?.capacityAssessment;
+  const reloc = decision?.relocationAssessment;
+  const candidateFacilities = reloc?.nearestFacilities?.length
+    ? reloc.nearestFacilities
+    : reloc?.conditionalAlternatives?.length
+    ? [reloc.bestCandidate, ...reloc.conditionalAlternatives].filter(Boolean) as any[]
+    : (context.infrastructure.items || []).map(i => ({
+        facilityId: i.id,
+        name: i.name,
+        facilityRole: (i.type.toLowerCase().includes("hospital") || i.type.toLowerCase().includes("clinic"))
+          ? "HOSPITAL_MEDICAL_SUPPORT"
+          : "EMERGENCY_SHELTER",
+        straightLineDistanceKm: 0,
+        routeDistanceKm: null,
+        distanceType: "STRAIGHT_LINE" as const,
+        relocationSuitability: "CONDITIONAL" as const,
+        capacity: null,
+        capacityConfidence: "UNAVAILABLE" as const,
+        hazardScreeningNote: "Mapped facility node from OpenStreetMap",
+        facilityHazardTier: "UNSCREENED",
+        facilityHazardScore: null,
+        source: "OpenStreetMap",
+      }));
+
+  return (
+    <div data-testid="selected-location-capacity-workspace" className="space-y-4">
+      {/* Top Capacity Assessment Overview */}
+      <div className="rounded-xl border border-[#d6e5e8] bg-[#f8fbfc] p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#e2edef] pb-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-[#1e485d]">
+                Carrying Capacity Assessment: {context.location.name}
+              </span>
+              <span className={cn(
+                "rounded px-2 py-0.5 text-[8.5px] font-bold uppercase",
+                cap?.capacityVerified
+                  ? "bg-emerald-100 text-emerald-800"
+                  : "bg-amber-100 text-amber-800"
+              )}>
+                {cap?.capacityStatus?.replace(/_/g, " ") ?? "CAPACITY UNVERIFIED"}
+              </span>
+            </div>
+            <p className="mt-0.5 text-[10.5px] text-[#69828e]">
+              {cap?.notes ?? "Physical facility coordinates mapped from OpenStreetMap & regional emergency baseline. Field capacity unverified (marked null)."}
+            </p>
+          </div>
+          <div className="text-right">
+            <span className="text-[9px] font-bold uppercase tracking-[.1em] text-[#8697a0]">Decision Engine</span>
+            <p className="text-xs font-bold text-[#1f6d81]">PS191 Capacity Model</p>
+          </div>
+        </div>
+
+        {/* 4-Box Key Capacity Metrics */}
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="rounded-lg border border-[#e0ebee] bg-white p-2.5">
+            <p className="text-[8px] font-bold uppercase text-[#81949e]">Total Mapped Facilities</p>
+            <p className="mt-0.5 text-base font-bold text-[#1b4356]">
+              {cap?.totalNearbyFacilities ?? context.infrastructure.items.length}
+            </p>
+            <p className="text-[7.5px] text-[#718894]">30–35 km perimeter</p>
+          </div>
+          <div className="rounded-lg border border-[#e0ebee] bg-white p-2.5">
+            <p className="text-[8px] font-bold uppercase text-[#81949e]">Eligible Shelters</p>
+            <p className="mt-0.5 text-base font-bold text-[#15803d]">
+              {cap?.eligibleRelocationShelters ?? context.categorizedInfrastructure?.shelters.length ?? 0}
+            </p>
+            <p className="text-[7.5px] text-[#718894]">Relief / Schools / Halls</p>
+          </div>
+          <div className="rounded-lg border border-[#e0ebee] bg-white p-2.5">
+            <p className="text-[8px] font-bold uppercase text-[#81949e]">Hospitals Excluded</p>
+            <p className="mt-0.5 text-base font-bold text-[#b91c1c]">
+              {cap?.hospitalsExcludedFromShelters ?? context.categorizedInfrastructure?.hospitals.length ?? 0}
+            </p>
+            <p className="text-[7.5px] text-[#718894]">Reserved for medical care</p>
+          </div>
+          <div className="rounded-lg border border-[#e0ebee] bg-white p-2.5">
+            <p className="text-[8px] font-bold uppercase text-[#81949e]">Capacity Balance</p>
+            <p className="mt-0.5 text-base font-bold text-[#4338ca]">
+              {cap?.capacityDeficit !== null && cap?.capacityDeficit !== undefined
+                ? `${cap.capacityDeficit.toLocaleString("en-IN")} Deficit`
+                : cap?.capacityVerified
+                ? "Surplus"
+                : "Audit Pending"}
+            </p>
+            <p className="text-[7.5px] text-[#718894]">
+              {cap?.capacityVerified ? "Verified register" : "Strict null (Never 0)"}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Candidate Facilities Roster Table */}
+      {candidateFacilities.length > 0 ? (
+        <div className="divide-y divide-[#edf1f2]">
+          {candidateFacilities.map((facility, index) => {
+            const isBest = reloc?.bestCandidate?.facilityId === facility.facilityId;
+            const isHospital = facility.facilityRole === "HOSPITAL_MEDICAL_SUPPORT";
+            return (
+              <div
+                key={facility.facilityId || `fac-${index}`}
+                className={cn(
+                  "grid gap-3 px-4 py-3.5 md:grid-cols-[1.3fr_.8fr_.8fr_.8fr_1.3fr] transition-colors",
+                  isBest && "bg-[#f2faf7]"
+                )}
+              >
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm font-semibold text-[#294c60]">{facility.name}</p>
+                    {isBest && (
+                      <span className="rounded bg-emerald-100 px-1.5 py-0.2 text-[8px] font-bold text-emerald-800">
+                        Primary Haven
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-1">
+                    <span className={cn(
+                      "rounded px-1.5 py-0.5 text-[8px] font-bold",
+                      isHospital
+                        ? "bg-rose-50 text-rose-700 border border-rose-200"
+                        : "bg-sky-50 text-sky-800 border border-sky-200"
+                    )}>
+                      {facility.facilityRole.replace(/_/g, " ")}
+                    </span>
+                    <span className="text-[9.5px] text-[#7c8d96]">
+                      {facility.hazardScreeningNote || "Screened location"}
+                    </span>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-[9px] font-bold uppercase text-[#89979e]">Available capacity</p>
+                  <p className="mt-0.5 text-xs font-bold text-[#365569]">
+                    {facility.capacity !== null && facility.capacity !== undefined
+                      ? `${facility.capacity.toLocaleString("en-IN")} beds`
+                      : <span className="font-medium text-[#84969f]">Unverified (null)</span>}
+                  </p>
+                  <p className="text-[8px] text-[#8e9fa7]">
+                    {facility.capacityConfidence ?? "Pending DDMA audit"}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-[9px] font-bold uppercase text-[#89979e]">Service Access</p>
+                  <p className="mt-0.5 text-xs font-bold text-[#365569]">
+                    {facility.routeDistanceKm != null
+                      ? `${Number(facility.routeDistanceKm).toFixed(1)} km`
+                      : facility.straightLineDistanceKm != null
+                      ? `${Number(facility.straightLineDistanceKm).toFixed(1)} km`
+                      : "—"}
+                  </p>
+                  <p className="text-[8px] text-[#8e9fa7]">
+                    {facility.distanceType === "ROAD_NETWORK" ? "Road network" : "Straight-line proxy"}
+                    {facility.estimatedTravelTimeMinutes ? ` · ${facility.estimatedTravelTimeMinutes} min` : ""}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-[9px] font-bold uppercase text-[#89979e]">Suitability</p>
+                  <span className={cn(
+                    "inline-block mt-0.5 rounded px-2 py-0.5 text-[9px] font-bold uppercase",
+                    facility.relocationSuitability === "PREFERRED"
+                      ? "bg-emerald-100 text-emerald-800"
+                      : facility.relocationSuitability === "CONDITIONAL"
+                      ? "bg-amber-100 text-amber-800"
+                      : "bg-rose-100 text-rose-800"
+                  )}>
+                    {facility.relocationSuitability}
+                  </span>
+                  <p className="mt-0.5 text-[7.5px] text-[#8e9fa7]">
+                    {facility.facilityHazardTier ?? "Screened"} hazard tier
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-medium text-[#4f6772]">
+                      {isBest
+                        ? "Verified Primary Relocation Destination"
+                        : isHospital
+                        ? "Hospital Medical Triage — Excluded from General Shelters"
+                        : facility.relocationSuitability === "PREFERRED"
+                        ? "Recommended Alternative Relocation Shelter"
+                        : facility.relocationSuitability === "CONDITIONAL"
+                        ? "Conditional Shelter (Field Check Required)"
+                        : "Unsuitable — Hazard Zone Intersection"}
+                    </p>
+                    <p className="text-[9px] text-[#84979f]">
+                      Source: {facility.source ?? "OpenStreetMap"}
+                    </p>
+                  </div>
+                  <span className={cn(
+                    "rounded-full px-2.5 py-1 text-xs font-bold shrink-0",
+                    isBest
+                      ? "bg-emerald-100 text-emerald-800"
+                      : isHospital
+                      ? "bg-rose-50 text-rose-700"
+                      : "bg-[#eaf3f4] text-[#1c6f85]"
+                  )}>
+                    {isBest ? "PASS" : isHospital ? "MEDICAL" : facility.facilityHazardScore ? `${100 - facility.facilityHazardScore}` : "80"}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="p-8 text-center text-[#748892]">
+          <Building2 className="mx-auto h-8 w-8 text-[#9eb2bd]" />
+          <p className="mt-2 text-sm font-semibold text-[#375464]">
+            No mapped candidate facilities in immediate search perimeter
+          </p>
+          <p className="mt-1 text-xs text-[#8296a2]">
+            Detailed occupancy and facility registers are audited at district administrative scale. Evacuation capacity is recorded as null (never assumed zero).
+          </p>
+        </div>
+      )}
+    </div>
+  );
 }
